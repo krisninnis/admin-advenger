@@ -162,6 +162,23 @@ const isApprovedRefund = (text: string) =>
   (/refund\s+of\s+(?:\u00a3|Â£|GBP\s*|\?\s*)\d+(?:\.\d{1,2})?/i.test(text) &&
     /approved|issued|processed|returned|will be returned/i.test(text));
 
+const recurringBillingSignals = [
+  "/month",
+  "per month",
+  "monthly",
+  "auto-renewing",
+  "auto renewing",
+  "subscription",
+  "until cancelled",
+  "until canceled",
+  "charged automatically",
+  "renews",
+  "recurring",
+  "learn how to cancel",
+];
+
+const isRecurringSubscription = (text: string) => containsAny(text, recurringBillingSignals);
+
 const deliveryUpdateSignals = [
   "parcel is due to arrive",
   "delivery is due",
@@ -394,6 +411,24 @@ const createApprovedRefundFinding = (item: AdminItem): AdminFinding => ({
   createdAt: new Date().toISOString(),
 });
 
+const createSubscriptionFinding = (item: AdminItem): AdminFinding => ({
+  id: `finding-${crypto.randomUUID()}`,
+  itemId: item.id,
+  category: "subscription",
+  title: "Subscription renewal to review",
+  summary:
+    "This looks like an auto-renewing or recurring subscription payment that may keep charging until cancelled.",
+  whyItMatters:
+    "Recurring subscriptions can become ongoing costs if you no longer use them.",
+  suggestedAction:
+    "Check whether you still use this subscription and review how to cancel before the next charge if not.",
+  estimatedValue: "Potential recurring cost",
+  urgency: "medium",
+  confidence: "high",
+  status: "new",
+  createdAt: new Date().toISOString(),
+});
+
 const createReceiptFinding = (item: AdminItem): AdminFinding => ({
   id: `finding-${crypto.randomUUID()}`,
   itemId: item.id,
@@ -414,9 +449,10 @@ const createReceiptFinding = (item: AdminItem): AdminFinding => ({
 export const analyseAdminItem = (item: AdminItem): AdminFinding[] => {
   const text = `${item.title} ${item.rawText} ${sourceTypeLabels[item.sourceType]}`.toLowerCase();
   const approvedRefundFinding = isApprovedRefund(text) ? createApprovedRefundFinding(item) : undefined;
+  const subscriptionFinding = isRecurringSubscription(text) ? createSubscriptionFinding(item) : undefined;
   const noActionFinding = isNoActionRecord(text) ? createUnknownFinding(item) : undefined;
   const receiptFinding =
-    !noActionFinding && isReceiptRecord(text) ? createReceiptFinding(item) : undefined;
+    !noActionFinding && !subscriptionFinding && isReceiptRecord(text) ? createReceiptFinding(item) : undefined;
   const deliveryIssueFinding = isDeliveryProblem(text)
     ? createDeliveryIssueFinding(item, text)
     : undefined;
@@ -485,7 +521,7 @@ export const analyseAdminItem = (item: AdminItem): AdminFinding[] => {
 
   const findings = categoryRules
     .filter((rule) => {
-      if (noActionFinding || receiptFinding) {
+      if (noActionFinding || receiptFinding || subscriptionFinding) {
         return false;
       }
 
@@ -510,6 +546,7 @@ export const analyseAdminItem = (item: AdminItem): AdminFinding[] => {
     .map((rule) => createFinding(item, rule, text));
   const priorityFindings = [
     approvedRefundFinding,
+    subscriptionFinding,
     noActionFinding,
     receiptFinding,
     deliveryUpdateFinding,

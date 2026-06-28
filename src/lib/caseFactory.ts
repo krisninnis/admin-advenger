@@ -33,9 +33,18 @@ const getEvidenceValue = (text: string, pattern: RegExp, fallback: string) =>
   matchFirst(text, pattern) ?? fallback;
 
 const moneyPattern = /(?:\u00a3|Â£|GBP\s*|\?\s*)\d+(?:\.\d{1,2})?/i;
+const monthlyMoneyPattern = /(?:\u00a3|Â£|GBP\s*|\?\s*)\d+(?:\.\d{1,2})?\s*(?:\/month|per month|monthly)?/i;
 const refundWindowPattern =
   /(?:within\s+)?\d+\s*(?:to|-)\s*\d+\s+working days|within\s+\d+\s+working days/i;
 const refundReferencePattern = /(?:reference|ref)\s*:?\s*([A-Z]{1,5}\d{3,}[A-Z0-9-]*)/i;
+
+const toMoneyNumber = (value?: string) => {
+  const match = value?.match(/\d+(?:\.\d{1,2})?/);
+  return match ? Number(match[0]) : undefined;
+};
+
+const formatPounds = (value: number) =>
+  `${String.fromCharCode(163)}${value.toFixed(value % 1 === 0 ? 0 : 2)}`;
 
 const isApprovedRefundFinding = (finding: AdminFinding, item: AdminItem) =>
   finding.category === "refund" &&
@@ -234,13 +243,31 @@ const evidenceForFinding = (
   }
 
   if (finding.category === "subscription") {
+    const monthlyAmount = matchFirst(text, monthlyMoneyPattern) ?? money;
+    const monthlyValue = toMoneyNumber(monthlyAmount);
+    const annualValue = monthlyValue === undefined ? undefined : monthlyValue * 12;
+    const autoRenewStatus = getEvidenceValue(
+      text,
+      /auto-renewing|auto renewing|charged automatically until cancelled|charged automatically until canceled|until cancelled|until canceled|renews|recurring/i,
+      "Recurring or auto-renewal wording found",
+    );
+
     return [
-      createEvidence(caseId, "Monthly amount", money === "Amount not stated" ? "Monthly cost not stated" : money),
+      createEvidence(
+        caseId,
+        "Monthly amount",
+        monthlyAmount === "Amount not stated" ? "Monthly cost not stated" : monthlyAmount,
+      ),
+      ...(annualValue !== undefined
+        ? [createEvidence(caseId, "Estimated annual cost", `${formatPounds(annualValue)}/year`)]
+        : []),
+      createEvidence(caseId, "Renewal/auto-renew status", autoRenewStatus),
       createEvidence(
         caseId,
         "Renewal clue",
         getEvidenceValue(text, /subscription|renews|renewal|monthly|annual|membership|trial/i, "Recurring payment wording found"),
       ),
+      createEvidence(caseId, "Cancellation clue", getEvidenceValue(text, /cancel|cancelled|canceled/i, "Check how to cancel")),
       createEvidence(caseId, "Source", item.title, "user_text"),
     ];
   }

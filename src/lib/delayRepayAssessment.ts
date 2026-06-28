@@ -2,10 +2,10 @@ import type { AdminItem, DelayRepayAssessment } from "../types";
 import { extractDelayRepayFactsLocally } from "../services/delayRepayExtractionService";
 
 const hasTrainSignal = (text: string) =>
-  /\b(train|rail|station|platform|journey|service|lner|avanti|northern|thameslink|scotrail)\b/i.test(text);
+  /\b(train|rail|railway|station|platform|lner|avanti|northern|thameslink|scotrail|great western railway|gwr|southern railway|transpennine|crosscountry)\b/i.test(text);
 
 const hasDelaySignal = (text: string) =>
-  /\b(delay repay|delayed|delay|late|cancelled|compensation)\b/i.test(text);
+  /\b(delay repay|delayed train|train delay|delayed service|delay|late|cancelled train|cancelled service)\b/i.test(text);
 
 export const assessUkTrainDelayRefund = (item: AdminItem): DelayRepayAssessment => {
   const text = `${item.title}\n${item.rawText}`;

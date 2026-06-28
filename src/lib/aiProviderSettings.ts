@@ -11,7 +11,7 @@ const aiProviderSettingsKey = "adminAvenger.aiProviderSettings";
 export const defaultAiProviderSettings: AiProviderSettings = {
   mode: "local_rules",
   ollamaUrl: "http://localhost:11434",
-  ollamaModel: "llama3.2",
+  ollamaModel: "qwen2.5:7b",
 };
 
 const isAiMode = (value: unknown): value is AiMode =>

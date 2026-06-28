@@ -14,6 +14,8 @@ const currencyMoneyPattern = /(?:GBP\s*|\u00a3\s*|Â£\s*|\?\s*)(\d+(?:\.\d{1,2}
 const refundWindowPattern =
   /(?:within\s+)?\d+\s*(?:to|-)\s*\d+\s+working days|within\s+\d+\s+working days/i;
 const refundReferencePattern = /(?:reference|ref)\s*:?\s*([A-Z]{1,5}\d{3,}[A-Z0-9-]*)/i;
+const recurringSubscriptionPattern =
+  /\/month|per month|monthly|auto-renewing|auto renewing|subscription|until cancelled|until canceled|charged automatically|renews|recurring|learn how to cancel/i;
 
 const toAmount = (value?: string) => {
   const match = value?.match(moneyPattern);
@@ -70,6 +72,10 @@ const getOpportunityType = (adminCase: AdminCase, item?: AdminItem): Opportunity
     return "bill_or_price_increase";
   }
 
+  if (adminCase.category === "subscription" || recurringSubscriptionPattern.test(text)) {
+    return "subscription_renewal";
+  }
+
   if (/proof of purchase found/i.test(adminCase.title)) {
     return "receipt_guardian";
   }
@@ -92,10 +98,6 @@ const getOpportunityType = (adminCase: AdminCase, item?: AdminItem): Opportunity
 
   if (adminCase.category === "refund" || /^refund approved$/i.test(adminCase.title)) {
     return "money_back";
-  }
-
-  if (adminCase.category === "subscription") {
-    return "subscription_renewal";
   }
 
   if (adminCase.category === "warranty") {
@@ -149,6 +151,25 @@ const getReceiptEvidence = (item?: AdminItem) => {
       retailer ? `Retailer: ${retailer}` : undefined,
       reference ? `Reference: ${reference}` : undefined,
     ].filter((item): item is string => Boolean(item)),
+  };
+};
+
+const getSubscriptionEvidence = (adminCase: AdminCase, item?: AdminItem) => {
+  const text = `${item?.title ?? ""}\n${item?.rawText ?? ""}`;
+  const monthlyAmount = findFirstAmount(text);
+  const annualAmount = monthlyAmount === undefined ? undefined : monthlyAmount * 12;
+  const autoRenewStatus =
+    getEvidenceValue(adminCase, /renewal\/auto-renew status/i) ??
+    text.match(/auto-renewing|auto renewing|charged automatically until cancelled|charged automatically until canceled|until cancelled|until canceled|renews|recurring/i)?.[0];
+  const cancellationClue =
+    getEvidenceValue(adminCase, /cancellation clue/i) ??
+    text.match(/learn how to cancel|cancel(?:led|ed|lation)?/i)?.[0];
+
+  return {
+    monthlyAmount,
+    annualAmount,
+    autoRenewStatus,
+    cancellationClue,
   };
 };
 
@@ -302,6 +323,55 @@ export const deriveOpportunityCard = (
   const isRefund = opportunityType === "money_back";
   const isSubscription = opportunityType === "subscription_renewal";
   const isWarranty = opportunityType === "warranty_or_fault";
+
+  if (isSubscription) {
+    const subscription = getSubscriptionEvidence(adminCase, item);
+
+    return {
+      id: `opportunity-${adminCase.id}`,
+      caseId: adminCase.id,
+      opportunityType,
+      title: "Subscription renewal to review",
+      plainEnglishSummary:
+        "This looks like an auto-renewing or recurring subscription payment that may keep charging until cancelled.",
+      potentialSaving: moneyImpact(
+        "Monthly subscription cost",
+        subscription.monthlyAmount,
+        "monthly",
+        "potential",
+      ),
+      annualisedAmount: moneyImpact(
+        "Estimated annual cost",
+        subscription.annualAmount,
+        "annual",
+        "potential",
+      ),
+      evidenceFound: [
+        subscription.monthlyAmount !== undefined
+          ? `Monthly amount: ${pound}${subscription.monthlyAmount.toFixed(subscription.monthlyAmount % 1 === 0 ? 0 : 2)}`
+          : undefined,
+        subscription.annualAmount !== undefined
+          ? `Estimated annual cost: ${pound}${subscription.annualAmount.toFixed(subscription.annualAmount % 1 === 0 ? 0 : 2)}/year`
+          : undefined,
+        subscription.autoRenewStatus ? `Renewal/auto-renew status: ${subscription.autoRenewStatus}` : undefined,
+        subscription.cancellationClue ? `Cancellation clue: ${subscription.cancellationClue}` : undefined,
+      ].filter((item): item is string => Boolean(item)),
+      missingInformation: missingEvidence,
+      nextBestAction:
+        "Check whether you still use this subscription and review how to cancel before the next charge if not.",
+      recommendedPathSteps: [
+        "Check whether you still use the subscription.",
+        "Check the next charge or renewal date.",
+        "Use the provider cancellation instructions if you do not want it to renew.",
+        "Only mark savings confirmed if you actually cancel or reduce the cost.",
+      ],
+      riskLevel: getRiskLevel(adminCase),
+      confidenceLabel: adminCase.confidence,
+      sourceCaseType: adminCase.category,
+      createdAt,
+      updatedAt,
+    };
+  }
 
   if (isRefund && /^refund approved$/i.test(adminCase.title)) {
     const refund = getRefundEvidence(adminCase, item);

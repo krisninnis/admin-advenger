@@ -30,6 +30,20 @@ const asLine = (label: string, value?: string | null) => (value ? `${label}: ${v
 
 const normalize = (text: string) => text.toLowerCase().replace(/\s+/g, " ").trim();
 
+const hasRecurringBillingSignals = (text = "") =>
+  /\/month|per month|monthly|auto-renewing|auto renewing|subscription|until cancelled|until canceled|charged automatically|renews|recurring|learn how to cancel/i.test(
+    text,
+  );
+
+const hasAiClassificationConflict = (extraction: AiExtractionResult, sourceText?: string) =>
+  Boolean(
+    sourceText &&
+      hasRecurringBillingSignals(sourceText) &&
+      (extraction.documentType === "train_delay" ||
+        extraction.documentType === "travel_disruption" ||
+        extraction.serviceType === "travel"),
+  );
+
 const isDateSourceSupported = (date: AiExtractedDate, sourceText?: string) => {
   if (!sourceText) {
     return false;
@@ -81,9 +95,12 @@ export const buildAdminTextFromAiExtraction = (
     currentAmountText && newAmountText
       ? `Your ${extraction.serviceType ?? "service"} tariff will increase from ${currentAmountText} to ${newAmountText}${effectiveDate?.value ? ` from ${effectiveDate.value}` : ""}.`
       : undefined;
+  const classificationConflict = hasAiClassificationConflict(extraction, fallbackText);
   const lines = [
     "AI extracted admin facts for deterministic AdminAvenger checking.",
-    asLine("Document type", extraction.documentType.replaceAll("_", " ")),
+    classificationConflict
+      ? "AI warning: Local model classification conflicted with recurring billing signals, so deterministic rules should take priority."
+      : undefined,
     asLine("Provider", extraction.providerName),
     asLine("Service type", extraction.serviceType?.replaceAll("_", " ") ?? undefined),
     priceRiseSentence,

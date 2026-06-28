@@ -166,6 +166,16 @@ const isBroadbandRelatedReminder = (primaryCase: AdminCase, adminCase: AdminCase
 
 const supportedTextFileExtensions = [".txt", ".md", ".csv", ".json"];
 
+const ollamaModelOptions = [
+  "llama3.2",
+  "qwen2.5:7b",
+  "qwen2.5:14b",
+  "llama3.1:8b",
+  "mistral",
+];
+
+const isPresetOllamaModel = (model: string) => ollamaModelOptions.includes(model);
+
 const sampleInputs: Array<{ label: string; title: string; sourceType: SourceType; rawText: string }> = [
   {
     label: "Price-rise notice",
@@ -679,17 +689,48 @@ export function HomeView({
                   </label>
                   <label className="block text-sm font-semibold text-slate-300" htmlFor="ollama-model">
                     Ollama model
-                    <input
+                    <select
                       id="ollama-model"
-                      value={aiSettings.ollamaModel}
-                      onChange={(event) =>
+                      value={
+                        isPresetOllamaModel(aiSettings.ollamaModel)
+                          ? aiSettings.ollamaModel
+                          : "custom"
+                      }
+                      onChange={(event) => {
+                        const nextModel = event.target.value;
+
                         setAiSettings((current) => ({
                           ...current,
-                          ollamaModel: event.target.value,
-                        }))
-                      }
+                          ollamaModel:
+                            nextModel === "custom"
+                              ? isPresetOllamaModel(current.ollamaModel)
+                                ? ""
+                                : current.ollamaModel
+                              : nextModel,
+                        }));
+                      }}
                       className="mt-2 w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-3 text-sm text-white outline-none transition focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20"
-                    />
+                    >
+                      {ollamaModelOptions.map((model) => (
+                        <option key={model} value={model}>
+                          {model}
+                        </option>
+                      ))}
+                      <option value="custom">Custom model</option>
+                    </select>
+                    {isPresetOllamaModel(aiSettings.ollamaModel) ? null : (
+                      <input
+                        value={aiSettings.ollamaModel}
+                        onChange={(event) =>
+                          setAiSettings((current) => ({
+                            ...current,
+                            ollamaModel: event.target.value,
+                          }))
+                        }
+                        placeholder="Type an Ollama model name"
+                        className="mt-2 w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-3 text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20"
+                      />
+                    )}
                   </label>
                 </div>
               ) : null}

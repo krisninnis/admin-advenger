@@ -38,8 +38,17 @@ export function AppShell({
           />
           <div className="min-w-0 flex-1">
             <div className="flex items-center justify-between px-4 pt-4 md:hidden">
-              <span className="text-sm font-black uppercase tracking-widest text-emerald-300">
-                AdminAvenger
+              <span className="flex items-center gap-2">
+                <img
+                  src="/icons/icon-192.png"
+                  alt="AdminAvenger"
+                  width={28}
+                  height={28}
+                  className="h-7 w-7 flex-none rounded-lg ring-1 ring-white/10"
+                />
+                <span className="text-sm font-black tracking-tight text-white">
+                  AdminAvenger
+                </span>
               </span>
               <button
                 type="button"

@@ -1,11 +1,13 @@
-const CACHE_NAME = "admin-avenger-shell-v1";
+const CACHE_NAME = "admin-avenger-shell-v2";
 const SHELL_URLS = [
   "/",
   "/manifest.webmanifest",
   "/favicon.svg",
+  "/favicon.png",
   "/icons/icon-192.png",
   "/icons/icon-512.png",
   "/icons/maskable-512.png",
+  "/icons/apple-touch-icon.png",
 ];
 
 self.addEventListener("install", (event) => {

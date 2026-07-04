@@ -14,8 +14,14 @@ import {
 } from "../lib/aiProviderSettings";
 import { buildAdminTextFromAiExtraction } from "../lib/aiExtractionAdapter";
 import { deriveOpportunityCard } from "../lib/opportunityCards";
+import {
+  createPhotoIntakeMetadata,
+  isSupportedPhotoFile,
+  type PhotoIntakeMetadata,
+} from "../lib/photoIntake";
 import { assessEmailSafety } from "../lib/suspiciousEmail";
 import type { ServiceStatus } from "../services/analysisService";
+import { readTextFromPhoto } from "../services/localOcrService";
 import {
   extractAdminFactsWithOllama,
   OllamaExtractionError,
@@ -294,6 +300,8 @@ const isSupportedTextFile = (file: File) => {
   return supportedTextFileExtensions.some((extension) => fileName.endsWith(extension));
 };
 
+type OcrStatus = "idle" | "reading" | "success" | "error";
+
 function FactList({ title, items }: { title: string; items: string[] }) {
   if (items.length === 0) {
     return null;
@@ -398,6 +406,12 @@ export function HomeView({
   const [uploadNote, setUploadNote] = useState("");
   const [inputMessage, setInputMessage] = useState("");
   const [imagePreviewUrl, setImagePreviewUrl] = useState("");
+  const [photoMetadata, setPhotoMetadata] = useState<PhotoIntakeMetadata | undefined>();
+  const [ocrStatus, setOcrStatus] = useState<OcrStatus>("idle");
+  const [ocrText, setOcrText] = useState("");
+  const [ocrProgress, setOcrProgress] = useState(0);
+  const [ocrError, setOcrError] = useState("");
+  const [ocrConfidence, setOcrConfidence] = useState<number | undefined>();
   const [inputResetKey, setInputResetKey] = useState(0);
   const [aiSettings, setAiSettings] = useState(loadAiProviderSettings);
   const [aiStatus, setAiStatus] = useState<ServiceStatus>("idle");
@@ -411,6 +425,7 @@ export function HomeView({
   const [showInboxTools, setShowInboxTools] = useState(false);
   const isChecking = analysisStatus === "loading";
   const isAiReading = aiStatus === "loading";
+  const isReadingPhoto = ocrStatus === "reading";
   const isLocalOllamaMode = aiSettings.mode === "local_ollama";
   const primaryCase = useMemo(
     () => (result ? getMostImportantCase(result.cases) : undefined),
@@ -549,6 +564,12 @@ export function HomeView({
     setUploadNote("");
     setInputMessage("");
     setImagePreviewUrl("");
+    setPhotoMetadata(undefined);
+    setOcrStatus("idle");
+    setOcrText("");
+    setOcrProgress(0);
+    setOcrError("");
+    setOcrConfidence(undefined);
     setAiStatus("idle");
     setAiError("");
     setAiFallbackHint("");
@@ -565,6 +586,12 @@ export function HomeView({
     setUploadedFileName("");
     setUploadNote("");
     setInputMessage("");
+    setPhotoMetadata(undefined);
+    setOcrStatus("idle");
+    setOcrText("");
+    setOcrProgress(0);
+    setOcrError("");
+    setOcrConfidence(undefined);
     setAiError("");
     setAiFallbackHint("");
     setAiExtraction(undefined);
@@ -634,7 +661,9 @@ export function HomeView({
 
     if (selectedInput === "image" && rawText.trim().length === 0) {
       setInputMessage(
-        "Image/file reading is not active in this mode. Paste the text from the document or enable a supported AI extraction mode.",
+        ocrText.trim()
+          ? "Use the extracted photo text first, then AdminAvenger can check it."
+          : "AdminAvenger could not read enough text from this photo. Try a clearer photo, better lighting, or paste the text manually.",
       );
       return;
     }
@@ -648,7 +677,7 @@ export function HomeView({
       return;
     }
 
-    if (isChecking || isAiReading) {
+    if (isChecking || isAiReading || isReadingPhoto) {
       return;
     }
 
@@ -667,7 +696,7 @@ export function HomeView({
     }
   };
 
-  const handleImageUpload = (file?: File) => {
+  const handleImageUpload = async (file?: File) => {
     if (imagePreviewUrl) {
       URL.revokeObjectURL(imagePreviewUrl);
       setImagePreviewUrl("");
@@ -676,19 +705,77 @@ export function HomeView({
     setUploadedFileName(file?.name ?? "");
     setInputMessage("");
     setAiExtraction(undefined);
+    setPhotoMetadata(undefined);
+    setOcrStatus("idle");
+    setOcrText("");
+    setOcrProgress(0);
+    setOcrError("");
+    setOcrConfidence(undefined);
 
     if (!file) {
       setUploadNote("");
       return;
     }
 
-    setImagePreviewUrl(URL.createObjectURL(file));
+    if (!isSupportedPhotoFile(file)) {
+      setUploadNote(
+        "This image type may not be readable here. Try JPG, PNG, WEBP, or paste the text manually.",
+      );
+      setOcrStatus("error");
+      setOcrError("AdminAvenger could not read this photo type in the browser.");
+      return;
+    }
 
+    setPhotoMetadata(createPhotoIntakeMetadata(file));
+    setImagePreviewUrl(URL.createObjectURL(file));
     setUploadNote(
-      isLocalOllamaMode
-        ? "Image/file reading is not active in this mode. Paste the text from the document or enable a supported AI extraction mode."
-        : "Image reading is coming soon. For now, copy/paste the text from the image if you can.",
+      "Photo text is processed in this browser. The full photo is not stored in this prototype. Keep the original photo somewhere safe.",
     );
+
+    setOcrStatus("reading");
+
+    try {
+      const result = await readTextFromPhoto(file, (progress) => {
+        setOcrProgress(progress.progress);
+      });
+
+      setOcrConfidence(result.confidence);
+      setOcrProgress(1);
+
+      if (result.text.length < 8) {
+        setOcrStatus("error");
+        setOcrError(
+          "AdminAvenger could not read enough text from this photo. Try a clearer photo, better lighting, or paste the text manually.",
+        );
+        return;
+      }
+
+      setOcrText(result.text);
+      setOcrStatus("success");
+      setInputMessage("Photo text found. Check it before AdminAvenger uses it.");
+    } catch {
+      setOcrStatus("error");
+      setOcrError(
+        "AdminAvenger could not read enough text from this photo. Try a clearer photo, better lighting, or paste the text manually.",
+      );
+    }
+  };
+
+  const useOcrText = () => {
+    const cleanedText = ocrText.trim();
+
+    if (!cleanedText) {
+      setInputMessage(
+        "AdminAvenger could not read enough text from this photo. Try a clearer photo, better lighting, or paste the text manually.",
+      );
+      return;
+    }
+
+    setRawText(cleanedText);
+    setSelectedInput("paste");
+    setInputMessage("Text from photo is ready. Review it or press What does this mean?");
+    setUploadNote("Text from photo loaded. You can review or edit before checking.");
+    onClearResult();
   };
 
   const handleFileUpload = async (file?: File) => {
@@ -719,8 +806,25 @@ export function HomeView({
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       <header className="space-y-3 pt-1 sm:pt-4">
-        <p className="text-sm font-bold uppercase tracking-widest text-emerald-300">
-          AdminAvenger
+        <div className="flex items-center gap-3">
+          <img
+            src="/icons/icon-192.png"
+            alt="AdminAvenger"
+            width={48}
+            height={48}
+            className="h-11 w-11 flex-none rounded-xl shadow-lg shadow-slate-950/40 ring-1 ring-white/10 sm:h-12 sm:w-12"
+          />
+          <div className="min-w-0">
+            <p className="text-base font-black tracking-tight text-white sm:text-lg">
+              AdminAvenger
+            </p>
+            <p className="text-sm font-semibold text-emerald-300">
+              Your AI fights the boring battles for you.
+            </p>
+          </div>
+        </div>
+        <p className="text-xs text-slate-400 sm:text-sm">
+          AI remembers. AI explains. Humans decide.
         </p>
         <h2 className="text-3xl font-bold tracking-tight text-white sm:text-5xl">
           Paste the email, bill, letter, or message that&apos;s bothering you.
@@ -735,7 +839,7 @@ export function HomeView({
         <div className="grid gap-3 sm:grid-cols-3">
           {[
             ["paste", "Paste text", "Works now"],
-            ["image", "Take/upload photo", "Preview only"],
+            ["image", "Take/upload photo", "Reads text locally"],
             ["file", "Upload text file", "TXT, MD, CSV, JSON"],
           ].map(([value, label, helper]) => (
             <button
@@ -746,7 +850,7 @@ export function HomeView({
                 setUploadNote("");
                 setInputMessage("");
               }}
-              className={`rounded-lg border p-4 text-left transition focus:outline-none focus:ring-2 focus:ring-emerald-300/40 ${
+              className={`min-h-24 rounded-lg border p-4 text-left transition focus:outline-none focus:ring-2 focus:ring-emerald-300/40 ${
                 selectedInput === value
                   ? "border-emerald-300/70 bg-emerald-300/12 text-white"
                   : "border-white/10 bg-slate-950/60 text-slate-300 hover:border-white/20 hover:text-white"
@@ -951,7 +1055,13 @@ export function HomeView({
           ) : (
             <div className="rounded-lg border border-dashed border-white/15 bg-slate-950/60 p-5">
               <label className="block text-base font-bold text-white">
-                {selectedInput === "image" ? "Choose or take a photo" : "Choose a text file"}
+                {selectedInput === "image" ? "Take or upload a photo" : "Choose a text file"}
+                {selectedInput === "image" ? (
+                  <span className="mt-2 block text-sm font-normal leading-6 text-slate-400">
+                    Take a photo of a letter, bill, receipt, or email. AdminAvenger will try to
+                    read the text on this device.
+                  </span>
+                ) : null}
                 <input
                   key={`${selectedInput}-${inputResetKey}`}
                   type="file"
@@ -963,7 +1073,7 @@ export function HomeView({
                   capture={selectedInput === "image" ? "environment" : undefined}
                   onChange={(event) =>
                     selectedInput === "image"
-                      ? handleImageUpload(event.target.files?.[0])
+                      ? void handleImageUpload(event.target.files?.[0])
                       : void handleFileUpload(event.target.files?.[0])
                   }
                   className="mt-4 block w-full rounded-lg border border-white/10 bg-slate-950 px-4 py-3 text-sm text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-emerald-400 file:px-3 file:py-2 file:text-sm file:font-bold file:text-slate-950"
@@ -971,6 +1081,13 @@ export function HomeView({
               </label>
               {uploadedFileName ? (
                 <p className="mt-3 text-sm font-semibold text-slate-200">{uploadedFileName}</p>
+              ) : null}
+              {photoMetadata ? (
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  {photoMetadata.mimeType || "unknown type"} /{" "}
+                  {(photoMetadata.fileSize / 1024 / 1024).toFixed(2)} MB. Filename only is kept
+                  while this screen is open.
+                </p>
               ) : null}
               {imagePreviewUrl ? (
                 <img
@@ -980,6 +1097,50 @@ export function HomeView({
                 />
               ) : null}
               {uploadNote ? <p className="mt-2 text-sm leading-6 text-slate-400">{uploadNote}</p> : null}
+              {selectedInput === "image" && ocrStatus === "reading" ? (
+                <div className="mt-4 rounded-lg border border-cyan-300/20 bg-cyan-300/10 p-4">
+                  <p className="text-sm font-bold text-cyan-50">
+                    Reading text from photo... {Math.round(ocrProgress * 100)}%
+                  </p>
+                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-950">
+                    <div
+                      className="h-full rounded-full bg-cyan-300 transition-all"
+                      style={{ width: `${Math.max(5, Math.round(ocrProgress * 100))}%` }}
+                    />
+                  </div>
+                </div>
+              ) : null}
+              {selectedInput === "image" && ocrStatus === "success" ? (
+                <div className="mt-4 rounded-lg border border-emerald-300/20 bg-emerald-300/[0.07] p-4">
+                  <label className="block text-sm font-bold text-emerald-50">
+                    Check the text before AdminAvenger uses it
+                    <textarea
+                      value={ocrText}
+                      onChange={(event) => setOcrText(event.target.value)}
+                      rows={9}
+                      className="mt-2 w-full resize-y rounded-lg border border-white/10 bg-slate-950 px-4 py-4 text-base leading-7 text-white outline-none transition placeholder:text-slate-600 focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20"
+                    />
+                  </label>
+                  <div className="mt-3 grid gap-2 sm:flex sm:items-center sm:justify-between">
+                    <p className="text-xs leading-5 text-emerald-50/75">
+                      OCR confidence:{" "}
+                      {ocrConfidence === undefined ? "unknown" : `${Math.round(ocrConfidence)}%`}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={useOcrText}
+                      className="min-h-11 rounded-lg bg-emerald-400 px-4 py-3 text-sm font-bold text-slate-950 shadow-lg shadow-emerald-950/30 transition hover:bg-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:ring-offset-2 focus:ring-offset-slate-950"
+                    >
+                      Use this text
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+              {selectedInput === "image" && ocrStatus === "error" && ocrError ? (
+                <p className="mt-4 rounded-lg border border-amber-300/25 bg-amber-300/10 px-4 py-3 text-sm leading-6 text-amber-50">
+                  {ocrError}
+                </p>
+              ) : null}
               {selectedInput === "file" && rawText ? (
                 <label className="mt-4 block text-sm font-semibold text-slate-300">
                   Review the loaded text
@@ -999,10 +1160,12 @@ export function HomeView({
           <button
             type="button"
             onClick={handleCheck}
-            disabled={isChecking || isAiReading}
+            disabled={isChecking || isAiReading || isReadingPhoto}
             className="w-full rounded-lg bg-emerald-400 px-5 py-4 text-lg font-bold text-slate-950 shadow-lg shadow-emerald-950/30 transition hover:bg-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:ring-offset-2 focus:ring-offset-slate-950 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400 disabled:shadow-none"
           >
-            {isAiReading
+            {isReadingPhoto
+              ? "Reading photo..."
+              : isAiReading
               ? "Reading this with local AI..."
               : isChecking
                 ? "Checking..."

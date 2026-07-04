@@ -13,15 +13,8 @@ export function DataControls({
 }: DataControlsProps) {
   return (
     <section className="rounded-lg border border-white/10 bg-white/[0.045] p-5 shadow-xl shadow-slate-950/10">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <h2 className="text-xl font-semibold text-white">Data controls</h2>
-          <p className="mt-1 text-sm text-slate-400">
-            Download a local backup before clearing anything you want to keep.
-          </p>
-        </div>
-
-        <div className="grid w-full gap-3 sm:grid-cols-3 lg:w-auto">
+      <div className="flex flex-col gap-4">
+        <div className="grid w-full gap-3 sm:grid-cols-3">
           <button
             type="button"
             onClick={onDownloadBackup}

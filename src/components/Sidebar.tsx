@@ -29,20 +29,18 @@ export function Sidebar({ currentView, onNavigate, caseCount, findingCount }: Si
   return (
     <aside className="hidden h-full flex-col border-white/10 bg-slate-950/85 px-4 py-4 md:sticky md:top-0 md:flex md:h-screen md:w-64 md:border-r lg:w-72">
       <div className="flex flex-col items-center rounded-lg border border-emerald-300/20 bg-emerald-300/10 px-4 py-4 text-center">
-        <div className="flex flex-col items-center gap-2">
-          <img
-            src="/icons/icon-192.png"
-            alt="AdminAvenger"
-            width={44}
-            height={44}
-            className="h-11 w-11 flex-none rounded-xl shadow-lg shadow-slate-950/40 ring-1 ring-white/10"
-          />
-          <p className="text-base font-black tracking-tight text-white">AdminAvenger</p>
-        </div>
-        <h1 className="mt-3 text-lg font-bold leading-7 tracking-tight text-white lg:text-xl">
+        <img
+          src="/icons/icon-192.png"
+          alt=""
+          width={44}
+          height={44}
+          className="h-11 w-11 flex-none rounded-xl shadow-lg shadow-slate-950/40 ring-1 ring-white/10"
+        />
+        <h1 className="mt-3 text-lg font-black tracking-tight text-white">AdminAvenger</h1>
+        <p className="mt-2 text-sm font-semibold leading-6 text-slate-100">
           Your AI fights the boring battles for you.
-        </h1>
-        <p className="mt-2 text-sm leading-6 text-slate-300">
+        </p>
+        <p className="mt-1 text-xs leading-5 text-slate-400">
           AI remembers. AI explains. Humans decide.
         </p>
       </div>

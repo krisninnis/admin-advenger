@@ -205,21 +205,23 @@ export function SettingsView({
   return (
     <div className="space-y-6">
       <header>
-        <p className="text-sm font-bold uppercase tracking-widest text-emerald-300">
-          Settings / Data
-        </p>
-        <h2 className="mt-2 text-3xl font-bold tracking-tight text-white">Settings</h2>
+        <p className="text-sm font-bold uppercase tracking-widest text-emerald-300">Settings</p>
+        <h2 className="mt-2 text-3xl font-bold tracking-tight text-white">
+          Control what AdminAvenger keeps
+        </h2>
         <p className="mt-2 max-w-4xl text-base leading-7 text-slate-400">
           Everything you paste or save stays in this browser on this device. Clearing browser data
-          will delete it. Use Download local backup to keep a copy. Sections are collapsed to keep
-          things easy to scan — tap a heading to open it.
+          can delete it, so download a backup before clearing anything important.
+        </p>
+        <p className="mt-2 text-sm leading-6 text-slate-500">
+          Sections are collapsed to keep this page easy to scan.
         </p>
       </header>
 
       <CollapsibleSection
-        eyebrow="What's live"
-        title="What works now / what's coming later"
-        description="A quick, honest map of what AdminAvenger actually does in this private beta."
+        eyebrow="Status"
+        title="What works now"
+        description="A quick map of what AdminAvenger can do in this private beta."
         defaultOpen
       >
         <div className="grid gap-3 lg:grid-cols-3">
@@ -255,7 +257,7 @@ export function SettingsView({
                 </ul>
                 {isComingLater ? (
                   <p className="mt-3 rounded-md border border-white/10 bg-slate-950/60 px-3 py-2 text-xs font-semibold text-slate-400">
-                    Read-only preview of the roadmap. These cannot be turned on in this beta.
+                    Coming later items cannot be turned on in this beta.
                   </p>
                 ) : null}
               </article>
@@ -266,8 +268,8 @@ export function SettingsView({
 
       <CollapsibleSection
         eyebrow="Local data"
-        title="Data controls"
-        description="Download a local backup before clearing anything you want to keep."
+        title="Back up or clear local data"
+        description="Download a backup before clearing anything you want to keep."
         defaultOpen
       >
         <DataControls
@@ -277,17 +279,17 @@ export function SettingsView({
           statusMessage={dataControlMessage}
         />
         <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-500">
-          You can remove account numbers or passwords before pasting. AdminAvenger does not need
+          You can remove passwords or account numbers before pasting. AdminAvenger does not need
           them to help.
         </p>
       </CollapsibleSection>
 
       <CollapsibleSection
-        eyebrow="Inbox scan"
+        eyebrow="Inbox preview"
         title="Inbox scan preview"
         badge="Sample emails only — no account connected"
         badgeTone="cyan"
-        description="Inbox scan preview uses sample emails only. No Gmail, Outlook, or email account is connected."
+        description="Sample emails only. No Gmail, Outlook, or email account is connected."
       >
         <p className="max-w-3xl text-sm leading-6 text-slate-400">
           Real inbox connection is not part of this private beta yet. For now, you can paste emails
@@ -391,10 +393,10 @@ export function SettingsView({
 
       <CollapsibleSection
         eyebrow="Beta feedback"
-        title="Tell us what alerts you'd want"
+        title="Future alerts feedback"
         badge="Local only"
         badgeTone="amber"
-        description="Optional. Saved only in this browser for beta feedback. It does not send your contact details anywhere."
+        description="Tell us what alerts would be useful. Saved only in this browser."
       >
         <ToggleRow
           label="Mention this in beta feedback"
@@ -424,11 +426,11 @@ export function SettingsView({
       </CollapsibleSection>
 
       <CollapsibleSection
-        eyebrow="Phone beta"
+        eyebrow="Phone install"
         title="Install on your phone"
         badge="Works now"
         badgeTone="emerald"
-        description="You can add AdminAvenger to your phone home screen during the beta."
+        description="Add AdminAvenger to your home screen during the beta."
       >
         <div className="grid gap-3 md:grid-cols-2">
           <article className="rounded-lg border border-white/10 bg-slate-950/60 p-4">
@@ -452,8 +454,8 @@ export function SettingsView({
 
       <CollapsibleSection
         eyebrow="Help & safety"
-        title="What AdminAvenger can and can't do"
-        description="Plain-English guardrails for private beta. AdminAvenger prepares; you decide."
+        title="What AdminAvenger can and cannot do"
+        description="AdminAvenger prepares; you decide."
       >
         <div className="grid gap-3 md:grid-cols-2">
           {trustSections.map((section) => (
@@ -469,9 +471,9 @@ export function SettingsView({
       </CollapsibleSection>
 
       <CollapsibleSection
-        eyebrow="Privacy note"
-        title="What is and isn't connected"
-        description="A summary of what stays on this device."
+        eyebrow="Privacy"
+        title="What is connected?"
+        description="A plain-English summary of what stays on this device."
       >
         <p className="max-w-3xl text-sm leading-6 text-slate-400">
           No account, database, provider integration, autonomous agent, or action-sending workflow
@@ -487,8 +489,8 @@ export function SettingsView({
 
       <CollapsibleSection
         eyebrow="Advanced"
-        title="Advanced / founder tools"
-        description="Prototype-only screens for testing and overview. Tucked away so normal use starts with checking something."
+        title="Founder tools"
+        description="Prototype-only screens for testing and overview."
       >
         <div className="flex flex-wrap gap-3">
           <button

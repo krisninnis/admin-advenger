@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { BroadbandPriceRiseAssessmentPanel } from "../components/BroadbandPriceRiseAssessmentPanel";
-import { DelayRepayAssessmentPanel } from "../components/DelayRepayAssessmentPanel";
-import { EvidenceLocker } from "../components/EvidenceLocker";
+import { EmailSafetyModal } from "../components/EmailSafetyModal";
+import { InboxScanPreview } from "../components/InboxScanPreview";
+import { InboxScanPromptCard } from "../components/InboxScanPromptCard";
 import { OpportunityCardPanel } from "../components/OpportunityCardPanel";
+import { SimpleResultPanel, type SimpleResultAction } from "../components/SimpleResultPanel";
 import { StatusBadge } from "../components/StatusBadge";
+import type { InboxScanSettings } from "../lib/inboxScanStorage";
+import { getGuidedCaseMode, type GuidedCaseMode } from "../lib/guidedCaseMode";
 import {
   loadAiProviderSettings,
   saveAiProviderSettings,
@@ -11,6 +14,7 @@ import {
 } from "../lib/aiProviderSettings";
 import { buildAdminTextFromAiExtraction } from "../lib/aiExtractionAdapter";
 import { deriveOpportunityCard } from "../lib/opportunityCards";
+import { assessEmailSafety } from "../lib/suspiciousEmail";
 import type { ServiceStatus } from "../services/analysisService";
 import {
   extractAdminFactsWithOllama,
@@ -21,6 +25,7 @@ import type {
   AdminFinding,
   AdminItem,
   AiExtractionResult,
+  EmailSafetyAssessment,
   SourceType,
 } from "../types";
 
@@ -38,6 +43,11 @@ type HomeViewProps = {
   onSaveCase: (caseId: string) => void;
   onSaveRecord: (caseId: string) => void;
   onClearResult: () => void;
+  inboxScanSettings: InboxScanSettings;
+  onUpdateInboxScanSettings: (updates: Partial<InboxScanSettings>) => void;
+  onIgnoreInboxScanItem: (sampleId: string) => void;
+  onSaveScannedItem: (item: AdminItem, findings: AdminFinding[], cases: AdminCase[]) => void;
+  onSaveEmailSafetyCase: (item: AdminItem, assessment: EmailSafetyAssessment) => void;
 };
 
 const categoryLabels: Record<AdminCase["category"], string> = {
@@ -117,6 +127,9 @@ const isLowActionDeliveryUpdate = (adminCase?: AdminCase) =>
 const isNoActionResult = (adminCase?: AdminCase) =>
   adminCase?.category === "unknown" && /^No obvious saving or action found/i.test(adminCase.title);
 
+const isAppointmentTask = (adminCase?: AdminCase) =>
+  Boolean(adminCase && /appointment to rebook|thing to do|rebook/i.test(adminCase.title));
+
 const getEvidenceSummary = (adminCase: AdminCase) =>
   adminCase.broadbandPriceRiseAssessment
     ? (adminCase.broadbandPriceRiseAssessment.evidenceFound ?? []).slice(0, 4).join(", ")
@@ -176,6 +189,46 @@ const ollamaModelOptions = [
 
 const isPresetOllamaModel = (model: string) => ollamaModelOptions.includes(model);
 
+const getHomePrimaryActionLabel = (opportunityType: string, guidedMode: GuidedCaseMode) => {
+  // Evidence/admin checks are never money-back cases, so never show "Track refund".
+  if (opportunityType === "travel_evidence_check") {
+    return "Save this check";
+  }
+
+  if (guidedMode === "saving_or_review") {
+    return "Save this check";
+  }
+
+  if (opportunityType === "travel_extra_cost_recovery") {
+    return "Save this check";
+  }
+
+  if (opportunityType === "refund_expected" || opportunityType === "money_back") {
+    return "Track refund";
+  }
+
+  if (
+    opportunityType === "subscription_recurring_charge" ||
+    opportunityType === "subscription_renewal"
+  ) {
+    return "Review subscription";
+  }
+
+  if (opportunityType === "suspicious_email_risk") {
+    return "Check email safety";
+  }
+
+  if (
+    opportunityType === "no_action_needed" ||
+    opportunityType === "delivery_update" ||
+    opportunityType === "receipt_guardian"
+  ) {
+    return "Save as record";
+  }
+
+  return "Save this check";
+};
+
 const sampleInputs: Array<{ label: string; title: string; sourceType: SourceType; rawText: string }> = [
   {
     label: "Price-rise notice",
@@ -225,6 +278,13 @@ const sampleInputs: Array<{ label: string; title: string; sourceType: SourceType
     sourceType: "email",
     rawText:
       "Thank you for your payment. Your account balance is now GBP 0.00. No action is required.",
+  },
+  {
+    label: "Risky email",
+    title: "Account verification required",
+    sourceType: "email",
+    rawText:
+      "Your account will be locked today. Click this link immediately to verify your bank details and avoid suspension. Sender: support@secure-bank-login-example.com. Reply-to: randomhelpdesk@example.net.",
   },
 ];
 
@@ -325,8 +385,14 @@ export function HomeView({
   onSaveCase,
   onSaveRecord,
   onClearResult,
+  inboxScanSettings,
+  onUpdateInboxScanSettings,
+  onIgnoreInboxScanItem,
+  onSaveScannedItem,
+  onSaveEmailSafetyCase,
 }: HomeViewProps) {
   const [rawText, setRawText] = useState("");
+  const [inboxScanOpen, setInboxScanOpen] = useState(false);
   const [selectedInput, setSelectedInput] = useState<"paste" | "image" | "file">("paste");
   const [uploadedFileName, setUploadedFileName] = useState("");
   const [uploadNote, setUploadNote] = useState("");
@@ -338,8 +404,11 @@ export function HomeView({
   const [aiError, setAiError] = useState("");
   const [aiExtraction, setAiExtraction] = useState<AiExtractionResult | undefined>();
   const [aiFallbackHint, setAiFallbackHint] = useState("");
-  const [showEvidence, setShowEvidence] = useState(false);
   const [showDetailed, setShowDetailed] = useState(false);
+  const [showEmailSafety, setShowEmailSafety] = useState(false);
+  const [showExamples, setShowExamples] = useState(false);
+  const [showDeveloperOptions, setShowDeveloperOptions] = useState(false);
+  const [showInboxTools, setShowInboxTools] = useState(false);
   const isChecking = analysisStatus === "loading";
   const isAiReading = aiStatus === "loading";
   const isLocalOllamaMode = aiSettings.mode === "local_ollama";
@@ -351,6 +420,10 @@ export function HomeView({
   const primaryOpportunity = primaryCase
     ? deriveOpportunityCard(primaryCase, result?.item, primaryFinding)
     : undefined;
+  const guidedMode =
+    primaryCase && primaryOpportunity
+      ? getGuidedCaseMode(primaryCase, primaryOpportunity)
+      : undefined;
   const hasClearCase = Boolean(
     primaryCase &&
       (primaryCase.category !== "unknown" ||
@@ -366,13 +439,9 @@ export function HomeView({
         : "Save this for your records only. It will not count as money saved.";
   const hideSaveCase =
     primaryOpportunity?.opportunityType === "no_action_needed" ||
-    primaryOpportunity?.opportunityType === "delivery_update";
-  const evidenceAvailable = Boolean(
-    primaryCase &&
-      (primaryCase.broadbandPriceRiseAssessment ||
-        primaryCase.delayRepayAssessment ||
-        primaryCase.evidence.length > 0),
-  );
+    primaryOpportunity?.opportunityType === "delivery_update" ||
+    primaryOpportunity?.opportunityType === "receipt_guardian" ||
+    isAppointmentTask(primaryCase);
   const otherCases = primaryCase
     ? (result?.cases.filter(
         (adminCase) =>
@@ -394,6 +463,68 @@ export function HomeView({
   const broadbandContractDate =
     broadbandAssessment?.contractDate ?? broadbandAssessment?.contractStartOrRenewalDate;
   const contractTimingLabel = primaryCase ? getContractTimingLabel(primaryCase) : undefined;
+  const emailSafetyAssessment = result
+    ? assessEmailSafety(`${result.item.title}\n${result.item.rawText}`)
+    : undefined;
+  const showEmailSafetyButton =
+    Boolean(inboxScanSettings.showEmailSafetyCheckButton && emailSafetyAssessment?.isEmailLike);
+  const primaryActionLabel =
+    primaryOpportunity && guidedMode && primaryCase
+      ? isAppointmentTask(primaryCase)
+        ? "Save this task"
+        : getHomePrimaryActionLabel(primaryOpportunity.opportunityType, guidedMode)
+      : undefined;
+  const simplePrimaryAction: SimpleResultAction | undefined =
+    primaryOpportunity && primaryCase
+      ? {
+          label: primaryActionLabel ?? "Save this check",
+          onClick:
+            primaryOpportunity.opportunityType === "suspicious_email_risk" &&
+            emailSafetyAssessment?.isEmailLike
+              ? () => setShowEmailSafety(true)
+              : hideSaveCase || primaryOpportunity.opportunityType === "receipt_guardian"
+                ? () => onSaveRecord(primaryCase.id)
+                : () => onSaveCase(primaryCase.id),
+          emphasis: "primary",
+        }
+      : undefined;
+  const simpleSecondaryActions: SimpleResultAction[] =
+    primaryCase && primaryOpportunity
+      ? [
+          ...(showEmailSafetyButton &&
+          primaryOpportunity.opportunityType !== "suspicious_email_risk"
+            ? [
+                {
+                  label: "Check email safety",
+                  onClick: () => setShowEmailSafety(true),
+                  emphasis: "secondary" as const,
+                },
+              ]
+            : []),
+          ...(primaryOpportunity.opportunityType === "suspicious_email_risk"
+            ? [
+                {
+                  label: "Save safety record",
+                  onClick: () => onSaveRecord(primaryCase.id),
+                  emphasis: "quiet" as const,
+                },
+              ]
+            : hideSaveCase || primaryOpportunity.opportunityType === "receipt_guardian"
+              ? []
+              : [
+                  {
+                    label: "Save as record",
+                    onClick: () => onSaveRecord(primaryCase.id),
+                    emphasis: "quiet" as const,
+                  },
+                ]),
+          {
+            label: "Ignore",
+            onClick: onClearResult,
+            emphasis: "quiet" as const,
+          },
+        ]
+      : [];
 
   useEffect(
     () => () => {
@@ -422,8 +553,8 @@ export function HomeView({
     setAiError("");
     setAiFallbackHint("");
     setAiExtraction(undefined);
-    setShowEvidence(false);
     setShowDetailed(false);
+    setShowEmailSafety(false);
     setInputResetKey((current) => current + 1);
     onClearResult();
   };
@@ -437,6 +568,7 @@ export function HomeView({
     setAiError("");
     setAiFallbackHint("");
     setAiExtraction(undefined);
+    setShowEmailSafety(false);
     onClearResult();
   };
 
@@ -465,10 +597,14 @@ export function HomeView({
       setAiStatus("success");
       setAiFallbackHint("");
       setInputMessage("Local AI extracted facts. AdminAvenger is checking them with its own rules.");
-      setShowEvidence(false);
       setShowDetailed(false);
+      setShowEmailSafety(false);
 
-      await onCheck("Local AI extracted admin facts", "email", reconstructedText);
+      const checked = await onCheck("Local AI extracted admin facts", "email", reconstructedText);
+
+      if (!checked) {
+        setAiExtraction(undefined);
+      }
     } catch (error) {
       const message =
         error instanceof OllamaExtractionError || error instanceof Error
@@ -483,14 +619,19 @@ export function HomeView({
       setAiFallbackHint(
         couldNotReach ? `Check Ollama is running at ${aiSettings.ollamaUrl}.` : "",
       );
-      setShowEvidence(false);
       setShowDetailed(false);
+      setShowEmailSafety(false);
 
       await onCheck("Pasted admin text", "email", rawText.trim());
     }
   };
 
   const handleCheck = async () => {
+    setAiExtraction(undefined);
+    setShowDetailed(false);
+    setShowEmailSafety(false);
+    onClearResult();
+
     if (selectedInput === "image" && rawText.trim().length === 0) {
       setInputMessage(
         "Image/file reading is not active in this mode. Paste the text from the document or enable a supported AI extraction mode.",
@@ -519,9 +660,11 @@ export function HomeView({
     setInputMessage("");
     setAiError("");
     setAiFallbackHint("");
-    setShowEvidence(false);
-    setShowDetailed(false);
-    await onCheck("Pasted admin text", "email", rawText.trim());
+    const checked = await onCheck("Pasted admin text", "email", rawText.trim());
+
+    if (!checked) {
+      setAiExtraction(undefined);
+    }
   };
 
   const handleImageUpload = (file?: File) => {
@@ -574,17 +717,17 @@ export function HomeView({
   };
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="mx-auto max-w-4xl space-y-6">
       <header className="space-y-3 pt-1 sm:pt-4">
         <p className="text-sm font-bold uppercase tracking-widest text-emerald-300">
           AdminAvenger
         </p>
         <h2 className="text-3xl font-bold tracking-tight text-white sm:text-5xl">
-          What do you need help with?
+          Paste the email, bill, letter, or message that&apos;s bothering you.
         </h2>
         <p className="max-w-3xl text-lg leading-8 text-slate-300">
-          Paste a message, bill, email, or letter. AdminAvenger will prepare the next step. You
-          decide what happens.
+          AdminAvenger explains what it means, shows what proof is useful, and prepares the next
+          step. You decide what happens.
         </p>
       </header>
 
@@ -615,33 +758,80 @@ export function HomeView({
           ))}
         </div>
 
-        <p className="mt-4 rounded-lg border border-emerald-300/20 bg-emerald-300/10 px-4 py-3 text-sm leading-6 text-emerald-50/90">
-          Prototype note: pasted text and saved cases stay in this browser&apos;s local storage.
-          Do not paste sensitive details you are not comfortable testing with.
-        </p>
-
-        <div className="mt-4 rounded-lg border border-white/10 bg-slate-950/50 p-4">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-sm font-bold text-white">Try an example</p>
-              <p className="mt-1 text-sm text-slate-500">Loads sample text only. Press Check this when ready.</p>
-            </div>
-          </div>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {sampleInputs.map((sample) => (
-              <button
-                key={sample.label}
-                type="button"
-                onClick={() => loadSample(sample)}
-                className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-bold text-slate-200 transition hover:border-emerald-300/40 hover:text-white"
-              >
-                {sample.label}
-              </button>
-            ))}
-          </div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setShowExamples((current) => !current)}
+            className="rounded-lg border border-white/10 bg-slate-950 px-3 py-2 text-sm font-bold text-slate-200 transition hover:border-emerald-300/40 hover:text-white"
+          >
+            {showExamples ? "Hide examples" : "Try an example"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowDeveloperOptions((current) => !current)}
+            className="rounded-lg border border-white/10 bg-slate-950 px-3 py-2 text-sm font-bold text-slate-400 transition hover:border-white/20 hover:text-white"
+          >
+            Developer options
+          </button>
+          {inboxScanSettings.previewEnabled ? (
+            <button
+              type="button"
+              onClick={() => {
+                setShowInboxTools((current) => !current);
+                onUpdateInboxScanSettings({ startupPromptDismissed: true });
+              }}
+              className="rounded-lg border border-white/10 bg-slate-950 px-3 py-2 text-sm font-bold text-slate-400 transition hover:border-white/20 hover:text-white"
+            >
+              Inbox preview
+            </button>
+          ) : null}
         </div>
 
-        <div className="mt-4 rounded-lg border border-white/10 bg-slate-950/60 p-4">
+        {showExamples ? (
+          <div className="mt-4 rounded-lg border border-white/10 bg-slate-950/50 p-4">
+            <p className="text-sm font-bold text-white">Try an example</p>
+            <p className="mt-1 text-sm text-slate-500">
+              Loads sample text only. Press What does this mean? when ready.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {sampleInputs.map((sample) => (
+                <button
+                  key={sample.label}
+                  type="button"
+                  onClick={() => loadSample(sample)}
+                  className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-bold text-slate-200 transition hover:border-emerald-300/40 hover:text-white"
+                >
+                  {sample.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {showInboxTools ? (
+          <div className="mt-4 space-y-3">
+            {inboxScanSettings.showStartupPrompt &&
+            !inboxScanSettings.startupPromptDismissed ? (
+              <InboxScanPromptCard
+                onPreview={() => {
+                  onUpdateInboxScanSettings({ startupPromptDismissed: true });
+                  setInboxScanOpen(true);
+                }}
+                onSkip={() => onUpdateInboxScanSettings({ startupPromptDismissed: true })}
+              />
+            ) : null}
+            <InboxScanPreview
+              open={inboxScanOpen}
+              onOpenChange={setInboxScanOpen}
+              ignoredItemIds={inboxScanSettings.ignoredItemIds}
+              onIgnore={onIgnoreInboxScanItem}
+              onSaveItem={onSaveScannedItem}
+            />
+          </div>
+        ) : null}
+
+        {showDeveloperOptions ? (
+          <div className="mt-4 rounded-lg border border-white/10 bg-slate-950/60 p-4">
           <div className="grid gap-4 lg:grid-cols-[1fr_1.2fr]">
             <div>
               <label className="block text-sm font-bold text-white" htmlFor="ai-mode">
@@ -743,7 +933,8 @@ export function HomeView({
               back to local rules.
             </p>
           ) : null}
-        </div>
+          </div>
+        ) : null}
 
         <div className="mt-5">
           {selectedInput === "paste" ? (
@@ -811,7 +1002,11 @@ export function HomeView({
             disabled={isChecking || isAiReading}
             className="w-full rounded-lg bg-emerald-400 px-5 py-4 text-lg font-bold text-slate-950 shadow-lg shadow-emerald-950/30 transition hover:bg-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:ring-offset-2 focus:ring-offset-slate-950 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400 disabled:shadow-none"
           >
-            {isAiReading ? "Reading this with local AI..." : isChecking ? "Checking..." : "Check this"}
+            {isAiReading
+              ? "Reading this with local AI..."
+              : isChecking
+                ? "Checking..."
+                : "What does this mean?"}
           </button>
           <button
             type="button"
@@ -823,10 +1018,11 @@ export function HomeView({
         </div>
 
         <p className="mt-3 rounded-lg border border-cyan-300/20 bg-cyan-300/10 px-4 py-3 text-sm leading-6 text-cyan-50/90">
-          Checks are private until you save them. Prototype data is stored in this browser.{" "}
-          {isLocalOllamaMode
-            ? "Local Ollama reads the text on this device to extract facts. AdminAvenger still decides the result with its own rules."
-            : "Local rules only checks this in your browser."}
+          Text you paste is checked in this browser. Nothing is uploaded in this version.
+          <span className="mt-1 block text-cyan-50/80">
+            You can remove account numbers or passwords before pasting. AdminAvenger does not need
+            them to help.
+          </span>
         </p>
 
         {analysisError ? (
@@ -852,66 +1048,26 @@ export function HomeView({
       {aiExtraction ? <AiExtractedFactsPanel extraction={aiExtraction} /> : null}
 
       {primaryOpportunity ? (
-        <div className="space-y-3">
-          <OpportunityCardPanel opportunity={primaryOpportunity} />
-          {primaryCase ? (
-            <section className="rounded-lg border border-white/10 bg-slate-900/85 p-4">
-              <p className="text-sm font-bold uppercase tracking-wider text-slate-300">
-                Preview result
-              </p>
-              <p className="mt-1 text-sm leading-6 text-slate-400">
-                Nothing has been saved yet. Save it only if you want AdminAvenger to track it.
-              </p>
-              <div className={`mt-4 grid gap-3 ${hideSaveCase ? "sm:grid-cols-2" : "sm:grid-cols-3"}`}>
-                {hideSaveCase ? null : (
-                  <button
-                    type="button"
-                    onClick={() => onSaveCase(primaryCase.id)}
-                    className="rounded-lg bg-emerald-400 px-4 py-3 text-sm font-bold text-slate-950 shadow-lg shadow-emerald-950/30 transition hover:bg-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:ring-offset-2 focus:ring-offset-slate-950"
-                  >
-                    Save case
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => onSaveRecord(primaryCase.id)}
-                  className="rounded-lg border border-cyan-400/40 bg-cyan-400/10 px-4 py-3 text-sm font-bold text-cyan-100 transition hover:border-cyan-300 hover:bg-cyan-400/15 focus:outline-none focus:ring-2 focus:ring-cyan-300/40"
-                >
-                  Save as record
-                </button>
-                <button
-                  type="button"
-                  onClick={onClearResult}
-                  className="rounded-lg border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-slate-200 transition hover:border-white/20 hover:text-white focus:outline-none focus:ring-2 focus:ring-emerald-300/40"
-                >
-                  Ignore / Clear result
-                </button>
-              </div>
-              <p className="mt-3 text-xs leading-5 text-slate-500">{recordSaveHint}</p>
+        <SimpleResultPanel
+          opportunity={primaryOpportunity}
+          primaryAction={simplePrimaryAction}
+          secondaryActions={simpleSecondaryActions}
+          detailsOpen={showDetailed}
+          onToggleDetails={() => setShowDetailed((current) => !current)}
+          note={`Nothing has been saved yet. ${recordSaveHint}`}
+          details={<OpportunityCardPanel opportunity={primaryOpportunity} />}
+        />
+      ) : null}
 
-              {hasClearCase ? (
-                <div className="mt-4 flex flex-wrap gap-2 border-t border-white/10 pt-4">
-                  <button
-                    type="button"
-                    onClick={() => setShowDetailed((current) => !current)}
-                    className="rounded-lg border border-white/10 bg-slate-950 px-4 py-2.5 text-sm font-bold text-slate-200 transition hover:border-white/20 hover:text-white focus:outline-none focus:ring-2 focus:ring-emerald-300/40"
-                  >
-                    {showDetailed ? "Hide detailed assessment" : "Show detailed assessment"}
-                  </button>
-                  {evidenceAvailable ? (
-                    <button
-                      type="button"
-                      onClick={() => setShowEvidence((current) => !current)}
-                      className="rounded-lg border border-white/10 bg-slate-950 px-4 py-2.5 text-sm font-bold text-slate-200 transition hover:border-white/20 hover:text-white focus:outline-none focus:ring-2 focus:ring-emerald-300/40"
-                    >
-                      {showEvidence ? "Hide evidence" : "Show evidence"}
-                    </button>
-                  ) : null}
-                </div>
-              ) : null}
-            </section>
-          ) : null}
-        </div>
+      {showEmailSafety && emailSafetyAssessment && result ? (
+        <EmailSafetyModal
+          assessment={emailSafetyAssessment}
+          onClose={() => setShowEmailSafety(false)}
+          onSaveCase={() => {
+            onSaveEmailSafetyCase(result.item, emailSafetyAssessment);
+            setShowEmailSafety(false);
+          }}
+        />
       ) : null}
 
       {result && primaryCase && hasClearCase && showDetailed ? (
@@ -1114,39 +1270,6 @@ export function HomeView({
             </div>
           ) : null}
 
-        </section>
-      ) : null}
-
-      {result && primaryCase && hasClearCase && showEvidence ? (
-        <section className="rounded-lg border border-white/10 bg-slate-900/85 p-5 sm:p-6">
-          <p className="text-sm font-bold uppercase tracking-widest text-emerald-300">Evidence</p>
-          <div className="mt-4 grid gap-5">
-            {primaryCase.broadbandPriceRiseAssessment ? (
-              <BroadbandPriceRiseAssessmentPanel
-                assessment={primaryCase.broadbandPriceRiseAssessment}
-              />
-            ) : null}
-            {primaryCase.delayRepayAssessment ? (
-              <DelayRepayAssessmentPanel assessment={primaryCase.delayRepayAssessment} />
-            ) : null}
-            <EvidenceLocker evidence={primaryCase.evidence} />
-            <div className="rounded-lg border border-white/10 bg-slate-950/70 p-4">
-              <h4 className="text-sm font-bold uppercase tracking-wider text-slate-300">
-                Original pasted text
-              </h4>
-              <p className="mt-2 max-h-60 overflow-y-auto whitespace-pre-wrap text-sm leading-6 text-slate-400">
-                {result.item.rawText}
-              </p>
-            </div>
-            <div className="rounded-lg border border-white/10 bg-slate-950/70 p-4">
-              <h4 className="text-sm font-bold uppercase tracking-wider text-slate-300">
-                Draft message
-              </h4>
-              <p className="mt-2 text-sm leading-6 text-slate-400">
-                Save this case to generate and track a draft message.
-              </p>
-            </div>
-          </div>
         </section>
       ) : null}
 

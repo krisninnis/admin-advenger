@@ -8,19 +8,38 @@ type OpportunityCardPanelProps = {
 
 const readable = (value: string) => value.replaceAll("_", " ");
 
+const plainOpportunityLabel: Record<string, string> = {
+  refund_expected: "Money expected",
+  travel_extra_cost_recovery: "Possible recovery",
+  travel_evidence_check: "Evidence check",
+  subscription_recurring_charge: "Recurring charge",
+  energy_price_change: "Price change",
+  money_back: "Money back",
+  bill_or_price_increase: "Price increase",
+  subscription_renewal: "Subscription",
+  receipt_guardian: "Proof found",
+  delivery_issue: "Delivery issue",
+  delivery_update: "Update",
+  suspicious_email_risk: "Email safety",
+  no_action_needed: "No action found",
+};
+
 export function OpportunityCardPanel({ opportunity, onOpenCase }: OpportunityCardPanelProps) {
   if (!opportunity) {
     return null;
   }
 
-  const moneyItems = [
-    opportunity.moneyAtStake,
-    opportunity.potentialSaving,
-    opportunity.potentialRecovery,
-    opportunity.confirmedSaving,
-    opportunity.confirmedRecovery,
-    opportunity.annualisedAmount,
-  ].filter((item): item is MoneyImpact => Boolean(item));
+  const moneyItems =
+    opportunity.moneyImpactRows && opportunity.moneyImpactRows.length > 0
+      ? opportunity.moneyImpactRows
+      : [
+          opportunity.moneyAtStake,
+          opportunity.potentialSaving,
+          opportunity.potentialRecovery,
+          opportunity.confirmedSaving,
+          opportunity.confirmedRecovery,
+          opportunity.annualisedAmount,
+        ].filter((item): item is MoneyImpact => Boolean(item));
 
   return (
     <section className="rounded-lg border border-emerald-300/25 bg-emerald-300/[0.08] p-5 shadow-xl shadow-emerald-950/10">
@@ -35,7 +54,7 @@ export function OpportunityCardPanel({ opportunity, onOpenCase }: OpportunityCar
           </p>
         </div>
         <span className="rounded-full border border-white/10 bg-slate-950/70 px-3 py-1 text-xs font-bold capitalize text-slate-200">
-          {readable(opportunity.opportunityType)}
+          {plainOpportunityLabel[opportunity.opportunityType] ?? readable(opportunity.opportunityType)}
         </span>
       </div>
 
@@ -74,7 +93,7 @@ export function OpportunityCardPanel({ opportunity, onOpenCase }: OpportunityCar
               : opportunity.statusLabel
                 ? opportunity.statusLabel
                 : opportunity.potentialRecovery
-                  ? "Pending recovery"
+                  ? "Waiting to come back"
                   : opportunity.potentialSaving || opportunity.annualisedAmount
                     ? "Potential saving opportunity — not confirmed yet"
                     : "No money impact counted"}

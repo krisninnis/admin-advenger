@@ -45,9 +45,11 @@ export function DraftPanel({
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h3 className="text-sm font-bold uppercase tracking-wider text-emerald-200">
-            Case Draft
+            Message
           </h3>
-          <p className="mt-1 text-sm text-slate-500">Mock wording attached to this case.</p>
+          <p className="mt-1 text-sm text-slate-500">
+            AdminAvenger can prepare the message. You review and approve before anything is sent.
+          </p>
         </div>
         <button
           type="button"
@@ -55,7 +57,7 @@ export function DraftPanel({
           disabled={isGeneratingDraft}
           className="rounded-lg bg-emerald-400 px-4 py-3 text-sm font-bold text-slate-950 shadow-lg shadow-emerald-950/30 transition hover:bg-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:ring-offset-2 focus:ring-offset-slate-950"
         >
-          {isGeneratingDraft ? "Generating..." : "Generate draft"}
+          {isGeneratingDraft ? "Preparing..." : "Prepare message"}
         </button>
       </div>
 
@@ -103,14 +105,13 @@ export function DraftPanel({
             onClick={handleCopy}
             className="rounded-lg border border-white/10 bg-slate-900 px-4 py-2.5 text-sm font-semibold text-slate-200 transition hover:border-emerald-300/60 hover:text-white focus:outline-none focus:ring-2 focus:ring-emerald-300/40"
           >
-            {copyState === "copied" ? "Copied" : "Copy draft"}
+            {copyState === "copied" ? "Copied" : "Copy message"}
           </button>
         </div>
       ) : (
         <div className="mt-5 rounded-lg border border-white/10 bg-slate-950/70 p-4">
           <p className="text-sm leading-6 text-slate-400">
-            No draft generated yet. Use the button above to create a mock message and move this
-            finding to drafted.
+            No message prepared yet. Use the button above to create editable wording for this case.
           </p>
         </div>
       )}

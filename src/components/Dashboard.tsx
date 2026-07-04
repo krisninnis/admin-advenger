@@ -50,7 +50,7 @@ export function Dashboard({ findings, cases }: DashboardProps) {
         <StatCard
           label="Potential case value"
           value={`£${potentialMoney.toFixed(0)}`}
-          helper="Rough mock estimate"
+          helper="Rough local estimate"
         />
         <StatCard label="Waiting cases" value={waitingCount} helper="Already chased" />
         <StatCard label="Resolved cases" value={resolvedCount} helper="Closed wins" />

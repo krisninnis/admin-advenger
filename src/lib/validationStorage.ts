@@ -1,7 +1,7 @@
 import type { FeedbackEntry, ValidationTestRecord } from "../types";
 
-const VALIDATION_STORAGE_KEY = "admin-avenger-validation-v1";
-const FEEDBACK_STORAGE_KEY = "admin-avenger-feedback-v1";
+export const VALIDATION_STORAGE_KEY = "admin-avenger-validation-v1";
+export const FEEDBACK_STORAGE_KEY = "admin-avenger-feedback-v1";
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);

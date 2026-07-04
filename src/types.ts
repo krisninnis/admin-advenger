@@ -92,7 +92,24 @@ export type AdminDraft = {
   createdAt: string;
 };
 
+export type PreparedMessageDraft = {
+  id: string;
+  messageType: string;
+  suggestedSubject: string;
+  recipientHint?: string;
+  fullText: string;
+  evidenceUsed: string[];
+  missingBeforeSending: string[];
+  safetyNote: string;
+  createdAt: string;
+};
+
 export type OpportunityType =
+  | "refund_expected"
+  | "travel_extra_cost_recovery"
+  | "travel_evidence_check"
+  | "subscription_recurring_charge"
+  | "energy_price_change"
   | "money_back"
   | "save_money"
   | "deadline"
@@ -103,6 +120,7 @@ export type OpportunityType =
   | "receipt_guardian"
   | "warranty_or_fault"
   | "bill_or_price_increase"
+  | "suspicious_email_risk"
   | "no_action_needed"
   | "needs_human_check"
   | "unknown";
@@ -119,6 +137,7 @@ export type OpportunityCard = {
   confirmedSaving?: MoneyImpact;
   confirmedRecovery?: MoneyImpact;
   annualisedAmount?: MoneyImpact;
+  moneyImpactRows?: MoneyImpact[];
   deadline?: string;
   deadlineLabel?: string;
   providerOrRetailer?: string;
@@ -135,10 +154,32 @@ export type OpportunityCard = {
   updatedAt: string;
 };
 
+export type EmailSafetyLevel = "lower_risk" | "caution" | "high_risk";
+
+export type EmailSafetyAssessment = {
+  isEmailLike: boolean;
+  overallLevel: EmailSafetyLevel;
+  overallLabel: "Looks lower risk" | "Caution - verify before acting" | "High risk signals found";
+  safePercent: number;
+  cautionPercent: number;
+  threatPercent: number;
+  riskSignals: string[];
+  cautionSignals: string[];
+  safeSignals: string[];
+  senderAddress?: string;
+  replyToAddress?: string;
+  senderDomain?: string;
+  replyToDomain?: string;
+  replyToMismatch: boolean;
+  nextAction: string;
+  disclaimer: string;
+};
+
 export type ImpactEntryType =
   | "potential_saving"
   | "potential_recovery"
   | "pending_recovery"
+  | "under_review"
   | "confirmed_saved"
   | "confirmed_recovered"
   | "cost_increase_avoided"
@@ -149,6 +190,7 @@ export type ImpactEntryType =
 export type ImpactEntryStatus =
   | "potential"
   | "pending"
+  | "reviewing"
   | "confirmed"
   | "rejected"
   | "not_applicable";
@@ -389,6 +431,7 @@ export type AdminCase = {
   outcome?: string;
   delayRepayAssessment?: DelayRepayAssessment;
   broadbandPriceRiseAssessment?: BroadbandPriceRiseAssessment;
+  emailSafetyAssessment?: EmailSafetyAssessment;
   createdAt: string;
   updatedAt: string;
   evidence: EvidenceItem[];

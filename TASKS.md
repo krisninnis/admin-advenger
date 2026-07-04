@@ -42,8 +42,8 @@ Prefer tasks that close loops, reduce stress, show evidence, and keep the user i
 - Aligned roadmap around Money Back Avenger as the public wedge.
 - Reordered demo scenarios around broadband/mobile price-rise validation.
 - Added broadband/mobile price-rise assessment vertical.
-- Added backend AI gateway at `/api/analyze-admin`.
-- Added server-side OpenAI structured extraction.
+- Removed the unauthenticated backend AI gateway from the deploy surface.
+- Kept structured extraction behind local deterministic rules and optional local Ollama testing.
 - Added AI extraction service for the Home input.
 - Added Home AI extraction toggle.
 - Added AI extracted facts panel.
@@ -62,6 +62,7 @@ Prefer tasks that close loops, reduce stress, show evidence, and keep the user i
 - Added Savings and Cases filters for no-action records, chase due, potential saving, pending
   recovery, and confirmed saved.
 - Added outcome nudges for user-confirmed money, deadline, waiting, rejected, and no-saving results.
+- Added plain-English trust, privacy, safety, money-counting, and beta feedback copy for private beta.
 
 ## Next
 
@@ -71,12 +72,12 @@ Prefer tasks that close loops, reduce stress, show evidence, and keep the user i
 - Validate whether Savings / Impact history helps users understand value without overclaiming.
 - Improve proof handling before any account-backed storage.
 - Test Ollama quality on broadband/mobile price-rise letters.
-- Compare local Ollama extraction with OpenAI extraction later.
+- Compare local Ollama extraction with any future hosted extraction only after trust hardening.
 - Add screenshot/photo extraction later.
 - Test AI extraction with real screenshots/photos.
 - Improve the AI extraction adapter from real examples.
-- Consider rate limiting and abuse protection before public release.
-- Add cloud AI gateway refinements after validation.
+- Consider auth, rate limiting, abuse protection, and privacy wording before any hosted extraction.
+- Add hosted AI extraction only after validation proves the need and the safety boundary is testable.
 - Use validation notes to decide whether broadband/mobile becomes the next vertical.
 - Keep Train Delay / Delay Repay as the completed proof vertical and demo.
 - Add archive or hide ignored cases.

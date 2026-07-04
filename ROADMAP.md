@@ -146,21 +146,21 @@ The AI should prepare, explain, and organise. The human keeps judgement, consent
 Recommended order:
 
 1. Keep current mock/local extraction working.
-2. Add a backend AI gateway.
-3. Add real AI extraction for broadband/mobile price-rise letters only.
+2. Harden deterministic checks with golden-case tests before adding any hosted AI.
+3. Consider a backend extraction gateway only after validation, auth, abuse controls, and privacy copy are ready.
 4. Keep deterministic assessment code in the app/backend.
 5. Add AI draft generation only after extraction is reliable.
 6. Add provider flexibility later if needed.
 
-Recommended first provider:
+Recommended first hosted path:
 
-- OpenAI API for structured extraction and drafting through a backend gateway.
+- A narrow structured extraction gateway that only reads and organises facts. It must not assess rights, claim entitlement, draft unsafe action, or act for the user.
 
 Possible later providers:
 
 - Gemini later for screenshots/photos.
 - Claude later as an optional high-quality drafting/reasoning provider.
-- Local AI later as a privacy/offline mode.
+- Local AI remains a developer/privacy experiment.
 
 Do not use autonomous agent frameworks as the core runtime yet.
 

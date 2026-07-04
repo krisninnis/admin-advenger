@@ -8,6 +8,17 @@ import type {
 } from "../types";
 import { assessBroadbandPriceRise, isBroadbandPriceRiseScenario } from "./broadbandPriceRiseAssessment";
 import { assessUkTrainDelayRefund } from "./delayRepayAssessment";
+import {
+  extractEnergyAnnualCosts,
+  extractTotalCostMention,
+  extractTravelRecoveryDetails,
+  formatAnnualImpact,
+  formatCurrency,
+  isEnergyPriceChangeText,
+  isTravelDisruptionRecoveryText,
+  isTravelEvidenceCheckText,
+} from "./moneyParsers";
+import { assessEmailSafety, createEmailSafetyFinding } from "./suspiciousEmail";
 
 type CategoryRule = {
   category: FindingCategory;
@@ -24,9 +35,12 @@ const categoryRules: CategoryRule[] = [
   {
     category: "refund",
     title: "Possible refund follow-up",
-    strongKeywords: ["refund", "compensation", "failed delivery", "cancelled"],
-    weakKeywords: ["delayed", "delay", "returned", "missing order", "not delivered"],
-    summary: "This item suggests you may be owed money, compensation, or a service credit.",
+    strongKeywords: ["refund", "failed delivery"],
+    // "cancelled" alone is intentionally NOT a refund trigger. A cancelled flight or
+    // order only becomes a money-back case when paired with refund/reimbursement/
+    // compensation/claim wording (see isTravelEvidenceCheckText in moneyParsers).
+    weakKeywords: ["delayed", "delay", "returned", "missing order", "not delivered", "compensation"],
+    summary: "This item suggests there may be money, compensation, or a service credit to check.",
     whyItMatters:
       "Refund and compensation windows can close quickly, so it is worth chasing while the details are fresh.",
     suggestedAction:
@@ -145,7 +159,7 @@ const containsAny = (text: string, keywords: string[]) =>
 const findMatches = (text: string, keywords: string[]) =>
   keywords.filter((keyword) => text.includes(keyword));
 
-const currencyAmountPattern = /(?:\u00a3|Â£|GBP\s*|\?\s*)\d+(?:\.\d{1,2})?/i;
+const currencyAmountPattern = /(?:£|Â£|GBP\s*|\?\s*)\d+(?:,\d{3})*(?:\.\d{1,2})?/i;
 
 const approvedRefundSignals = [
   "refund approved",
@@ -159,13 +173,11 @@ const approvedRefundSignals = [
 
 const isApprovedRefund = (text: string) =>
   containsAny(text, approvedRefundSignals) ||
-  (/refund\s+of\s+(?:\u00a3|Â£|GBP\s*|\?\s*)\d+(?:\.\d{1,2})?/i.test(text) &&
+  (/refund\s+of\s+(?:£|Â£|GBP\s*|\?\s*)\d+(?:,\d{3})*(?:\.\d{1,2})?/i.test(text) &&
     /approved|issued|processed|returned|will be returned/i.test(text));
 
 const recurringBillingSignals = [
   "/month",
-  "per month",
-  "monthly",
   "auto-renewing",
   "auto renewing",
   "subscription",
@@ -263,6 +275,17 @@ const receiptSignals = [
 
 const isReceiptRecord = (text: string) => containsAny(text, receiptSignals);
 
+const hasStrongEmailSafetyOverride = (
+  assessment: ReturnType<typeof assessEmailSafety>,
+) =>
+  assessment.isEmailLike &&
+  (assessment.overallLabel === "High risk signals found" ||
+    assessment.overallLevel === "high_risk" ||
+    assessment.threatPercent >= 50 ||
+    (assessment.riskSignals.includes("Asks for bank details") &&
+      assessment.riskSignals.includes("Reply-to mismatch") &&
+      assessment.cautionSignals.includes("Urgent pressure")));
+
 const getUrgency = (
   text: string,
   sourceType: SourceType,
@@ -292,11 +315,11 @@ const getUrgency = (
 };
 
 const getConfidence = (strongMatches: string[], weakMatches: string[]): FindingConfidence => {
-  if (strongMatches.length > 0) {
+  if (strongMatches.length > 1 || (strongMatches.length > 0 && weakMatches.length > 0)) {
     return "high";
   }
 
-  if (weakMatches.length > 0) {
+  if (strongMatches.length > 0 || weakMatches.length > 0) {
     return "medium";
   }
 
@@ -375,6 +398,26 @@ const createDeliveryUpdateFinding = (item: AdminItem): AdminFinding => ({
   createdAt: new Date().toISOString(),
 });
 
+const isAppointmentTask = (text: string) =>
+  /\b(appointment|dentist|doctor|gp|optician|clinic)\b/.test(text) &&
+  /\b(cancelled|canceled|rebook|reschedule|book another|asked me to rebook)\b/.test(text) &&
+  !/\b(deadline|due by|expires|respond before|reply before|before \d{1,2}|by \d{1,2})\b/.test(text);
+
+const createAppointmentTaskFinding = (item: AdminItem): AdminFinding => ({
+  id: `finding-${crypto.randomUUID()}`,
+  itemId: item.id,
+  category: "unknown",
+  title: "Appointment to rebook",
+  summary: "This looks like an appointment or booking that needs rearranging.",
+  whyItMatters:
+    "Rebooking keeps the admin loop closed, but this is not a refund or money-back case.",
+  suggestedAction: "Rebook the appointment and save the confirmation.",
+  urgency: "low",
+  confidence: "medium",
+  status: "new",
+  createdAt: new Date().toISOString(),
+});
+
 const createDeliveryIssueFinding = (item: AdminItem, text: string): AdminFinding => ({
   id: `finding-${crypto.randomUUID()}`,
   itemId: item.id,
@@ -429,6 +472,77 @@ const createSubscriptionFinding = (item: AdminItem): AdminFinding => ({
   createdAt: new Date().toISOString(),
 });
 
+const createTravelRecoveryFinding = (item: AdminItem): AdminFinding => {
+  const travel = extractTravelRecoveryDetails(`${item.title}\n${item.rawText}`);
+
+  return {
+    id: `finding-${crypto.randomUUID()}`,
+    itemId: item.id,
+    category: "unknown",
+    title: "Travel recovery to review",
+    summary:
+      "This looks like a travel disruption where an extra cost may need evidence before asking for repayment.",
+    whyItMatters:
+      "Travel disruption costs can be messy. A clear evidence pack helps the user ask the right company for a decision without claiming certainty.",
+    suggestedAction:
+      "Gather the proof of payment, company replies, booking reference, and any flight-change evidence. Then prepare a concise reimbursement request for the extra cost.",
+    estimatedValue: travel.recoveryAmount
+      ? `${formatCurrency(travel.recoveryAmount)} potential recovery`
+      : "Potential recovery amount needs checking",
+    urgency: "medium",
+    confidence: travel.recoveryAmount !== undefined ? "medium" : "low",
+    status: "new",
+    createdAt: new Date().toISOString(),
+  };
+};
+
+const createTravelEvidenceCheckFinding = (item: AdminItem): AdminFinding => {
+  const totalCost = extractTotalCostMention(`${item.title}\n${item.rawText}`);
+
+  return {
+    id: `finding-${crypto.randomUUID()}`,
+    itemId: item.id,
+    category: "unknown",
+    title: "Travel evidence check",
+    summary:
+      "This looks like a flight cancellation where evidence needs checking before any claim. No clear recoverable amount was found, so nothing is counted as money back.",
+    whyItMatters:
+      "Knowing what evidence the airline requires before making a claim avoids wasted time and rejected requests. A total holiday or trip cost is not the same as a recoverable amount.",
+    suggestedAction: "Ask the airline what evidence they need before making a claim.",
+    estimatedValue: totalCost
+      ? `Amount needs checking - ${formatCurrency(totalCost.amount)} total cost mentioned, not a recoverable amount`
+      : "No clear recoverable amount found",
+    urgency: "medium",
+    confidence: "medium",
+    status: "new",
+    createdAt: new Date().toISOString(),
+  };
+};
+
+const createEnergyPriceChangeFinding = (item: AdminItem): AdminFinding => {
+  const energy = extractEnergyAnnualCosts(`${item.title}\n${item.rawText}`);
+
+  return {
+    id: `finding-${crypto.randomUUID()}`,
+    itemId: item.id,
+    category: "bill_increase",
+    title: "Energy prices are changing",
+    summary:
+      "This looks like an energy price-change notice with old and new annual cost estimates.",
+    whyItMatters:
+      "Energy price changes can affect annual household costs, but this is a checking opportunity rather than a confirmed saving.",
+    suggestedAction:
+      "Review whether a cheaper tariff, fixed deal, supplier switch, or support option is worth checking. Keep this as evidence of the new annual estimate.",
+    estimatedValue: energy.totalAnnualIncrease
+      ? `${formatAnnualImpact(energy.totalAnnualIncrease)} annual increase`
+      : "Potential annual cost change",
+    urgency: "medium",
+    confidence: "high",
+    status: "new",
+    createdAt: new Date().toISOString(),
+  };
+};
+
 const createReceiptFinding = (item: AdminItem): AdminFinding => ({
   id: `finding-${crypto.randomUUID()}`,
   itemId: item.id,
@@ -448,16 +562,37 @@ const createReceiptFinding = (item: AdminItem): AdminFinding => ({
 
 export const analyseAdminItem = (item: AdminItem): AdminFinding[] => {
   const text = `${item.title} ${item.rawText} ${sourceTypeLabels[item.sourceType]}`.toLowerCase();
+  const emailSafetyAssessment = assessEmailSafety(`${item.title}\n${item.rawText}`);
+  const highRiskEmailFinding = hasStrongEmailSafetyOverride(emailSafetyAssessment)
+    ? createEmailSafetyFinding(item, emailSafetyAssessment)
+    : undefined;
   const approvedRefundFinding = isApprovedRefund(text) ? createApprovedRefundFinding(item) : undefined;
+  const travelRecoveryFinding = isTravelDisruptionRecoveryText(`${item.title}\n${item.rawText}`)
+    ? createTravelRecoveryFinding(item)
+    : undefined;
+  const travelEvidenceCheckFinding =
+    !approvedRefundFinding &&
+    !travelRecoveryFinding &&
+    isTravelEvidenceCheckText(`${item.title}\n${item.rawText}`)
+      ? createTravelEvidenceCheckFinding(item)
+      : undefined;
   const subscriptionFinding = isRecurringSubscription(text) ? createSubscriptionFinding(item) : undefined;
+  const energyPriceChangeFinding = isEnergyPriceChangeText(`${item.title}\n${item.rawText}`)
+    ? createEnergyPriceChangeFinding(item)
+    : undefined;
   const noActionFinding = isNoActionRecord(text) ? createUnknownFinding(item) : undefined;
   const receiptFinding =
-    !noActionFinding && !subscriptionFinding && isReceiptRecord(text) ? createReceiptFinding(item) : undefined;
+    !noActionFinding && !travelRecoveryFinding && !subscriptionFinding && isReceiptRecord(text)
+      ? createReceiptFinding(item)
+      : undefined;
   const deliveryIssueFinding = isDeliveryProblem(text)
     ? createDeliveryIssueFinding(item, text)
     : undefined;
   const deliveryUpdateFinding =
     !deliveryIssueFinding && isDeliveryUpdate(text) ? createDeliveryUpdateFinding(item) : undefined;
+  const appointmentTaskFinding = isAppointmentTask(text)
+    ? createAppointmentTaskFinding(item)
+    : undefined;
   const broadbandPriceRiseAssessment = assessBroadbandPriceRise(item);
   const hasProviderWording = broadbandPriceRiseAssessment.rightsConfirmed.length > 0;
   const broadbandPriceRiseFinding: AdminFinding | undefined = isBroadbandPriceRiseScenario(item)
@@ -521,7 +656,15 @@ export const analyseAdminItem = (item: AdminItem): AdminFinding[] => {
 
   const findings = categoryRules
     .filter((rule) => {
-      if (noActionFinding || receiptFinding || subscriptionFinding) {
+      if (
+        noActionFinding ||
+        receiptFinding ||
+        subscriptionFinding ||
+        energyPriceChangeFinding ||
+        travelRecoveryFinding ||
+        travelEvidenceCheckFinding ||
+        appointmentTaskFinding
+      ) {
         return false;
       }
 
@@ -533,11 +676,21 @@ export const analyseAdminItem = (item: AdminItem): AdminFinding[] => {
         return false;
       }
 
+      if (
+        highRiskEmailFinding &&
+        (rule.category === "deadline" || rule.category === "important_reply")
+      ) {
+        return false;
+      }
+
       if (trainDelayFinding && rule.category === "refund") {
         return false;
       }
 
-      if (broadbandPriceRiseFinding && (rule.category === "bill_increase" || rule.category === "subscription")) {
+      if (
+        (broadbandPriceRiseFinding || energyPriceChangeFinding) &&
+        (rule.category === "bill_increase" || rule.category === "subscription" || rule.category === "deadline")
+      ) {
         return false;
       }
 
@@ -546,11 +699,16 @@ export const analyseAdminItem = (item: AdminItem): AdminFinding[] => {
     .map((rule) => createFinding(item, rule, text));
   const priorityFindings = [
     approvedRefundFinding,
+    travelRecoveryFinding,
+    travelEvidenceCheckFinding,
     subscriptionFinding,
+    energyPriceChangeFinding,
+    highRiskEmailFinding,
     noActionFinding,
     receiptFinding,
     deliveryUpdateFinding,
     deliveryIssueFinding,
+    appointmentTaskFinding,
     broadbandPriceRiseFinding,
     trainDelayFinding,
   ].filter((finding): finding is AdminFinding => Boolean(finding));

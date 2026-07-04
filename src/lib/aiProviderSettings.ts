@@ -6,7 +6,7 @@ export type AiProviderSettings = {
   ollamaModel: string;
 };
 
-const aiProviderSettingsKey = "adminAvenger.aiProviderSettings";
+export const AI_PROVIDER_SETTINGS_STORAGE_KEY = "adminAvenger.aiProviderSettings";
 
 export const defaultAiProviderSettings: AiProviderSettings = {
   mode: "local_rules",
@@ -23,7 +23,7 @@ export const loadAiProviderSettings = (): AiProviderSettings => {
   }
 
   try {
-    const stored = window.localStorage.getItem(aiProviderSettingsKey);
+    const stored = window.localStorage.getItem(AI_PROVIDER_SETTINGS_STORAGE_KEY);
 
     if (!stored) {
       return defaultAiProviderSettings;
@@ -52,5 +52,5 @@ export const saveAiProviderSettings = (settings: AiProviderSettings) => {
     return;
   }
 
-  window.localStorage.setItem(aiProviderSettingsKey, JSON.stringify(settings));
+  window.localStorage.setItem(AI_PROVIDER_SETTINGS_STORAGE_KEY, JSON.stringify(settings));
 };

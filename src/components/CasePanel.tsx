@@ -20,6 +20,8 @@ type CasePanelProps = {
   item?: AdminItem;
   finding?: AdminFinding;
   draft?: AdminDraft;
+  hideLegacyDraftPanel?: boolean;
+  variant?: "full" | "advanced";
   drafts: AdminDraft[];
   impactEntries: ImpactEntry[];
   onStatusChange: (caseId: string, status: AdminCaseStatus) => void;
@@ -62,11 +64,25 @@ const categoryLabels: Record<AdminCase["category"], string> = {
   unknown: "Unknown",
 };
 
+const opportunityTypeLabels: Record<string, string> = {
+  refund_expected: "Refund",
+  travel_extra_cost_recovery: "Travel recovery",
+  travel_evidence_check: "Travel evidence check",
+  subscription_recurring_charge: "Subscription",
+  subscription_renewal: "Subscription",
+  suspicious_email_risk: "Email safety",
+};
+
+const caseTypeLabel = (adminCase: AdminCase, opportunityType: string) =>
+  opportunityTypeLabels[opportunityType] ?? categoryLabels[adminCase.category];
+
 export function CasePanel({
   adminCase,
   item,
   finding,
   draft,
+  hideLegacyDraftPanel = false,
+  variant = "full",
   drafts,
   impactEntries,
   onStatusChange,
@@ -95,6 +111,7 @@ export function CasePanel({
 
   const opportunity = deriveOpportunityCard(adminCase, item, finding);
   const guidanceCards = getTrustedGuidanceForOpportunity(opportunity);
+  const showGuidedSections = variant !== "advanced";
 
   return (
     <section className="rounded-lg border border-white/10 bg-white/[0.055] p-5 shadow-xl shadow-slate-950/15 lg:p-6">
@@ -104,8 +121,8 @@ export function CasePanel({
           <h2 className="mt-2 text-2xl font-bold tracking-tight text-white lg:text-3xl">
             {adminCase.title}
           </h2>
-          <p className="mt-2 text-sm font-medium capitalize text-slate-500">
-            {categoryLabels[adminCase.category]}
+          <p className="mt-2 text-sm font-medium text-slate-500">
+            {caseTypeLabel(adminCase, opportunity.opportunityType)}
           </p>
         </div>
         <StatusBadge status={adminCase.status} />
@@ -188,11 +205,13 @@ export function CasePanel({
             onDeleteCase={onDeleteCase}
           />
 
-          <OutcomeConfirmation
-            adminCase={adminCase}
-            impactEntries={impactEntries}
-            onConfirmOutcome={onConfirmOutcome}
-          />
+          {showGuidedSections ? (
+            <OutcomeConfirmation
+              adminCase={adminCase}
+              impactEntries={impactEntries}
+              onConfirmOutcome={onConfirmOutcome}
+            />
+          ) : null}
 
           {adminCase.delayRepayAssessment ? (
             <DelayRepayAssessmentPanel assessment={adminCase.delayRepayAssessment} />
@@ -206,17 +225,21 @@ export function CasePanel({
         </div>
 
         <div className="grid content-start gap-5">
-          <EvidencePackExport
-            adminCase={adminCase}
-            item={item}
-            finding={finding}
-            drafts={drafts}
-            impactEntries={impactEntries}
-            opportunity={opportunity}
-            guidanceCards={guidanceCards}
-          />
+          {showGuidedSections ? (
+            <>
+              <EvidencePackExport
+                adminCase={adminCase}
+                item={item}
+                finding={finding}
+                drafts={drafts}
+                impactEntries={impactEntries}
+                opportunity={opportunity}
+                guidanceCards={guidanceCards}
+              />
 
-          <TrustedGuidancePanel cards={guidanceCards} />
+              <TrustedGuidancePanel cards={guidanceCards} />
+            </>
+          ) : null}
 
           <div className="grid gap-5 xl:grid-cols-2 2xl:grid-cols-1">
             <EvidenceLocker evidence={adminCase.evidence} />
@@ -232,13 +255,15 @@ export function CasePanel({
             </p>
           </div>
 
-          <DraftPanel
-            adminCase={adminCase}
-            draft={draft}
-            onGenerateDraft={onGenerateDraft}
-            isGeneratingDraft={isGeneratingDraft}
-            errorMessage={draftError}
-          />
+          {!hideLegacyDraftPanel ? (
+            <DraftPanel
+              adminCase={adminCase}
+              draft={draft}
+              onGenerateDraft={onGenerateDraft}
+              isGeneratingDraft={isGeneratingDraft}
+              errorMessage={draftError}
+            />
+          ) : null}
         </div>
       </div>
     </section>

@@ -1,5 +1,6 @@
 import type { AdminCase, AdminDraft, FindingCategory } from "../types";
 import type { ServiceError } from "./analysisService";
+import { extractTravelRecoveryDetails, formatCurrency, isTravelDisruptionRecoveryText } from "../lib/moneyParsers";
 
 export type DraftResult =
   | {
@@ -17,7 +18,37 @@ const wait = (milliseconds: number) =>
     window.setTimeout(resolve, milliseconds);
   });
 
+const getEvidenceValue = (adminCase: AdminCase, labelPattern: RegExp) =>
+  adminCase.evidence.find((evidence) => labelPattern.test(evidence.label))?.value;
+
 const createMockDraftForCase = (adminCase: AdminCase): AdminDraft => {
+  const evidenceText = adminCase.evidence.map((evidence) => `${evidence.label}: ${evidence.value}`).join("\n");
+  const travelText = `${adminCase.title}\n${adminCase.summary}\n${adminCase.nextAction}\n${evidenceText}`;
+  const isTravelRecoveryCase =
+    /possible money recovery found/i.test(adminCase.title) ||
+    isTravelDisruptionRecoveryText(travelText);
+
+  if (isTravelRecoveryCase) {
+    const travel = extractTravelRecoveryDetails(travelText);
+    const amount = travel.recoveryAmount !== undefined ? formatCurrency(travel.recoveryAmount) : "the extra hotel night cost";
+    const reference = travel.bookingReference ?? getEvidenceValue(adminCase, /booking reference/i) ?? "not yet confirmed";
+    const recipient =
+      travel.suggestedRecipient ??
+      getEvidenceValue(adminCase, /suggested recipient/i) ??
+      travel.airline ??
+      "the relevant travel team";
+
+    return {
+      id: `draft-${crypto.randomUUID()}`,
+      findingId: adminCase.findingId,
+      subject: `Reimbursement request for additional hotel night - booking reference ${reference}`,
+      body: `Hello,\n\nI am writing about booking reference ${reference}.\n\nFollowing the flight cancellation or schedule change, I incurred an additional hotel night cost. My understanding from the correspondence is that this issue was outside my control, and I am asking you to review reimbursement for the additional hotel night.\n\nAmount requested: ${amount}\n\nEvidence I can provide or have available includes:\n\n- Booking reference: ${reference}\n- loveholidays confirmation that the additional amount was added to the payment schedule\n- Proof of payment, including bank or card statement if required\n- Flight change or cancellation evidence, if needed\n- Any booking confirmation or screenshots available\n\nI understand Air Mauritius asked for bank statement proof if additional costs were incurred. Please confirm the best repayment route for this cost, and let me know if you need any further evidence before you can review it.\n\nPlease treat this as a request for review and confirmation of the evidence needed. I am not asking you to proceed without checking the attached information.\n\nThank you.`,
+      recommendedNextStep: `Review the evidence, add any bank/card statement proof, then send to ${recipient}. AdminAvenger does not send anything automatically.`,
+      chaseAfterDays: 7,
+      createdAt: new Date().toISOString(),
+    };
+  }
+
   if (adminCase.broadbandPriceRiseAssessment) {
     const assessment = adminCase.broadbandPriceRiseAssessment;
     const providerPrompt = assessment.providerName

@@ -71,7 +71,7 @@ export function DashboardView({ findings, cases, onNavigate, onOpenCase }: Dashb
                     onClick={() => onOpenCase(adminCase.id)}
                     className="mt-4 w-full rounded-lg border border-emerald-400/40 bg-emerald-400/10 px-3 py-2.5 text-sm font-bold text-emerald-100 transition hover:border-emerald-300 hover:bg-emerald-400/15 focus:outline-none focus:ring-2 focus:ring-emerald-300/40"
                   >
-                    Open case file
+                    Open
                   </button>
                 </article>
               ))}

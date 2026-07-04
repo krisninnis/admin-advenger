@@ -38,12 +38,15 @@ export function CaseActions({
   onDeleteCase,
 }: CaseActionsProps) {
   const [values, setValues] = useState<CaseUpdateValues>(() => getInitialValues(adminCase));
+  const [saveMessage, setSaveMessage] = useState("");
 
   useEffect(() => {
     setValues(getInitialValues(adminCase));
+    setSaveMessage("");
   }, [adminCase]);
 
   const updateValue = (field: keyof CaseUpdateValues, value: string) => {
+    setSaveMessage("");
     setValues((currentValues) => ({
       ...currentValues,
       [field]: value,
@@ -57,6 +60,7 @@ export function CaseActions({
       chaseDate: values.chaseDate?.trim() || undefined,
       outcome: values.outcome?.trim() || undefined,
     });
+    setSaveMessage("Changes saved.");
   };
 
   const handleMarkResolved = () => {
@@ -169,7 +173,7 @@ export function CaseActions({
             rows={3}
             value={values.outcome ?? ""}
             onChange={(event) => updateValue("outcome", event.target.value)}
-            placeholder="Example: Provider agreed to refund the delivery charge."
+            placeholder="Example: Checked the options and recorded what happened."
             className="mt-2 w-full resize-y rounded-lg border border-white/10 bg-slate-950 px-3 py-2.5 text-sm leading-6 text-white outline-none transition placeholder:text-slate-600 focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20"
           />
         </div>
@@ -190,6 +194,12 @@ export function CaseActions({
             Mark resolved
           </button>
         </div>
+
+        {saveMessage ? (
+          <p className="rounded-lg border border-emerald-300/20 bg-emerald-300/10 px-3 py-2 text-sm font-semibold text-emerald-100">
+            {saveMessage}
+          </p>
+        ) : null}
 
         <button
           type="button"

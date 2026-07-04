@@ -7,19 +7,35 @@ import type {
   OpportunityCard,
   OpportunityType,
 } from "../types";
+import {
+  annualiseMonthlyAmount,
+  extractEnergyAnnualCosts,
+  extractMonthlyAmount,
+  extractRecoverableAmount,
+  extractReferenceNumber,
+  extractRefundWindow,
+  extractTotalCostMention,
+  extractTravelRecoveryDetails,
+  formatCurrency,
+  isEnergyPriceChangeText,
+  isTravelDisruptionRecoveryText,
+  isTravelEvidenceCheckText,
+  parseMoneyAmount,
+} from "./moneyParsers";
+import { assessEmailSafety } from "./suspiciousEmail";
 
 const pound = String.fromCharCode(163);
-const moneyPattern = /(?:GBP\s*|\u00a3\s*|\?\s*)?(\d+(?:\.\d{1,2})?)/i;
-const currencyMoneyPattern = /(?:GBP\s*|\u00a3\s*|Â£\s*|\?\s*)(\d+(?:\.\d{1,2})?)/i;
+const moneyPattern = /(?:GBP\s*|\u00a3\s*|\?\s*)?(\d+(?:,\d{3})*(?:\.\d{1,2})?)/i;
+const currencyMoneyPattern = /(?:GBP\s*|\u00a3\s*|Â£\s*|\?\s*)(\d+(?:,\d{3})*(?:\.\d{1,2})?)/i;
 const refundWindowPattern =
   /(?:within\s+)?\d+\s*(?:to|-)\s*\d+\s+working days|within\s+\d+\s+working days/i;
 const refundReferencePattern = /(?:reference|ref)\s*:?\s*([A-Z]{1,5}\d{3,}[A-Z0-9-]*)/i;
 const recurringSubscriptionPattern =
-  /\/month|per month|monthly|auto-renewing|auto renewing|subscription|until cancelled|until canceled|charged automatically|renews|recurring|learn how to cancel/i;
+  /\/month|auto-renewing|auto renewing|subscription|until cancelled|until canceled|charged automatically|renews|recurring|learn how to cancel/i;
 
 const toAmount = (value?: string) => {
   const match = value?.match(moneyPattern);
-  return match ? Number(match[1]) : undefined;
+  return match ? parseMoneyAmount(match[1]) : undefined;
 };
 
 const findFirstAmount = (text = "") => toAmount(text.match(currencyMoneyPattern)?.[0]);
@@ -42,7 +58,7 @@ export const formatMoneyImpact = (impact?: MoneyImpact) => {
     return "No money impact recorded";
   }
 
-  const amount = impact.amount === undefined ? "Amount not found" : `${pound}${impact.amount.toFixed(impact.amount % 1 === 0 ? 0 : 2)}`;
+  const amount = impact.amount === undefined ? "Amount not found" : formatCurrency(impact.amount);
   const frequency =
     impact.frequency === "monthly"
       ? "/month"
@@ -68,12 +84,36 @@ const getRiskLevel = (adminCase: AdminCase): OpportunityCard["riskLevel"] => {
 const getOpportunityType = (adminCase: AdminCase, item?: AdminItem): OpportunityType => {
   const text = `${item?.title ?? ""} ${item?.rawText ?? ""}`.toLowerCase();
 
+  if (
+    adminCase.emailSafetyAssessment ||
+    /email safety|email needs safety check|risk email|high risk email|high risk signals/i.test(adminCase.title)
+  ) {
+    return "suspicious_email_risk";
+  }
+
   if (adminCase.broadbandPriceRiseAssessment) {
     return "bill_or_price_increase";
   }
 
+  if (
+    adminCase.category === "bill_increase" &&
+    (/energy prices are changing/i.test(adminCase.title) || isEnergyPriceChangeText(text))
+  ) {
+    return "energy_price_change";
+  }
+
+  if (/travel evidence check/i.test(adminCase.title) || isTravelEvidenceCheckText(text)) {
+    return "travel_evidence_check";
+  }
+
+  if (/travel recovery|possible money recovery found/i.test(adminCase.title) || isTravelDisruptionRecoveryText(text)) {
+    return "travel_extra_cost_recovery";
+  }
+
   if (adminCase.category === "subscription" || recurringSubscriptionPattern.test(text)) {
-    return "subscription_renewal";
+    return recurringSubscriptionPattern.test(text)
+      ? "subscription_recurring_charge"
+      : "subscription_renewal";
   }
 
   if (/proof of purchase found/i.test(adminCase.title)) {
@@ -97,7 +137,7 @@ const getOpportunityType = (adminCase: AdminCase, item?: AdminItem): Opportunity
   }
 
   if (adminCase.category === "refund" || /^refund approved$/i.test(adminCase.title)) {
-    return "money_back";
+    return /^refund approved$/i.test(adminCase.title) ? "refund_expected" : "money_back";
   }
 
   if (adminCase.category === "warranty") {
@@ -121,9 +161,10 @@ const getEvidenceValue = (adminCase: AdminCase, labelPattern: RegExp) =>
 const getRefundEvidence = (adminCase: AdminCase, item?: AdminItem) => {
   const text = `${item?.title ?? ""}\n${item?.rawText ?? ""}`;
   const amount = findFirstAmount(text);
-  const formattedAmount = amount === undefined ? undefined : `${pound}${amount.toFixed(amount % 1 === 0 ? 0 : 2)}`;
+  const formattedAmount = amount === undefined ? undefined : formatCurrency(amount);
   const refundWindow =
     getEvidenceValue(adminCase, /refund window|expected refund window/i) ??
+    extractRefundWindow(text) ??
     text.match(refundWindowPattern)?.[0];
   const reference =
     getEvidenceValue(adminCase, /^reference$/i) ??
@@ -147,7 +188,7 @@ const getReceiptEvidence = (item?: AdminItem) => {
     amount,
     retailer,
     evidence: [
-      amount !== undefined ? `Paid: ${pound}${amount.toFixed(amount % 1 === 0 ? 0 : 2)}` : undefined,
+      amount !== undefined ? `Paid: ${formatCurrency(amount)}` : undefined,
       retailer ? `Retailer: ${retailer}` : undefined,
       reference ? `Reference: ${reference}` : undefined,
     ].filter((item): item is string => Boolean(item)),
@@ -156,8 +197,8 @@ const getReceiptEvidence = (item?: AdminItem) => {
 
 const getSubscriptionEvidence = (adminCase: AdminCase, item?: AdminItem) => {
   const text = `${item?.title ?? ""}\n${item?.rawText ?? ""}`;
-  const monthlyAmount = findFirstAmount(text);
-  const annualAmount = monthlyAmount === undefined ? undefined : monthlyAmount * 12;
+  const monthlyAmount = extractMonthlyAmount(text);
+  const annualAmount = annualiseMonthlyAmount(monthlyAmount);
   const autoRenewStatus =
     getEvidenceValue(adminCase, /renewal\/auto-renew status/i) ??
     text.match(/auto-renewing|auto renewing|charged automatically until cancelled|charged automatically until canceled|until cancelled|until canceled|renews|recurring/i)?.[0];
@@ -224,6 +265,51 @@ export const deriveOpportunityCard = (
         "Only mark savings confirmed if you actually reduce the bill or avoid the rise.",
       ],
       riskLevel: getRiskLevel(adminCase),
+      confidenceLabel: adminCase.confidence,
+      sourceCaseType: adminCase.category,
+      createdAt,
+      updatedAt,
+    };
+  }
+
+  if (opportunityType === "suspicious_email_risk") {
+    const suspicious = adminCase.emailSafetyAssessment ?? assessEmailSafety(text);
+
+    return {
+      id: `opportunity-${adminCase.id}`,
+      caseId: adminCase.id,
+      opportunityType,
+      title: "Email needs safety check",
+      plainEnglishSummary:
+        "This message has warning signs. Check carefully before clicking links, replying, opening attachments, or sharing payment/login details.",
+      opportunityNote:
+        "AdminAvenger does not count this as a saving or recovery. It is a risk warning so you can verify before acting.",
+      statusLabel: "Risk warning - verify before acting",
+      evidenceFound: [
+        ...suspicious.riskSignals,
+        ...suspicious.cautionSignals,
+        suspicious.senderAddress ? `Sender: ${suspicious.senderAddress}` : undefined,
+        suspicious.replyToAddress ? `Reply-to: ${suspicious.replyToAddress}` : undefined,
+      ].filter((entry): entry is string => Boolean(entry)),
+      missingInformation: [
+        "Whether you were expecting this message",
+        "Whether the sender address matches the real provider",
+      ],
+      nextBestAction:
+        "Use the email safety check. If unsure, open the provider's official website or app directly instead of using links in this email.",
+      recommendedPathSteps: [
+        "Do not click links or open attachments from the email.",
+        "Check the sender address and reply-to address.",
+        "Open the provider's official website or app directly and check your account there.",
+        "Never share passwords, card details, or one-time codes.",
+        "Report or delete the email only after you have decided.",
+      ],
+      riskLevel:
+        suspicious.overallLevel === "high_risk"
+          ? "high"
+          : suspicious.overallLevel === "caution"
+            ? "medium"
+            : "low",
       confidenceLabel: adminCase.confidence,
       sourceCaseType: adminCase.category,
       createdAt,
@@ -319,10 +405,177 @@ export const deriveOpportunityCard = (
     };
   }
 
+  if (opportunityType === "travel_evidence_check") {
+    const totalCost = extractTotalCostMention(text);
+
+    return {
+      id: `opportunity-${adminCase.id}`,
+      caseId: adminCase.id,
+      opportunityType,
+      title: "Travel evidence check",
+      plainEnglishSummary:
+        "This looks like a flight cancellation where the airline needs to confirm what evidence is required before any claim. No clear recoverable amount was found, so nothing is counted as money back.",
+      moneyAtStake: totalCost
+        ? moneyImpact("Total holiday cost mentioned (not a recoverable amount)", totalCost.amount, "one_off", "unknown")
+        : undefined,
+      opportunityNote:
+        "A total holiday, trip, or order cost is evidence only. It is not treated as money to recover.",
+      statusLabel: "Evidence check - no recovery counted",
+      evidenceFound: [
+        "Flight cancellation mentioned",
+        totalCost ? `Total holiday cost mentioned: ${formatCurrency(totalCost.amount)}` : undefined,
+        "No clear recoverable amount found",
+      ].filter((entry): entry is string => Boolean(entry)),
+      missingInformation: [
+        "What evidence the airline requires",
+        "Whether any recoverable cost exists (extra hotel night, reimbursement, compensation, claim amount)",
+        "Booking reference if available",
+      ],
+      nextBestAction: "Ask the airline what evidence they need before making a claim.",
+      recommendedPathSteps: [
+        "Ask the airline what evidence they need before making a claim.",
+        "Keep the cancellation notice and booking details as evidence.",
+        "Only add an amount once a clear recoverable cost is confirmed.",
+      ],
+      riskLevel: "low",
+      confidenceLabel: adminCase.confidence,
+      sourceCaseType: adminCase.category,
+      createdAt,
+      updatedAt,
+    };
+  }
+
   const amount = findFirstAmount(text);
+  const recoverableAmount = extractRecoverableAmount(text);
   const isRefund = opportunityType === "money_back";
-  const isSubscription = opportunityType === "subscription_renewal";
+  const isSubscription =
+    opportunityType === "subscription_renewal" ||
+    opportunityType === "subscription_recurring_charge";
   const isWarranty = opportunityType === "warranty_or_fault";
+  const isRefundExpected = opportunityType === "refund_expected";
+  const isEnergyPriceChange = opportunityType === "energy_price_change";
+  const isTravelRecovery = opportunityType === "travel_extra_cost_recovery";
+
+  if (isTravelRecovery) {
+    const travel = extractTravelRecoveryDetails(text);
+
+    return {
+      id: `opportunity-${adminCase.id}`,
+      caseId: adminCase.id,
+      opportunityType,
+      title: "Possible money recovery found",
+      plainEnglishSummary:
+        "This looks like a travel disruption where an extra hotel night may have created a recoverable cost. AdminAvenger found the amount, booking reference, company replies, and missing proof needed before asking for repayment.",
+      potentialRecovery: moneyImpact("Potential recovery", travel.recoveryAmount, "one_off", "potential"),
+      moneyImpactRows: [
+        moneyImpact("Potential recovery", travel.recoveryAmount, "one_off", "potential"),
+      ],
+      providerOrRetailer: travel.suggestedRecipient,
+      opportunityNote:
+        "AdminAvenger can prepare the message. You review and approve before anything is sent.",
+      statusLabel: "Potential recovery - not confirmed yet",
+      evidenceFound: [
+        travel.extraCostDescription,
+        travel.recoveryAmount !== undefined
+          ? `Potential recovery amount: ${formatCurrency(travel.recoveryAmount)}`
+          : "Amount needs checking",
+        travel.bookingReference ? `Booking reference: ${travel.bookingReference}` : undefined,
+        travel.airline ? `Airline: ${travel.airline}` : undefined,
+        travel.travelCompany ? `Travel company: ${travel.travelCompany}` : undefined,
+        travel.proofRequested,
+        ...travel.proofAvailable,
+      ].filter((item): item is string => Boolean(item)),
+      missingInformation: travel.missingProof,
+      nextBestAction:
+        "Gather the proof of payment, loveholidays confirmation, booking reference, and any flight-change evidence. Then send Air Mauritius a concise reimbursement request for the extra hotel night. Ask them to confirm if anything else is needed.",
+      recommendedPathSteps: [
+        "Check the evidence before acting.",
+        "Attach proof of payment if available.",
+        "Prepare a concise reimbursement message.",
+        "Review and approve the message before anything is sent.",
+      ],
+      riskLevel: getRiskLevel(adminCase),
+      confidenceLabel: adminCase.confidence,
+      sourceCaseType: adminCase.category,
+      createdAt,
+      updatedAt,
+    };
+  }
+
+  if (isEnergyPriceChange) {
+    const energy = extractEnergyAnnualCosts(text);
+
+    return {
+      id: `opportunity-${adminCase.id}`,
+      caseId: adminCase.id,
+      opportunityType,
+      title: "Energy prices are changing",
+      plainEnglishSummary:
+        "This looks like an energy price-change notice with annual cost estimates. It is a checking opportunity, not a confirmed saving.",
+      annualisedAmount: moneyImpact(
+        "Total annual increase",
+        energy.totalAnnualIncrease,
+        "annual",
+        "potential",
+      ),
+      moneyImpactRows: [
+        moneyImpact("Electricity increase", energy.electricityIncrease, "annual", "potential"),
+        moneyImpact("Gas increase", energy.gasIncrease, "annual", "potential"),
+        moneyImpact("Total annual increase", energy.totalAnnualIncrease, "annual", "potential"),
+      ],
+      deadline: energy.startDate,
+      deadlineLabel: "New prices start",
+      providerOrRetailer: energy.provider,
+      statusLabel: "Potential saving/checking opportunity - not confirmed yet",
+      evidenceFound: [
+        energy.provider ? `Provider: ${energy.provider}` : undefined,
+        energy.startDate ? `New prices start: ${energy.startDate}` : undefined,
+        energy.electricityOldAnnual !== undefined
+          ? `Electricity old annual cost: ${formatCurrency(energy.electricityOldAnnual)}`
+          : undefined,
+        energy.electricityNewAnnual !== undefined
+          ? `Electricity new annual cost: ${formatCurrency(energy.electricityNewAnnual)}`
+          : undefined,
+        energy.electricityIncrease !== undefined
+          ? `Electricity increase: ${formatCurrency(energy.electricityIncrease)}/year`
+          : undefined,
+        energy.gasOldAnnual !== undefined
+          ? `Gas old annual cost: ${formatCurrency(energy.gasOldAnnual)}`
+          : undefined,
+        energy.gasNewAnnual !== undefined
+          ? `Gas new annual cost: ${formatCurrency(energy.gasNewAnnual)}`
+          : undefined,
+        energy.gasIncrease !== undefined
+          ? `Gas increase: ${formatCurrency(energy.gasIncrease)}/year`
+          : undefined,
+        energy.previousAnnualEstimate !== undefined
+          ? `Previous annual estimate: ${formatCurrency(energy.previousAnnualEstimate)}/year`
+          : undefined,
+        energy.newAnnualEstimate !== undefined
+          ? `New annual estimate: ${formatCurrency(energy.newAnnualEstimate)}/year`
+          : undefined,
+        energy.noActionWording ? `"${energy.noActionWording}" wording` : undefined,
+      ].filter((item): item is string => Boolean(item)),
+      missingInformation: [
+        "Current tariff name if not found",
+        "Whether a cheaper fixed tariff/switch/support option is suitable",
+        "User preference: stay, switch, compare, ask support",
+      ],
+      nextBestAction:
+        "Review whether a cheaper tariff, fixed deal, supplier switch, or support option is worth checking. Keep this as evidence of the new annual estimate.",
+      recommendedPathSteps: [
+        "Check old annual estimate.",
+        "Check new annual estimate.",
+        "Check tariff name and unit rates if available.",
+        "Compare whether a fixed deal, supplier switch, or support option is worth considering.",
+      ],
+      riskLevel: getRiskLevel(adminCase),
+      confidenceLabel: adminCase.confidence,
+      sourceCaseType: adminCase.category,
+      createdAt,
+      updatedAt,
+    };
+  }
 
   if (isSubscription) {
     const subscription = getSubscriptionEvidence(adminCase, item);
@@ -331,22 +584,36 @@ export const deriveOpportunityCard = (
       id: `opportunity-${adminCase.id}`,
       caseId: adminCase.id,
       opportunityType,
-      title: "Subscription renewal to review",
+      title: "Auto-renewing subscription found",
       plainEnglishSummary:
         "This looks like an auto-renewing or recurring subscription payment that may keep charging until cancelled.",
       potentialSaving: moneyImpact(
-        "Monthly subscription cost",
+        "Monthly charge",
         subscription.monthlyAmount,
         "monthly",
         "potential",
       ),
       annualisedAmount: moneyImpact(
-        "Estimated annual cost",
+        "Annual impact if unchanged",
         subscription.annualAmount,
         "annual",
         "potential",
       ),
+      moneyImpactRows: [
+        moneyImpact("Monthly charge", subscription.monthlyAmount, "monthly", "potential"),
+        moneyImpact("Annual impact if unchanged", subscription.annualAmount, "annual", "potential"),
+      ],
+      providerOrRetailer: /google play/i.test(text) ? "Google Play / Google Commerce Limited" : undefined,
+      statusLabel: "Potential saving opportunity - not confirmed yet",
       evidenceFound: [
+        text.match(/item:\s*([^\n]+)/i)?.[1] ? `Item: ${text.match(/item:\s*([^\n]+)/i)?.[1]?.trim()}` : undefined,
+        /google play|google commerce limited/i.test(text)
+          ? "Platform/provider: Google Play / Google Commerce Limited"
+          : undefined,
+        extractReferenceNumber(text) ? `Order number: ${extractReferenceNumber(text)}` : undefined,
+        text.match(/order date:\s*([^\n]+)/i)?.[1]
+          ? `Order date: ${text.match(/order date:\s*([^\n]+)/i)?.[1]?.trim()}`
+          : undefined,
         subscription.monthlyAmount !== undefined
           ? `Monthly amount: ${pound}${subscription.monthlyAmount.toFixed(subscription.monthlyAmount % 1 === 0 ? 0 : 2)}`
           : undefined,
@@ -356,9 +623,12 @@ export const deriveOpportunityCard = (
         subscription.autoRenewStatus ? `Renewal/auto-renew status: ${subscription.autoRenewStatus}` : undefined,
         subscription.cancellationClue ? `Cancellation clue: ${subscription.cancellationClue}` : undefined,
       ].filter((item): item is string => Boolean(item)),
-      missingInformation: missingEvidence,
+      missingInformation: [
+        "Whether user still wants the subscription",
+        "Next billing date if not found",
+      ],
       nextBestAction:
-        "Check whether you still use this subscription and review how to cancel before the next charge if not.",
+        "Review whether you still need this subscription. If not, use Manage subscriptions or Learn how to cancel before the next billing date.",
       recommendedPathSteps: [
         "Check whether you still use the subscription.",
         "Check the next charge or renewal date.",
@@ -373,7 +643,7 @@ export const deriveOpportunityCard = (
     };
   }
 
-  if (isRefund && /^refund approved$/i.test(adminCase.title)) {
+  if ((isRefund || isRefundExpected) && /^refund approved$/i.test(adminCase.title)) {
     const refund = getRefundEvidence(adminCase, item);
 
     return {
@@ -384,17 +654,19 @@ export const deriveOpportunityCard = (
       plainEnglishSummary:
         "A refund has been approved and should be returned to the original payment method.",
       potentialRecovery: moneyImpact("Pending recovery", refund.amount, "one_off", "pending"),
+      moneyImpactRows: [
+        moneyImpact("Pending recovery", refund.amount, "one_off", "pending"),
+      ],
       deadline: adminCase.chaseDate,
       deadlineLabel: "Suggested chase date",
       statusLabel: "Pending recovery - not confirmed yet",
       evidenceFound: [
         refund.formattedAmount ? `Refund amount: ${refund.formattedAmount}` : undefined,
-        refund.refundWindow ? `Refund window: ${refund.refundWindow}` : undefined,
+        refund.refundWindow ? `Refund window: ${refund.refundWindow.replace(/^within\s+/i, "")}` : undefined,
         refund.reference ? `Reference: ${refund.reference}` : undefined,
       ].filter((item): item is string => Boolean(item)),
       missingInformation: [
         "Provider/retailer name if not found",
-        "Payment method details if not found",
         "Exact refund arrival date if not found",
       ],
       nextBestAction:
@@ -425,7 +697,9 @@ export const deriveOpportunityCard = (
           ? "Warranty or faulty goods issue"
           : adminCase.title,
     plainEnglishSummary: adminCase.summary,
-    potentialRecovery: isRefund ? moneyImpact("Pending recovery", amount, "one_off", "pending") : undefined,
+    // Only clearly recoverable amounts (refund/reimbursement/compensation/claim wording)
+    // may become pending recovery. Total trip/booking/order costs never do.
+    potentialRecovery: isRefund ? moneyImpact("Pending recovery", recoverableAmount, "one_off", "pending") : undefined,
     potentialSaving: isSubscription ? moneyImpact("Potential saving opportunity", amount, "one_off", "potential") : undefined,
     moneyAtStake: amount !== undefined ? moneyImpact("Money mentioned", amount, "one_off", "potential") : undefined,
     deadline: finding?.deadline ?? adminCase.chaseDate,

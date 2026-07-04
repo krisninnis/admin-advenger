@@ -89,6 +89,7 @@ Return only valid JSON matching this shape:
 For broadband/mobile price rises, extract provider name, current monthly price, new monthly price, effective date, contract start or renewal date, options mentioned, cancellation or switching wording, deadlines, and missing facts.
 
 Rules:
+- for travel disruption or extra cost recovery, extract booking reference, airline, travel company, extra cost amount, proof requested, proof available, missing proof, and suggested recipient. Do not decide entitlement or claim success.
 - for approved refund emails, extract the refund amount, refund window, original payment method wording, and reference number. Do not turn "within 5 to 10 working days" into a hard deadline.
 - dates and deadlines must be copied from the provided text or supported by an exact sourceQuote from the text.
 - "confirm whether cancellation rights apply" means rightsNeedChecking, not rightsConfirmed.

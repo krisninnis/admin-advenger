@@ -21,6 +21,18 @@ export const getTrustedGuidanceForOpportunity = (
     return trustedGuidanceCards.filter((card) => card.caseType === "receipt_guardian");
   }
 
+  if (opportunity.opportunityType === "refund_expected") {
+    return trustedGuidanceCards.filter((card) => card.caseType === "money_back");
+  }
+
+  if (opportunity.opportunityType === "subscription_recurring_charge") {
+    return trustedGuidanceCards.filter((card) => card.caseType === "subscription_renewal");
+  }
+
+  if (opportunity.opportunityType === "travel_extra_cost_recovery") {
+    return trustedGuidanceCards.filter((card) => card.caseType === "travel_extra_cost_recovery");
+  }
+
   if (opportunity.opportunityType === "delivery_update") {
     return [];
   }

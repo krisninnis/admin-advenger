@@ -20,17 +20,14 @@ const navItems: Array<{
   label: string;
   helper: string;
 }> = [
-  { view: "home", label: "Home", helper: "Check something" },
-  { view: "savings", label: "Savings", helper: "Money tracked" },
-  { view: "cases", label: "Cases", helper: "Saved details" },
-  { view: "validation", label: "Validation", helper: "Test with people" },
-  { view: "settings", label: "Settings", helper: "Local data" },
-  { view: "dashboard", label: "Dashboard", helper: "Advanced" },
+  { view: "home", label: "Check something", helper: "Paste and understand it" },
+  { view: "cases", label: "My admin", helper: "Things you saved" },
+  { view: "savings", label: "Money", helper: "What is tracked" },
 ];
 
 export function Sidebar({ currentView, onNavigate, caseCount, findingCount }: SidebarProps) {
   return (
-    <aside className="flex h-full flex-col border-b border-white/10 bg-slate-950/85 px-4 py-4 lg:sticky lg:top-0 lg:h-screen lg:w-72 lg:border-b-0 lg:border-r">
+    <aside className="hidden h-full flex-col border-white/10 bg-slate-950/85 px-4 py-4 md:sticky md:top-0 md:flex md:h-screen md:w-64 md:border-r lg:w-72">
       <div className="rounded-lg border border-emerald-300/20 bg-emerald-300/10 px-4 py-4">
         <p className="text-sm font-bold uppercase tracking-widest text-emerald-300">
           AdminAvenger
@@ -43,7 +40,7 @@ export function Sidebar({ currentView, onNavigate, caseCount, findingCount }: Si
         </p>
       </div>
 
-      <nav aria-label="Primary navigation" className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-1">
+      <nav aria-label="Primary navigation" className="mt-4 grid gap-2">
         {navItems.map((item) => {
           const isActive = item.view === currentView;
 
@@ -52,6 +49,7 @@ export function Sidebar({ currentView, onNavigate, caseCount, findingCount }: Si
               key={item.view}
               type="button"
               onClick={() => onNavigate(item.view)}
+              aria-current={isActive ? "page" : undefined}
               className={`rounded-lg border px-4 py-3 text-left transition focus:outline-none focus:ring-2 focus:ring-emerald-300/40 ${
                 isActive
                   ? "border-emerald-300/60 bg-emerald-300/12 text-white shadow-lg shadow-emerald-950/20"
@@ -65,7 +63,20 @@ export function Sidebar({ currentView, onNavigate, caseCount, findingCount }: Si
         })}
       </nav>
 
-      <div className="mt-4 grid grid-cols-2 gap-2 lg:mt-auto">
+      <div className="mt-auto space-y-3 pt-4">
+        <button
+          type="button"
+          onClick={() => onNavigate("settings")}
+          aria-current={currentView === "settings" ? "page" : undefined}
+          className={`w-full rounded-lg border px-4 py-3 text-left text-sm font-bold transition focus:outline-none focus:ring-2 focus:ring-emerald-300/40 ${
+            currentView === "settings"
+              ? "border-emerald-300/60 bg-emerald-300/12 text-white"
+              : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-white/20 hover:text-white"
+          }`}
+        >
+          Settings
+        </button>
+        <div className="grid grid-cols-2 gap-2">
         <div className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-3">
           <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Cases</p>
           <p className="mt-1 text-2xl font-bold text-white">{caseCount}</p>
@@ -73,6 +84,7 @@ export function Sidebar({ currentView, onNavigate, caseCount, findingCount }: Si
         <div className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-3">
           <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Found</p>
           <p className="mt-1 text-2xl font-bold text-white">{findingCount}</p>
+        </div>
         </div>
       </div>
     </aside>

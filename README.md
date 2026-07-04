@@ -40,30 +40,14 @@ Prototype proof notes and images stay in this browser's local storage.
 npm install
 ```
 
-2. Create `.env.local` from `.env.example`.
-
-3. Add a server-side OpenAI key:
-
-```bash
-OPENAI_API_KEY=your_key_here
-```
-
-Do not prefix the key with `VITE_`. Frontend code must never receive the OpenAI API key.
-
-4. Optionally set a model:
-
-```bash
-OPENAI_MODEL=
-```
-
-Use a current OpenAI model that supports text, image input, and structured JSON output. If this is
-omitted, `/api/analyze-admin` uses its default model constant.
-
-5. Start local development:
+2. Start local development:
 
 ```bash
 npm run dev
 ```
+
+AdminAvenger currently runs as a frontend-only local prototype. There is no OpenAI key or cloud AI
+gateway to configure.
 
 ## Optional Local Ollama Testing
 
@@ -78,7 +62,7 @@ settings.
 2. Pull the suggested local model:
 
 ```bash
-ollama pull llama3.2
+ollama pull qwen2.5:7b
 ```
 
 3. Start Ollama.
@@ -91,7 +75,7 @@ ollama pull llama3.2
 
 ```text
 Ollama URL: http://localhost:11434
-Ollama model: llama3.2
+Ollama model: qwen2.5:7b
 ```
 
 7. Paste text and press `Check this`.
@@ -101,11 +85,8 @@ shows a friendly warning and falls back to local rules.
 
 ## Vercel Setup
 
-1. Open the Vercel project settings.
-2. Go to Environment Variables.
-3. Add `OPENAI_API_KEY`.
-4. Add `OPENAI_MODEL` if desired.
-5. Redeploy:
+No server-side AI environment variables are required for the current frontend-only build. To deploy
+the static prototype:
 
 ```bash
 vercel --prod
@@ -117,9 +98,19 @@ vercel --prod
 npm run dev
 npm run build
 npm run lint
+npm run test
 ```
 
 ## Safety Boundary
 
 AdminAvenger does not submit claims, send emails, cancel services, contact providers, or decide
 legal/financial rights. It prepares evidence and drafts so the user can decide what to do next.
+
+AdminAvenger can read text you paste, explain what it looks like, show what proof is useful, and
+prepare a message or checklist for you to review. It cannot confirm fraud, give legal advice,
+provide financial or debt advice, or guarantee money back. Money is only counted as saved or
+recovered when the user records that outcome.
+
+Everything you paste or save stays in this browser on this device. Nothing is uploaded in this
+frontend-only version. Clearing browser data can delete saved work, so use the local backup export
+before clearing anything important.

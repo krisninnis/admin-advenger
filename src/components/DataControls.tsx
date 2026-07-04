@@ -1,20 +1,34 @@
 type DataControlsProps = {
   onResetDemoData: () => void;
   onClearLocalData: () => void;
+  onDownloadBackup: () => void;
+  statusMessage?: string;
 };
 
-export function DataControls({ onResetDemoData, onClearLocalData }: DataControlsProps) {
+export function DataControls({
+  onResetDemoData,
+  onClearLocalData,
+  onDownloadBackup,
+  statusMessage,
+}: DataControlsProps) {
   return (
     <section className="rounded-lg border border-white/10 bg-white/[0.045] p-5 shadow-xl shadow-slate-950/10">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h2 className="text-xl font-semibold text-white">Data controls</h2>
           <p className="mt-1 text-sm text-slate-400">
-            Local browser storage keeps your demo workspace after refresh.
+            Download a local backup before clearing anything you want to keep.
           </p>
         </div>
 
         <div className="flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={onDownloadBackup}
+            className="rounded-lg border border-cyan-300/40 bg-cyan-300/10 px-4 py-2.5 text-sm font-bold text-cyan-100 transition hover:border-cyan-200 hover:bg-cyan-300/15 focus:outline-none focus:ring-2 focus:ring-cyan-200/40"
+          >
+            Download local backup
+          </button>
           <button
             type="button"
             onClick={onResetDemoData}
@@ -31,6 +45,12 @@ export function DataControls({ onResetDemoData, onClearLocalData }: DataControls
           </button>
         </div>
       </div>
+
+      {statusMessage ? (
+        <p className="mt-4 rounded-lg border border-emerald-300/30 bg-emerald-300/10 px-4 py-3 text-sm font-semibold text-emerald-50">
+          {statusMessage}
+        </p>
+      ) : null}
     </section>
   );
 }

@@ -42,11 +42,11 @@ type CaseQuickFilter =
 
 const quickFilters: Array<{ value: CaseQuickFilter; label: string }> = [
   { value: "all", label: "All" },
-  { value: "pending", label: "Pending" },
+  { value: "pending", label: "Still open" },
   { value: "chase_due", label: "Chase due" },
-  { value: "potential_saving", label: "Potential saving" },
-  { value: "pending_recovery", label: "Pending recovery" },
-  { value: "confirmed_saved", label: "Confirmed saved" },
+  { value: "potential_saving", label: "Possible saving" },
+  { value: "pending_recovery", label: "Waiting for money" },
+  { value: "confirmed_saved", label: "Money confirmed" },
   { value: "no_action", label: "No action needed" },
   { value: "resolved", label: "Resolved" },
 ];
@@ -66,8 +66,71 @@ const categoryOptions: Array<{ value: "all" | FindingCategory; label: string }> 
 
 const formatCategory = (category: FindingCategory) => category.replaceAll("_", " ");
 
+const opportunityTypeLabels: Record<string, string> = {
+  refund_expected: "Refund",
+  travel_extra_cost_recovery: "Travel recovery",
+  travel_evidence_check: "Travel evidence check",
+  subscription_recurring_charge: "Subscription review",
+  subscription_renewal: "Subscription",
+  energy_price_change: "Energy price change",
+  bill_or_price_increase: "Price increase",
+  money_back: "Money back",
+  delivery_issue: "Delivery issue",
+  delivery_update: "Delivery update",
+  receipt_guardian: "Proof saved",
+  suspicious_email_risk: "Email safety",
+  no_action_needed: "No action needed",
+};
+
 const hasImpact = (entries: ImpactEntry[], caseId: string, predicate: (entry: ImpactEntry) => boolean) =>
   entries.some((entry) => entry.caseId === caseId && predicate(entry));
+
+const getCaseTime = (adminCase: AdminCase) =>
+  new Date(adminCase.updatedAt || adminCase.createdAt).getTime();
+
+const getReferenceClues = (adminCase: AdminCase) =>
+  adminCase.evidence
+    .filter((item) => /reference|booking|order|claim|account/i.test(`${item.label} ${item.value}`))
+    .map((item) => `${item.label}: ${item.value}`)
+    .slice(0, 2);
+
+const getSearchText = (
+  adminCase: AdminCase,
+  caseLabel: string,
+  impactEntries: ImpactEntry[],
+) => {
+  const impactText = impactEntries
+    .filter((entry) => entry.caseId === adminCase.id)
+    .map((entry) =>
+      [
+        entry.title,
+        entry.type,
+        entry.evidenceNote,
+        entry.amount,
+        entry.amount !== undefined
+          ? formatMoneyImpact(entry.amount, entry.currency, entry.frequency)
+          : "",
+      ].join(" "),
+    )
+    .join(" ");
+  const evidenceText = adminCase.evidence
+    .map((item) => `${item.label} ${item.value}`)
+    .join(" ");
+
+  return [
+    adminCase.title,
+    adminCase.summary,
+    adminCase.nextAction,
+    adminCase.valueLabel,
+    adminCase.status,
+    adminCase.category,
+    caseLabel,
+    evidenceText,
+    impactText,
+  ]
+    .join(" ")
+    .toLowerCase();
+};
 
 const matchesQuickFilter = (
   adminCase: AdminCase,
@@ -139,28 +202,39 @@ export function CasesView({
   const [statusFilter, setStatusFilter] = useState<"all" | AdminCaseStatus>("all");
   const [categoryFilter, setCategoryFilter] = useState<"all" | FindingCategory>("all");
   const [quickFilter, setQuickFilter] = useState<CaseQuickFilter>("all");
+  const [searchTerm, setSearchTerm] = useState("");
 
   const filteredCases = useMemo(
     () =>
-      cases.filter((adminCase) => {
-        const matchesStatus = statusFilter === "all" || adminCase.status === statusFilter;
-        const matchesCategory = categoryFilter === "all" || adminCase.category === categoryFilter;
-        const matchesQuick = matchesQuickFilter(adminCase, quickFilter, impactEntries);
-        return matchesStatus && matchesCategory && matchesQuick;
-      }),
-    [cases, categoryFilter, impactEntries, quickFilter, statusFilter],
+      cases
+        .slice()
+        .sort((leftCase, rightCase) => getCaseTime(rightCase) - getCaseTime(leftCase))
+        .filter((adminCase) => {
+          const opportunity = deriveOpportunityCard(adminCase);
+          const caseLabel =
+            opportunityTypeLabels[opportunity.opportunityType] ??
+            formatCategory(adminCase.category);
+          const query = searchTerm.trim().toLowerCase();
+          const matchesStatus = statusFilter === "all" || adminCase.status === statusFilter;
+          const matchesCategory = categoryFilter === "all" || adminCase.category === categoryFilter;
+          const matchesQuick = matchesQuickFilter(adminCase, quickFilter, impactEntries);
+          const matchesSearch =
+            !query || getSearchText(adminCase, caseLabel, impactEntries).includes(query);
+
+          return matchesStatus && matchesCategory && matchesQuick && matchesSearch;
+        }),
+    [cases, categoryFilter, impactEntries, quickFilter, searchTerm, statusFilter],
   );
 
   return (
     <div className="space-y-6">
       <header>
-        <p className="text-sm font-bold uppercase tracking-widest text-emerald-300">Cases</p>
+        <p className="text-sm font-bold uppercase tracking-widest text-emerald-300">My admin</p>
         <h2 className="mt-2 text-3xl font-bold tracking-tight text-white">
-          Discovery list and case queue
+          Things you saved
         </h2>
         <p className="mt-2 max-w-3xl text-base leading-7 text-slate-400">
-          Possible actions stay visible as the discovery layer. Cases are the workbench for
-          evidence, drafts, chase dates, and outcomes.
+          Things you saved so you can come back to them, continue, or mark what happened.
         </p>
       </header>
 
@@ -174,9 +248,9 @@ export function CasesView({
         <section className="rounded-lg border border-white/10 bg-white/[0.045] p-6 shadow-xl shadow-slate-950/10">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
-              <h3 className="text-xl font-semibold text-white">Case queue</h3>
+              <h3 className="text-xl font-semibold text-white">Saved things</h3>
               <p className="mt-1 text-sm text-slate-400">
-                Filter cases by progress, money impact, chase date, or category.
+                Filter by progress, money, chase date, or category.
               </p>
             </div>
             <span className="w-fit rounded-full bg-slate-800 px-3 py-1 text-sm text-slate-300">
@@ -200,6 +274,17 @@ export function CasesView({
               </button>
             ))}
           </div>
+
+          <label className="mt-5 block text-sm font-semibold text-slate-300">
+            Search saved things
+            <input
+              type="search"
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+              placeholder="Search by title, amount, reference, company, or type"
+              className="mt-2 w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20"
+            />
+          </label>
 
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
             <label className="text-sm font-semibold text-slate-300">
@@ -238,6 +323,13 @@ export function CasesView({
             <div className="mt-5 grid gap-4">
               {filteredCases.map((adminCase) => {
                 const isSelected = adminCase.id === selectedCaseId;
+                const opportunity = deriveOpportunityCard(adminCase);
+                const caseImpact = impactEntries.filter((entry) => entry.caseId === adminCase.id);
+                const primaryImpact = caseImpact[0];
+                const caseLabel =
+                  opportunityTypeLabels[opportunity.opportunityType] ??
+                  formatCategory(adminCase.category);
+                const referenceClues = getReferenceClues(adminCase);
 
                 return (
                   <article
@@ -251,7 +343,7 @@ export function CasesView({
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
                         <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                          {formatCategory(adminCase.category)}
+                          {caseLabel}
                         </p>
                         <h4 className="mt-1 text-lg font-semibold text-white">{adminCase.title}</h4>
                       </div>
@@ -260,10 +352,6 @@ export function CasesView({
                     <p className="mt-3 text-sm leading-6 text-slate-400">{adminCase.summary}</p>
                     <div className="mt-3 grid gap-2 sm:grid-cols-2">
                       {(() => {
-                        const opportunity = deriveOpportunityCard(adminCase);
-                        const caseImpact = impactEntries.filter((entry) => entry.caseId === adminCase.id);
-                        const primaryImpact = caseImpact[0];
-
                         return (
                           <>
                             <span className="rounded-lg border border-cyan-300/20 bg-cyan-300/10 px-3 py-2 text-xs font-bold capitalize text-cyan-100">
@@ -284,6 +372,14 @@ export function CasesView({
                                 Proof attached
                               </span>
                             ) : null}
+                            {referenceClues.map((reference) => (
+                              <span
+                                key={reference}
+                                className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-bold text-slate-200"
+                              >
+                                {reference}
+                              </span>
+                            ))}
                           </>
                         );
                       })()}
@@ -299,7 +395,7 @@ export function CasesView({
                       onClick={() => onOpenCase(adminCase.id)}
                       className="mt-5 w-full rounded-lg bg-emerald-400 px-4 py-3 text-sm font-bold text-slate-950 shadow-lg shadow-emerald-950/25 transition hover:bg-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:ring-offset-2 focus:ring-offset-slate-950"
                     >
-                      Open case file
+                      Continue
                     </button>
                   </article>
                 );

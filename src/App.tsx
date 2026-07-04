@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "./components/AppShell";
 import type { AdminItemFormValues } from "./components/AddAdminItem";
 import type { CaseUpdateValues } from "./components/CaseActions";
@@ -11,14 +11,24 @@ import { getDefaultChaseDate } from "./lib/chaseEngine";
 import {
   createConfirmedImpactEntry,
   deriveImpactFromCase,
+  formatMoneyImpact,
 } from "./lib/impactLedger";
 import { deriveOpportunityCard } from "./lib/opportunityCards";
+import { createEmailSafetyFinding } from "./lib/suspiciousEmail";
 import {
-  clearSavedAdminAvengerState,
+  clearAllAdminAvengerLocalData,
+  createAdminAvengerBackup,
+  getLastStorageLoadDiagnostic,
   loadSavedAdminAvengerState,
   saveAdminAvengerState,
+  subscribeToStorageSaveErrors,
 } from "./lib/storage";
-import { clearFeedbackEntries, clearValidationRecords } from "./lib/validationStorage";
+import {
+  defaultInboxScanSettings,
+  loadInboxScanSettings,
+  saveInboxScanSettings,
+} from "./lib/inboxScanStorage";
+import type { InboxScanSettings } from "./lib/inboxScanStorage";
 import { analyseAdminItemWithService } from "./services/analysisService";
 import { generateDraftWithService } from "./services/draftService";
 import type { ServiceStatus } from "./services/analysisService";
@@ -41,6 +51,7 @@ import type {
   FindingStatus,
   ImpactEntry,
   SourceType,
+  EmailSafetyAssessment,
 } from "./types";
 import type { OutcomeConfirmationValues } from "./components/OutcomeConfirmation";
 
@@ -109,6 +120,8 @@ const createDemoState = (): StoredAdminAvengerState => {
 
 function App() {
   const [initialState] = useState(() => loadSavedAdminAvengerState(createDemoState()));
+  const [storageLoadDiagnostic] = useState(() => getLastStorageLoadDiagnostic());
+  const skippedInitialInvalidStorageSaveRef = useRef(false);
   const [items, setItems] = useState<AdminItem[]>(initialState.adminItems);
   const [findings, setFindings] = useState<AdminFinding[]>(initialState.findings);
   const [adminCases, setAdminCases] = useState<AdminCase[]>(initialState.adminCases);
@@ -123,6 +136,10 @@ function App() {
   const [adminItemForm, setAdminItemForm] = useState<AdminItemFormValues>(emptyAdminItemForm);
   const [homeResult, setHomeResult] = useState<HomeAnalysisResult>();
   const [currentView, setCurrentView] = useState<AppView>("home");
+  const [storageSaveError, setStorageSaveError] = useState("");
+  const [dataControlMessage, setDataControlMessage] = useState("");
+  const [inboxScanSettings, setInboxScanSettings] =
+    useState<InboxScanSettings>(loadInboxScanSettings);
 
   const selectedCase =
     adminCases.find((adminCase) => adminCase.id === selectedCaseId) ??
@@ -131,6 +148,16 @@ function App() {
   const selectedFinding = findings.find((finding) => finding.id === selectedCase?.findingId);
   const selectedDraft = drafts.find((draft) => draft.findingId === selectedCase?.findingId);
   const selectedDrafts = drafts.filter((draft) => draft.findingId === selectedCase?.findingId);
+
+  const currentStoredState = (): StoredAdminAvengerState => ({
+    adminItems: items,
+    findings,
+    adminCases,
+    drafts,
+    impactEntries,
+    selectedFindingId,
+    selectedCaseId: selectedCase?.id ?? selectedCaseId,
+  });
 
   const sortedFindings = useMemo(
     () =>
@@ -142,6 +169,14 @@ function App() {
   );
 
   useEffect(() => {
+    if (
+      storageLoadDiagnostic.source === "invalid" &&
+      !skippedInitialInvalidStorageSaveRef.current
+    ) {
+      skippedInitialInvalidStorageSaveRef.current = true;
+      return;
+    }
+
     saveAdminAvengerState({
       adminItems: items,
       findings,
@@ -151,7 +186,104 @@ function App() {
       selectedFindingId,
       selectedCaseId: selectedCase?.id ?? selectedCaseId,
     });
-  }, [adminCases, drafts, findings, impactEntries, items, selectedCase?.id, selectedCaseId, selectedFindingId]);
+  }, [
+    adminCases,
+    drafts,
+    findings,
+    impactEntries,
+    items,
+    selectedCase?.id,
+    selectedCaseId,
+    selectedFindingId,
+    storageLoadDiagnostic.source,
+  ]);
+
+  useEffect(() => {
+    if (!import.meta.env.DEV) {
+      return;
+    }
+
+    console.info("[AdminAvenger storage]", {
+      key: storageLoadDiagnostic.key ?? "none",
+      source: storageLoadDiagnostic.source,
+      caseCount: storageLoadDiagnostic.caseCount,
+      itemCount: storageLoadDiagnostic.itemCount,
+      findingCount: storageLoadDiagnostic.findingCount,
+      impactCount: storageLoadDiagnostic.impactCount,
+      skippedKeys: storageLoadDiagnostic.skippedKeys,
+    });
+  }, [storageLoadDiagnostic]);
+
+  useEffect(() => {
+    saveInboxScanSettings(inboxScanSettings);
+  }, [inboxScanSettings]);
+
+  useEffect(() => subscribeToStorageSaveErrors(setStorageSaveError), []);
+
+  const handleUpdateInboxScanSettings = (updates: Partial<InboxScanSettings>) => {
+    setInboxScanSettings((current) => ({ ...current, ...updates }));
+  };
+
+  const handleIgnoreInboxScanItem = (sampleId: string) => {
+    setInboxScanSettings((current) =>
+      current.ignoredItemIds.includes(sampleId)
+        ? current
+        : { ...current, ignoredItemIds: [...current.ignoredItemIds, sampleId] },
+    );
+  };
+
+  const handleSaveScannedItem = (
+    item: AdminItem,
+    scannedFindings: AdminFinding[],
+    scannedCases: AdminCase[],
+  ) => {
+    const newImpactEntries = scannedCases.flatMap((adminCase) => {
+      const finding = scannedFindings.find((current) => current.id === adminCase.findingId);
+      return deriveImpactFromCase(adminCase, item, finding);
+    });
+
+    setItems((currentItems) =>
+      currentItems.some((current) => current.id === item.id) ? currentItems : [item, ...currentItems],
+    );
+    setFindings((currentFindings) => [
+      ...scannedFindings.filter(
+        (finding) => !currentFindings.some((current) => current.id === finding.id),
+      ),
+      ...currentFindings,
+    ]);
+    setAdminCases((currentCases) => [
+      ...scannedCases.filter((adminCase) => !currentCases.some((current) => current.id === adminCase.id)),
+      ...currentCases,
+    ]);
+    setImpactEntries((currentEntries) => [
+      ...newImpactEntries.filter((entry) => !currentEntries.some((current) => current.id === entry.id)),
+      ...currentEntries,
+    ]);
+  };
+
+  const handleSaveEmailSafetyCase = (
+    item: AdminItem,
+    assessment: EmailSafetyAssessment,
+  ) => {
+    const safetyFinding = createEmailSafetyFinding(item, assessment);
+    const safetyCase = createAdminCase(safetyFinding, item);
+    const safetyImpactEntries = deriveImpactFromCase(safetyCase, item, safetyFinding);
+
+    setItems((currentItems) =>
+      currentItems.some((currentItem) => currentItem.id === item.id)
+        ? currentItems
+        : [item, ...currentItems],
+    );
+    setFindings((currentFindings) => [safetyFinding, ...currentFindings]);
+    setAdminCases((currentCases) => [safetyCase, ...currentCases]);
+    setImpactEntries((currentEntries) => [
+      ...safetyImpactEntries,
+      ...currentEntries,
+    ]);
+    setSelectedFindingId(safetyFinding.id);
+    setSelectedCaseId(safetyCase.id);
+    setCurrentView("case_file");
+  };
 
   const handleSelectFinding = (findingId: string) => {
     const relatedCase = adminCases.find((adminCase) => adminCase.findingId === findingId);
@@ -183,6 +315,7 @@ function App() {
     rawText: string,
     openCaseFile: boolean,
   ): Promise<HomeAnalysisResult | undefined> => {
+    setHomeResult(undefined);
     const now = new Date().toISOString();
     const item: AdminItem = {
       id: `item-${crypto.randomUUID()}`,
@@ -200,6 +333,7 @@ function App() {
     if (analysisResult.status === "error") {
       setAnalysisStatus("error");
       setAnalysisError(analysisResult.error.message);
+      setHomeResult(undefined);
       return undefined;
     }
 
@@ -671,16 +805,60 @@ function App() {
       return;
     }
 
-    const entry = createConfirmedImpactEntry(changedCase, values);
-    const outcomeNote = values.note || entry.evidenceNote;
+    const pendingEntryToPreserve =
+      values.outcomeType === "still_waiting" && values.amount === undefined
+        ? impactEntries.find(
+            (entry) =>
+              entry.caseId === caseId &&
+              entry.type === "pending_recovery" &&
+              entry.amount !== undefined,
+          ) ??
+          deriveImpactFromCase(
+            changedCase,
+            items.find((item) => item.id === changedCase.itemId),
+            findings.find((finding) => finding.id === changedCase.findingId),
+          ).find((entry) => entry.type === "pending_recovery" && entry.amount !== undefined)
+        : undefined;
+    const outcomeValues: OutcomeConfirmationValues = pendingEntryToPreserve
+      ? {
+          ...values,
+          amount: pendingEntryToPreserve.amount,
+          currency: pendingEntryToPreserve.currency,
+          frequency: pendingEntryToPreserve.frequency,
+        }
+      : values;
+    const entry = createConfirmedImpactEntry(changedCase, outcomeValues);
+    const outcomeNote = outcomeValues.note || entry.evidenceNote;
     const updatedAt = new Date().toISOString();
+    const shouldShowConfirmedAmount =
+      entry.amount !== undefined &&
+      ["confirmed_saved", "confirmed_recovered", "cost_increase_avoided", "deadline_protected"].includes(
+        entry.type,
+      );
+    const timelineTitle =
+      outcomeValues.outcomeType === "still_waiting"
+        ? "Still waiting recorded"
+        : outcomeValues.outcomeType === "rejected_unsuccessful"
+          ? "Rejected outcome recorded"
+          : outcomeValues.outcomeType === "not_worth_pursuing"
+            ? "Not worth pursuing recorded"
+            : "Outcome recorded";
 
     setImpactEntries((currentEntries) => [
       entry,
       ...currentEntries.filter(
         (currentEntry) =>
           currentEntry.caseId !== caseId ||
-          !["confirmed_saved", "confirmed_recovered", "cost_increase_avoided", "deadline_protected", "no_saving", "rejected"].includes(currentEntry.type),
+          ![
+            "confirmed_saved",
+            "confirmed_recovered",
+            "cost_increase_avoided",
+            "deadline_protected",
+            "no_saving",
+            "rejected",
+            "pending_recovery",
+            "under_review",
+          ].includes(currentEntry.type),
       ),
     ]);
 
@@ -689,15 +867,15 @@ function App() {
         adminCase.id === caseId
           ? {
               ...adminCase,
-              status: values.outcomeType === "still_waiting" ? "waiting" : "resolved",
+              status: outcomeValues.outcomeType === "still_waiting" ? "waiting" : "resolved",
               outcome: outcomeNote,
               updatedAt,
               timeline: [
                 createTimelineEventForCase(
                   adminCase,
-                  "Outcome confirmed",
-                  entry.amount !== undefined
-                    ? `${entry.evidenceNote} Amount: ${entry.amount}.`
+                  timelineTitle,
+                  shouldShowConfirmedAmount
+                    ? `${entry.evidenceNote} Amount: ${formatMoneyImpact(entry.amount, entry.currency, entry.frequency)}.`
                     : entry.evidenceNote,
                 ),
                 ...adminCase.timeline,
@@ -712,7 +890,7 @@ function App() {
         finding.id === changedCase.findingId
           ? {
               ...finding,
-              status: values.outcomeType === "still_waiting" ? "waiting" : "resolved",
+              status: outcomeValues.outcomeType === "still_waiting" ? "waiting" : "resolved",
             }
           : finding,
       ),
@@ -783,8 +961,8 @@ function App() {
                   currentCase,
                   "Draft generated",
                   currentCase.chaseDate
-                    ? "A mock draft was created and attached to this case."
-                    : `A mock draft was created and a suggested chase date was set for ${getDefaultChaseDate()}.`,
+                    ? "A prepared message was created for review."
+                    : `A prepared message was created for review and a suggested chase date was set for ${getDefaultChaseDate()}.`,
                 ),
                 ...currentCase.timeline,
               ],
@@ -813,7 +991,28 @@ function App() {
     setSelectedFindingId(demoState.selectedFindingId);
     setSelectedCaseId(demoState.selectedCaseId);
     setHomeResult(undefined);
+    setInboxScanSettings(defaultInboxScanSettings);
+    setDataControlMessage("Demo data restored in this browser.");
     setCurrentView("home");
+  };
+
+  const handleDownloadLocalBackup = () => {
+    const backup = createAdminAvengerBackup(currentStoredState());
+    const blob = new Blob([JSON.stringify(backup, null, 2)], {
+      type: "application/json;charset=utf-8",
+    });
+    const downloadUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+
+    link.href = downloadUrl;
+    link.download = `admin-avenger-local-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(downloadUrl);
+    setDataControlMessage(
+      "Local backup downloaded. Keep the file somewhere safe if you want a record outside this browser.",
+    );
   };
 
   const handleClearLocalData = () => {
@@ -825,9 +1024,7 @@ function App() {
       return;
     }
 
-    clearSavedAdminAvengerState();
-    clearValidationRecords();
-    clearFeedbackEntries();
+    clearAllAdminAvengerLocalData();
     setItems([]);
     setFindings([]);
     setAdminCases([]);
@@ -835,7 +1032,9 @@ function App() {
     setImpactEntries([]);
     setSelectedFindingId(undefined);
     setSelectedCaseId(undefined);
+    setInboxScanSettings(defaultInboxScanSettings);
     setHomeResult(undefined);
+    setDataControlMessage("Local AdminAvenger data deleted from this browser.");
     setCurrentView("home");
   };
 
@@ -846,6 +1045,21 @@ function App() {
       caseCount={adminCases.length}
       findingCount={findings.length}
     >
+      {storageSaveError ? (
+        <div className="mb-5 rounded-lg border border-rose-400/30 bg-rose-400/10 px-4 py-3 text-sm leading-6 text-rose-100">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p>{storageSaveError}</p>
+            <button
+              type="button"
+              onClick={() => setStorageSaveError("")}
+              className="rounded-lg border border-rose-200/30 px-3 py-2 text-xs font-bold text-rose-50 transition hover:bg-rose-200/10"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       {currentView === "home" ? (
         <HomeView
           result={homeResult}
@@ -855,6 +1069,11 @@ function App() {
           onSaveCase={(caseId) => handleSaveHomeResultCase(caseId, "case")}
           onSaveRecord={(caseId) => handleSaveHomeResultCase(caseId, "record")}
           onClearResult={handleClearHomeResult}
+          inboxScanSettings={inboxScanSettings}
+          onUpdateInboxScanSettings={handleUpdateInboxScanSettings}
+          onIgnoreInboxScanItem={handleIgnoreInboxScanItem}
+          onSaveScannedItem={handleSaveScannedItem}
+          onSaveEmailSafetyCase={handleSaveEmailSafetyCase}
         />
       ) : null}
 
@@ -903,13 +1122,16 @@ function App() {
       {currentView === "case_file" ? (
         <CaseFileView
           adminCase={selectedCase}
+          cases={adminCases}
           item={selectedItem}
           finding={selectedFinding}
           draft={selectedDraft}
           drafts={selectedDrafts}
           impactEntries={impactEntries.filter((entry) => entry.caseId === selectedCase?.id)}
+          allImpactEntries={impactEntries}
           draftStatus={draftStatus}
           draftError={draftError}
+          onSwitchCase={handleOpenCase}
           onStatusChange={handleCaseStatusChange}
           onSaveChanges={handleSaveCaseChanges}
           onSetChaseDate={handleSetChaseDate}
@@ -929,6 +1151,11 @@ function App() {
         <SettingsView
           onResetDemoData={handleResetDemoData}
           onClearLocalData={handleClearLocalData}
+          onDownloadBackup={handleDownloadLocalBackup}
+          dataControlMessage={dataControlMessage}
+          onNavigate={setCurrentView}
+          inboxScanSettings={inboxScanSettings}
+          onUpdateInboxScanSettings={handleUpdateInboxScanSettings}
         />
       ) : null}
     </AppShell>

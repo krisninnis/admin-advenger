@@ -240,32 +240,28 @@ copy, reproduce, or dynamically fetch third-party guidance.
 
 Local persistence is currently for prototype convenience only. Long-term storage must protect sensitive data, support deletion/export, and avoid selling or leaking personal admin data.
 
-## Backend AI Gateway
+## AI Extraction Boundary
 
-AdminAvenger has one backend AI gateway:
+AdminAvenger currently ships as a frontend-only local prototype. The previous unauthenticated cloud
+AI gateway has been removed from the deploy surface, and there are no server-side AI environment
+variables to configure.
+
+The product boundary remains:
 
 ```text
-/api/analyze-admin
+AI extracts facts -> AdminAvenger code assesses -> Human approves
 ```
 
-It uses the server-side OpenAI SDK from a Vercel serverless route. The gateway exists only to
-extract structured facts from user-provided text or selected screenshots/photos.
+Any future extraction service may:
 
-Environment variables:
-
-- `OPENAI_API_KEY`: server-side only. Never prefix this with `VITE_`.
-- `OPENAI_MODEL`: optional model override for a current OpenAI model that supports text, image input, and structured JSON output.
-
-The gateway may:
-
-- Read user-provided text or images.
+- Read user-provided text or selected images/files.
 - Classify document type.
 - Extract structured facts.
 - Quote supporting evidence.
 - List missing information.
 - Return safe JSON.
 
-The gateway must not:
+Any future extraction service must not:
 
 - Decide legal rights.
 - Claim entitlement.
@@ -277,11 +273,9 @@ The gateway must not:
 - Override deterministic AdminAvenger assessment logic.
 - Silently act on behalf of the user.
 
-The frontend calls `/api/analyze-admin` through `src/services/aiGatewayService.ts`. It never calls
-OpenAI directly and never uses frontend API keys.
-
-AI extraction enriches the input. `src/lib/aiExtractionAdapter.ts` converts extracted facts into a
-plain text block, then the existing AdminAvenger analysis and case creation flow still performs:
+AI extraction must only enrich the input. `src/lib/aiExtractionAdapter.ts` converts extracted facts
+into a plain text block, then the existing AdminAvenger analysis and case creation flow still
+performs:
 
 - Case classification.
 - Confidence wording.
@@ -295,14 +289,14 @@ The user must always approve any action.
 
 ## Local AI Testing Mode
 
-AdminAvenger also has an experimental local Ollama extraction mode for development and power-user
+AdminAvenger has an experimental local Ollama extraction mode for development and power-user
 testing. It is configured from the Home input area and saved in localStorage.
 
 Defaults:
 
 - AI mode: Local rules only
 - Ollama URL: `http://localhost:11434`
-- Ollama model: `llama3.2`
+- Ollama model: `qwen2.5:7b`
 
 Local Ollama mode is not the final public customer AI model. It only works when Ollama is installed
 and running on the user's own device. Future hosted customers should not need to install Ollama,
@@ -334,7 +328,7 @@ The service must not:
 - Contact providers.
 - Override deterministic AdminAvenger assessment logic.
 
-Local Ollama extraction uses the same adapter boundary as the cloud gateway:
+Local Ollama extraction uses the same adapter boundary:
 
 ```text
 AI extracted facts -> src/lib/aiExtractionAdapter.ts -> deterministic AdminAvenger checking
@@ -347,11 +341,11 @@ friendly warning and falls back to local rules.
 
 Keep these constraints until explicitly changed:
 
-- No backend beyond the `/api/analyze-admin` extraction gateway.
+- No backend.
 - No auth.
 - No routing.
-- No real AI outside structured extraction.
-- No external APIs beyond the server-side OpenAI extraction call and optional local Ollama testing.
+- No real AI outside optional local structured extraction.
+- No external APIs beyond optional local Ollama testing.
 - No new libraries unless there is a clear product need.
 
 ## Trust Boundaries
@@ -365,6 +359,14 @@ The app should always:
 - Let users delete and export their data.
 - Avoid legal, financial, or medical decision-making.
 - Avoid false confidence.
+
+Plain-English product guardrails:
+
+- AdminAvenger can read pasted text, organise facts, show useful proof, and prepare messages or checklists for review.
+- AdminAvenger does not send messages, cancel subscriptions, submit claims, contact companies, confirm fraud, give legal/financial/debt advice, or guarantee money back.
+- Money is only counted as saved or recovered when the user records the outcome.
+- Risky email checks flag warning signs only. They do not prove a message is definitely a scam or definitely safe.
+- Photo proof is not fully stored in the prototype; users must keep original files somewhere safe.
 
 ## Future Integration Boundary
 

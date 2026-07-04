@@ -16,19 +16,48 @@ type ImpactFilter = "all" | "potential" | "pending" | "confirmed" | "deadlines" 
 
 const filterOptions: Array<{ value: ImpactFilter; label: string }> = [
   { value: "all", label: "All" },
-  { value: "potential", label: "Potential" },
-  { value: "pending", label: "Pending" },
-  { value: "confirmed", label: "Confirmed" },
+  { value: "potential", label: "Possible" },
+  { value: "pending", label: "Waiting" },
+  { value: "confirmed", label: "Back" },
   { value: "deadlines", label: "Deadlines" },
   { value: "rejected", label: "No action / checked" },
 ];
 
 const statusLabels: Record<ImpactEntryStatus, string> = {
-  potential: "Potential",
-  pending: "Pending",
-  confirmed: "Confirmed",
+  potential: "Possible",
+  pending: "Waiting",
+  reviewing: "Review",
+  confirmed: "Back in pocket",
   rejected: "Rejected",
   not_applicable: "Not applicable",
+};
+
+const subscriptionOpportunityTypes = new Set([
+  "subscription_recurring_charge",
+  "subscription_renewal",
+]);
+
+// Short badge wording for a review-in-progress outcome. Subscriptions read
+// "Still reviewing"; price/energy reviews read "Still checking".
+const reviewBadgeLabel = (opportunityType?: string) =>
+  opportunityType && subscriptionOpportunityTypes.has(opportunityType)
+    ? "Still reviewing"
+    : "Still checking";
+
+const opportunityLabels: Record<string, string> = {
+  refund_expected: "Money expected",
+  travel_extra_cost_recovery: "Possible recovery",
+  travel_evidence_check: "Evidence check",
+  subscription_recurring_charge: "Recurring charge",
+  energy_price_change: "Price change",
+  money_back: "Money back",
+  bill_or_price_increase: "Price increase",
+  subscription_renewal: "Subscription",
+  receipt_guardian: "Proof found",
+  delivery_issue: "Delivery issue",
+  delivery_update: "Update",
+  suspicious_email_risk: "Email safety",
+  no_action_needed: "No action found",
 };
 
 const matchesFilter = (entry: ImpactEntry, filter: ImpactFilter) => {
@@ -57,25 +86,25 @@ export function SavingsView({ cases, impactEntries, onOpenCase }: SavingsViewPro
     <div className="space-y-6">
       <header>
         <p className="text-sm font-bold uppercase tracking-widest text-emerald-300">
-          Savings
+          Money
         </p>
         <h2 className="mt-2 text-3xl font-bold tracking-tight text-white">
-          Money and deadlines tracked by AdminAvenger
+          Money AdminAvenger is helping you track
         </h2>
         <p className="mt-2 max-w-4xl text-base leading-7 text-slate-400">
-          Potential is what AdminAvenger spotted. Confirmed is what you told AdminAvenger you
-          actually saved or recovered.
+          Nothing counts as back in your pocket until you confirm it. Possible and waiting amounts
+          are reminders, not confirmed savings.
         </p>
       </header>
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
         {[
-          ["Confirmed saved/recovered", formatMoneyImpact(totals.confirmedSavedRecovered)],
-          ["Pending recovery", formatMoneyImpact(totals.pendingRecovery)],
-          ["Potential savings found", formatMoneyImpact(totals.potentialSaving)],
-          ["Annual potential savings", formatMoneyImpact(totals.potentialAnnualSaving, "GBP", "annual")],
+          ["Back in your pocket", formatMoneyImpact(totals.confirmedSavedRecovered)],
+          ["Waiting to come back", formatMoneyImpact(totals.pendingRecovery)],
+          ["Possible savings", formatMoneyImpact(totals.potentialSaving)],
+          ["Possible yearly savings", formatMoneyImpact(totals.potentialAnnualSaving, "GBP", "annual")],
           ["Deadlines protected", String(totals.deadlinesProtected)],
-          ["Resolved cases", String(totals.resolvedCases)],
+          ["Things checked", String(totals.resolvedCases)],
         ].map(([label, value]) => (
           <div key={label} className="rounded-lg border border-white/10 bg-white/[0.045] p-4">
             <p className="text-xs font-bold uppercase tracking-wider text-slate-500">{label}</p>
@@ -87,9 +116,9 @@ export function SavingsView({ cases, impactEntries, onOpenCase }: SavingsViewPro
       <section className="rounded-lg border border-white/10 bg-white/[0.045] p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <h3 className="text-xl font-semibold text-white">Impact history</h3>
+            <h3 className="text-xl font-semibold text-white">Money history</h3>
             <p className="mt-1 text-sm text-slate-400">
-              Case-level money and deadline records.
+              Money and deadline records from things you saved.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -121,14 +150,16 @@ export function SavingsView({ cases, impactEntries, onOpenCase }: SavingsViewPro
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                        {statusLabels[entry.status]} / {opportunity?.opportunityType.replaceAll("_", " ") ?? entry.type.replaceAll("_", " ")}
+                        {statusLabels[entry.status]} / {opportunity ? (opportunityLabels[opportunity.opportunityType] ?? opportunity.opportunityType.replaceAll("_", " ")) : entry.type.replaceAll("_", " ")}
                       </p>
                       <h4 className="mt-1 text-lg font-semibold text-white">{entry.title}</h4>
                     </div>
                     <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-bold text-slate-200">
                       {entry.amount !== undefined
                         ? formatMoneyImpact(entry.amount, entry.currency, entry.frequency)
-                        : entry.type.replaceAll("_", " ")}
+                        : entry.type === "under_review"
+                          ? reviewBadgeLabel(opportunity?.opportunityType)
+                          : entry.type.replaceAll("_", " ")}
                     </span>
                   </div>
                   <p className="mt-2 text-sm leading-6 text-slate-400">{entry.evidenceNote}</p>
@@ -152,7 +183,7 @@ export function SavingsView({ cases, impactEntries, onOpenCase }: SavingsViewPro
                     onClick={() => onOpenCase(entry.caseId)}
                     className="mt-4 rounded-lg bg-emerald-400 px-4 py-2.5 text-sm font-bold text-slate-950 transition hover:bg-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:ring-offset-2 focus:ring-offset-slate-950"
                   >
-                    Open case
+                    Open
                   </button>
                 </article>
               );

@@ -9,6 +9,24 @@ import type {
 } from "../types";
 import { assessBroadbandPriceRise, isBroadbandPriceRiseScenario } from "./broadbandPriceRiseAssessment";
 import { assessUkTrainDelayRefund } from "./delayRepayAssessment";
+import {
+  extractEnergyAnnualCosts,
+  extractTotalCostMention,
+  extractTravelRecoveryDetails,
+  formatAnnualImpact,
+  formatCurrency,
+  isEnergyPriceChangeText,
+  isTravelDisruptionRecoveryText,
+  parseMoneyAmount,
+} from "./moneyParsers";
+import { assessEmailSafety } from "./suspiciousEmail";
+
+const emailSafetyNextAction =
+  "Use the email safety check. If unsure, open the provider's official website or app directly instead of using links in this email.";
+
+const isSuspiciousEmailFinding = (finding: AdminFinding, item: AdminItem) =>
+  /email safety|email needs safety check|risk email|high risk email|high risk signals/i.test(finding.title) &&
+  assessEmailSafety(`${item.title}\n${item.rawText}`, item.sourceType).isEmailLike;
 
 const statusMap: Record<FindingStatus, AdminCaseStatus> = {
   new: "new",
@@ -32,19 +50,18 @@ const matchFirst = (text: string, pattern: RegExp) => text.match(pattern)?.[0];
 const getEvidenceValue = (text: string, pattern: RegExp, fallback: string) =>
   matchFirst(text, pattern) ?? fallback;
 
-const moneyPattern = /(?:\u00a3|Â£|GBP\s*|\?\s*)\d+(?:\.\d{1,2})?/i;
-const monthlyMoneyPattern = /(?:\u00a3|Â£|GBP\s*|\?\s*)\d+(?:\.\d{1,2})?\s*(?:\/month|per month|monthly)?/i;
+const moneyPattern = /(?:\u00a3|Â£|GBP\s*|\?\s*)\d+(?:,\d{3})*(?:\.\d{1,2})?/i;
+const monthlyMoneyPattern = /(?:\u00a3|Â£|GBP\s*|\?\s*)\d+(?:,\d{3})*(?:\.\d{1,2})?\s*(?:\/month|per month|monthly)?/i;
 const refundWindowPattern =
   /(?:within\s+)?\d+\s*(?:to|-)\s*\d+\s+working days|within\s+\d+\s+working days/i;
 const refundReferencePattern = /(?:reference|ref)\s*:?\s*([A-Z]{1,5}\d{3,}[A-Z0-9-]*)/i;
 
 const toMoneyNumber = (value?: string) => {
-  const match = value?.match(/\d+(?:\.\d{1,2})?/);
-  return match ? Number(match[0]) : undefined;
+  const match = value?.match(/\d+(?:,\d{3})*(?:\.\d{1,2})?/);
+  return match ? parseMoneyAmount(match[0]) : undefined;
 };
 
-const formatPounds = (value: number) =>
-  `${String.fromCharCode(163)}${value.toFixed(value % 1 === 0 ? 0 : 2)}`;
+const formatPounds = (value: number) => formatCurrency(value);
 
 const isApprovedRefundFinding = (finding: AdminFinding, item: AdminItem) =>
   finding.category === "refund" &&
@@ -52,6 +69,14 @@ const isApprovedRefundFinding = (finding: AdminFinding, item: AdminItem) =>
     /refund (?:has been )?approved|refund will be returned|returned to your original payment method|refund processed|refund issued/i.test(
       `${item.title} ${item.rawText}`,
     ));
+
+const isEnergyPriceChangeFinding = (finding: AdminFinding, item: AdminItem) =>
+  finding.category === "bill_increase" &&
+  (/energy prices are changing/i.test(finding.title) || isEnergyPriceChangeText(`${item.title}\n${item.rawText}`));
+
+const isTravelRecoveryFinding = (finding: AdminFinding, item: AdminItem) =>
+  /travel recovery|possible money recovery found/i.test(finding.title) ||
+  isTravelDisruptionRecoveryText(`${item.title}\n${item.rawText}`);
 
 const createEvidence = (
   caseId: string,
@@ -65,6 +90,21 @@ const createEvidence = (
   value,
   source,
 });
+
+const dedupeNormalised = (items: string[]) => {
+  const seen = new Set<string>();
+
+  return items.filter((item) => {
+    const key = item.toLowerCase().trim();
+
+    if (!key || seen.has(key)) {
+      return false;
+    }
+
+    seen.add(key);
+    return true;
+  });
+};
 
 const createTimelineEvent = (
   caseId: string,
@@ -87,6 +127,55 @@ const evidenceForFinding = (
   const text = `${item.title} ${item.rawText}`;
   const broadbandPriceRiseAssessment = assessBroadbandPriceRise(item);
   const delayRepayAssessment = assessUkTrainDelayRefund(item);
+
+  if (isSuspiciousEmailFinding(finding, item)) {
+    const suspicious = assessEmailSafety(`${item.title}\n${item.rawText}`, item.sourceType);
+
+    return [
+      createEvidence(caseId, "Overall result", suspicious.overallLabel, "detected"),
+      createEvidence(caseId, "Normal/lower-risk signals", `${suspicious.safePercent}%`, "detected"),
+      createEvidence(caseId, "Caution signals", `${suspicious.cautionPercent}%`, "detected"),
+      createEvidence(caseId, "Threat signals", `${suspicious.threatPercent}%`, "detected"),
+      ...suspicious.riskSignals.map((signal) =>
+        createEvidence(caseId, "Risk signal", signal, "detected"),
+      ),
+      ...suspicious.cautionSignals.map((signal) =>
+        createEvidence(caseId, "Caution signal", signal, "detected"),
+      ),
+      ...suspicious.safeSignals.map((signal) =>
+        createEvidence(caseId, "Safe/normal signal", signal, "detected"),
+      ),
+      ...(suspicious.senderAddress
+        ? [createEvidence(caseId, "Sender address", suspicious.senderAddress)]
+        : []),
+      ...(suspicious.replyToAddress
+        ? [createEvidence(caseId, "Reply-to address", suspicious.replyToAddress)]
+        : []),
+      ...(suspicious.replyToMismatch
+        ? [
+            createEvidence(
+              caseId,
+              "Reply-to mismatch",
+              "Reply-to domain does not match the sender domain",
+              "detected",
+            ),
+          ]
+        : []),
+      createEvidence(
+        caseId,
+        "Safety disclaimer",
+        "Risk warning — user should verify before acting. Not confirmed as fraud.",
+        "manual",
+      ),
+      createEvidence(
+        caseId,
+        "Next action",
+        emailSafetyNextAction,
+        "manual",
+      ),
+      createEvidence(caseId, "Source", item.title, "user_text"),
+    ];
+  }
 
   if (finding.category === "bill_increase" && isBroadbandPriceRiseScenario(item)) {
     return [
@@ -201,7 +290,7 @@ const evidenceForFinding = (
   }
 
   const lowerText = text.toLowerCase();
-  const money = getEvidenceValue(text, /(?:£|GBP\s?)\d+(?:\.\d{2})?/i, "Amount not stated");
+  const money = getEvidenceValue(text, /(?:£|GBP\s?)\d+(?:,\d{3})*(?:\.\d{2})?/i, "Amount not stated");
   const dateClue = getEvidenceValue(
     text,
     /\b(?:\d{1,2}\s+[A-Z][a-z]+(?:\s+\d{4})?|\d{4}-\d{2}-\d{2}|due by [^.]+|expires [^.]+)\b/,
@@ -224,8 +313,53 @@ const evidenceForFinding = (
         "detected",
       ),
       createEvidence(caseId, "Missing: Provider/retailer name", "Not found yet", "manual"),
-      createEvidence(caseId, "Missing: Payment method details", "Not found yet", "manual"),
       createEvidence(caseId, "Missing: Exact refund arrival date", "Not found yet", "manual"),
+      createEvidence(caseId, "Source", item.title, "user_text"),
+    ];
+  }
+
+  if (/^travel evidence check$/i.test(finding.title)) {
+    const totalCost = extractTotalCostMention(text);
+
+    return [
+      createEvidence(caseId, "Situation", "Flight cancellation / evidence needed"),
+      ...(totalCost
+        ? [
+            createEvidence(
+              caseId,
+              "Total holiday cost mentioned",
+              `${formatCurrency(totalCost.amount)} (evidence only, not a recoverable amount)`,
+            ),
+          ]
+        : []),
+      createEvidence(caseId, "Recoverable amount", "No clear recoverable amount found", "manual"),
+      createEvidence(
+        caseId,
+        "Missing: What evidence the airline requires",
+        "Ask the airline before making a claim",
+        "manual",
+      ),
+      createEvidence(caseId, "Source", item.title, "user_text"),
+    ];
+  }
+
+  if (isTravelRecoveryFinding(finding, item)) {
+    const travel = extractTravelRecoveryDetails(text);
+
+    return [
+      ...(travel.extraCostDescription ? [createEvidence(caseId, "Extra cost", travel.extraCostDescription)] : []),
+      ...(travel.recoveryAmount !== undefined
+        ? [createEvidence(caseId, "Recovery amount", formatCurrency(travel.recoveryAmount))]
+        : [createEvidence(caseId, "Recovery amount", "Amount needs checking", "manual")]),
+      ...(travel.bookingReference ? [createEvidence(caseId, "Booking reference", travel.bookingReference)] : []),
+      ...(travel.airline ? [createEvidence(caseId, "Airline involved", travel.airline)] : []),
+      ...(travel.travelCompany ? [createEvidence(caseId, "Travel company involved", travel.travelCompany)] : []),
+      ...(travel.proofRequested ? [createEvidence(caseId, "Proof requested", travel.proofRequested)] : []),
+      ...dedupeNormalised(travel.proofAvailable).map((proof) => createEvidence(caseId, "Proof available", proof)),
+      ...(travel.suggestedRecipient ? [createEvidence(caseId, "Suggested recipient", travel.suggestedRecipient)] : []),
+      ...dedupeNormalised(travel.missingProof).map((missing) =>
+        createEvidence(caseId, `Missing proof: ${missing}`, "Needed before sending", "manual"),
+      ),
       createEvidence(caseId, "Source", item.title, "user_text"),
     ];
   }
@@ -268,6 +402,53 @@ const evidenceForFinding = (
         getEvidenceValue(text, /subscription|renews|renewal|monthly|annual|membership|trial/i, "Recurring payment wording found"),
       ),
       createEvidence(caseId, "Cancellation clue", getEvidenceValue(text, /cancel|cancelled|canceled/i, "Check how to cancel")),
+      createEvidence(caseId, "Source", item.title, "user_text"),
+    ];
+  }
+
+  if (isEnergyPriceChangeFinding(finding, item)) {
+    const energy = extractEnergyAnnualCosts(text);
+
+    return [
+      ...(energy.provider ? [createEvidence(caseId, "Provider", energy.provider)] : []),
+      ...(energy.startDate ? [createEvidence(caseId, "New prices start", energy.startDate)] : []),
+      ...(energy.electricityOldAnnual !== undefined
+        ? [createEvidence(caseId, "Electricity old annual cost", formatCurrency(energy.electricityOldAnnual))]
+        : []),
+      ...(energy.electricityNewAnnual !== undefined
+        ? [createEvidence(caseId, "Electricity new annual cost", formatCurrency(energy.electricityNewAnnual))]
+        : []),
+      ...(energy.electricityIncrease !== undefined
+        ? [createEvidence(caseId, "Electricity increase", `${formatCurrency(energy.electricityIncrease)}/year`)]
+        : []),
+      ...(energy.gasOldAnnual !== undefined
+        ? [createEvidence(caseId, "Gas old annual cost", formatCurrency(energy.gasOldAnnual))]
+        : []),
+      ...(energy.gasNewAnnual !== undefined
+        ? [createEvidence(caseId, "Gas new annual cost", formatCurrency(energy.gasNewAnnual))]
+        : []),
+      ...(energy.gasIncrease !== undefined
+        ? [createEvidence(caseId, "Gas increase", `${formatCurrency(energy.gasIncrease)}/year`)]
+        : []),
+      ...(energy.previousAnnualEstimate !== undefined
+        ? [createEvidence(caseId, "Previous annual estimate", `${formatCurrency(energy.previousAnnualEstimate)}/year`)]
+        : []),
+      ...(energy.newAnnualEstimate !== undefined
+        ? [createEvidence(caseId, "New annual estimate", `${formatCurrency(energy.newAnnualEstimate)}/year`)]
+        : []),
+      ...(energy.totalAnnualIncrease !== undefined
+        ? [createEvidence(caseId, "Total annual increase", `${formatCurrency(energy.totalAnnualIncrease)}/year`)]
+        : []),
+      ...(energy.noActionWording
+        ? [createEvidence(caseId, "No-action wording", energy.noActionWording)]
+        : []),
+      createEvidence(caseId, "Missing: Current tariff name", "Not found yet", "manual"),
+      createEvidence(
+        caseId,
+        "Missing: User preference",
+        "Stay, switch, compare, or ask support needs user decision",
+        "manual",
+      ),
       createEvidence(caseId, "Source", item.title, "user_text"),
     ];
   }
@@ -350,9 +531,18 @@ export const createAdminCase = (finding: AdminFinding, item: AdminItem): AdminCa
   const delayRepayAssessment = assessUkTrainDelayRefund(item);
   const isDelayRepayCase = finding.category === "refund" && delayRepayAssessment.isTrainDelayScenario;
   const isApprovedRefundCase = isApprovedRefundFinding(finding, item);
+  const isTravelRecoveryCase = isTravelRecoveryFinding(finding, item);
+  const isEnergyPriceChangeCase = isEnergyPriceChangeFinding(finding, item);
+  const isEmailSafetyCase = isSuspiciousEmailFinding(finding, item);
+  const travelRecovery = extractTravelRecoveryDetails(`${item.title}\n${item.rawText}`);
+  const energyPriceChange = extractEnergyAnnualCosts(`${item.title}\n${item.rawText}`);
+  const emailSafetyAssessment = assessEmailSafety(`${item.title}\n${item.rawText}`, item.sourceType);
   const chaseDate =
     finding.deadline ??
-    addDays(new Date(now), isApprovedRefundCase ? 14 : finding.urgency === "high" ? 3 : 7);
+    addDays(
+      new Date(now),
+      isApprovedRefundCase || isTravelRecoveryCase ? 14 : finding.urgency === "high" ? 3 : 7,
+    );
   const broadbandPriceRiseAssessment = assessBroadbandPriceRise(item);
   const isBroadbandPriceRiseCase =
     finding.category === "bill_increase" && isBroadbandPriceRiseScenario(item);
@@ -384,6 +574,12 @@ export const createAdminCase = (finding: AdminFinding, item: AdminItem): AdminCa
         ? "UK train delay refund case"
         : isApprovedRefundCase
           ? "Refund approved"
+          : isEmailSafetyCase
+            ? "Email needs safety check"
+          : isTravelRecoveryCase
+            ? "Possible money recovery found"
+          : isEnergyPriceChangeCase
+            ? "Energy prices are changing"
           : finding.title,
     category: finding.category,
     summary: isBroadbandPriceRiseCase
@@ -392,11 +588,27 @@ export const createAdminCase = (finding: AdminFinding, item: AdminItem): AdminCa
         ? "AdminAvenger found a possible UK train delay refund case. This is not an eligibility decision: missing evidence and the operator's current Delay Repay policy still need checking."
         : isApprovedRefundCase
           ? "A refund has been approved and should be returned to the original payment method."
+          : isEmailSafetyCase
+            ? "This message has warning signs. Check carefully before clicking links, replying, opening attachments, or sharing payment/login details."
+          : isTravelRecoveryCase
+            ? "This looks like a travel disruption where an extra hotel night may have created a recoverable cost. AdminAvenger found the amount, booking reference, company replies, and missing proof needed before asking for repayment."
+          : isEnergyPriceChangeCase
+            ? "AdminAvenger found an energy price-change notice with old and new annual estimates. This is a checking opportunity, not a confirmed saving."
         : finding.summary,
     valueLabel: isBroadbandPriceRiseCase
       ? broadbandPriceRiseAssessment.annualIncrease
         ? `${broadbandPriceRiseAssessment.annualIncrease}/year if unchanged`
         : finding.estimatedValue
+      : isEnergyPriceChangeCase
+        ? energyPriceChange.totalAnnualIncrease
+          ? `${formatAnnualImpact(energyPriceChange.totalAnnualIncrease)} total annual increase`
+          : finding.estimatedValue
+      : isTravelRecoveryCase
+        ? travelRecovery.recoveryAmount
+          ? `${formatCurrency(travelRecovery.recoveryAmount)} potential recovery`
+          : "Potential recovery amount needs checking"
+      : isEmailSafetyCase
+        ? emailSafetyAssessment.overallLabel
       : finding.estimatedValue,
     urgency: finding.urgency,
     confidence: finding.confidence,
@@ -407,12 +619,19 @@ export const createAdminCase = (finding: AdminFinding, item: AdminItem): AdminCa
         ? delayRepayAssessment.recommendedNextStep
         : isApprovedRefundCase
           ? "Check your original payment method. Chase the provider if the refund has not arrived after 10 working days."
+          : isEmailSafetyCase
+            ? emailSafetyNextAction
+          : isTravelRecoveryCase
+            ? "Gather the proof of payment, loveholidays confirmation, booking reference, and any flight-change evidence. Then send Air Mauritius a concise reimbursement request for the extra hotel night. Ask them to confirm if anything else is needed."
+          : isEnergyPriceChangeCase
+            ? "Review whether a cheaper tariff, fixed deal, supplier switch, or support option is worth checking. Keep this as evidence of the new annual estimate."
         : finding.suggestedAction,
     chaseDate,
     broadbandPriceRiseAssessment: isBroadbandPriceRiseCase
       ? broadbandPriceRiseAssessment
       : undefined,
     delayRepayAssessment: isDelayRepayCase ? delayRepayAssessment : undefined,
+    emailSafetyAssessment: isEmailSafetyCase ? emailSafetyAssessment : undefined,
     createdAt: finding.createdAt,
     updatedAt: now,
     evidence: evidenceForFinding(caseId, finding, item),

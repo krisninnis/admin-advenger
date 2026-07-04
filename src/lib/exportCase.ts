@@ -1,5 +1,5 @@
 import type { TrustedGuidanceCard } from "../data/trustedGuidanceCards";
-import type { AdminCase, AdminDraft, AdminFinding, AdminItem, ImpactEntry, OpportunityCard } from "../types";
+import type { AdminCase, AdminDraft, AdminFinding, AdminItem, ImpactEntry, MoneyImpact, OpportunityCard } from "../types";
 import { formatMoneyImpact as formatOpportunityMoney } from "./opportunityCards";
 import { formatMoneyImpact } from "./impactLedger";
 
@@ -23,6 +23,22 @@ const categoryLabels: Record<AdminCase["category"], string> = {
   warranty: "Warranty",
   important_reply: "Important reply",
   unknown: "Unknown",
+};
+
+const opportunityTypeLabels: Record<string, string> = {
+  refund_expected: "Refund",
+  travel_extra_cost_recovery: "Travel recovery",
+  travel_evidence_check: "Travel evidence check",
+  subscription_recurring_charge: "Subscription review",
+  subscription_renewal: "Subscription",
+  energy_price_change: "Energy price change",
+  bill_or_price_increase: "Price increase",
+  money_back: "Money back",
+  delivery_issue: "Delivery issue",
+  delivery_update: "Delivery update",
+  receipt_guardian: "Proof saved",
+  suspicious_email_risk: "Email safety",
+  no_action_needed: "No action needed",
 };
 
 const readable = (value: string) => value.replaceAll("_", " ");
@@ -57,17 +73,34 @@ const createOpportunitySection = (opportunity?: OpportunityCard) => {
     return "";
   }
 
+  const moneyRows =
+    opportunity.moneyImpactRows && opportunity.moneyImpactRows.length > 0
+      ? opportunity.moneyImpactRows
+      : [
+          opportunity.moneyAtStake,
+          opportunity.potentialSaving,
+          opportunity.potentialRecovery,
+          opportunity.confirmedSaving,
+          opportunity.confirmedRecovery,
+          opportunity.annualisedAmount,
+        ].filter((item): item is MoneyImpact => Boolean(item));
+
   return `## Opportunity Card
 
 - **Type:** ${readable(opportunity.opportunityType)}
 - **Title:** ${opportunity.title}
 - **Summary:** ${opportunity.plainEnglishSummary}
+- **Status:** ${opportunity.statusLabel ?? "Not recorded"}
 - **Money at stake:** ${formatOpportunityMoney(opportunity.moneyAtStake)}
 - **Potential saving:** ${formatOpportunityMoney(opportunity.potentialSaving)}
 - **Potential recovery:** ${formatOpportunityMoney(opportunity.potentialRecovery)}
 - **Annualised amount:** ${formatOpportunityMoney(opportunity.annualisedAmount)}
 - **Deadline:** ${opportunity.deadline ? `${opportunity.deadlineLabel ?? "Deadline"}: ${opportunity.deadline}` : "Not recorded"}
 - **Next best action:** ${opportunity.nextBestAction}
+
+### Money Impact Rows
+
+${asMarkdownList(moneyRows.map((row) => formatOpportunityMoney(row)))}
 
 ### Opportunity Evidence Found
 
@@ -252,6 +285,37 @@ ${asMarkdownList(assessment.unknowns ?? [])}
 `;
 };
 
+const createEmailSafetySection = (adminCase: AdminCase) => {
+  if (!adminCase.emailSafetyAssessment) {
+    return "";
+  }
+
+  const assessment = adminCase.emailSafetyAssessment;
+
+  return `## Email Safety Check
+
+AdminAvenger does not confirm fraud or safety. It flags risk signals so the user can verify before acting.
+
+- **Overall risk label:** ${assessment.overallLabel}
+- **Normal/lower-risk signals:** ${assessment.safePercent}%
+- **Caution signals:** ${assessment.cautionPercent}%
+- **Threat signals:** ${assessment.threatPercent}%
+- **Sender:** ${fallback(assessment.senderAddress)}
+- **Reply-to:** ${fallback(assessment.replyToAddress)}
+- **Next safety action:** ${assessment.nextAction}
+- **Disclaimer:** ${assessment.disclaimer}
+
+### Risk Signals
+
+${asMarkdownList([...assessment.riskSignals, ...assessment.cautionSignals])}
+
+### Safe/Normal Signals
+
+${asMarkdownList(assessment.safeSignals)}
+
+`;
+};
+
 export const createSafeMarkdownFilename = (title: string) => {
   const safeTitle = title
     .toLowerCase()
@@ -272,6 +336,9 @@ export const exportCaseToMarkdown = ({
   guidanceCards = [],
 }: ExportCaseOptions) => {
   const generatedAt = new Date().toISOString();
+  const caseCategoryLabel = opportunity
+    ? opportunityTypeLabels[opportunity.opportunityType] ?? categoryLabels[adminCase.category]
+    : categoryLabels[adminCase.category];
   const evidenceLines = adminCase.evidence.map(
     (evidence) => `- **${evidence.label}** (${readable(evidence.source)}): ${evidence.value}`,
   );
@@ -301,7 +368,7 @@ This evidence pack is for personal organisation only and is not legal, financial
 
 ## Case Summary
 
-- **Category:** ${categoryLabels[adminCase.category]}
+- **Category:** ${caseCategoryLabel}
 - **Status:** ${readable(adminCase.status)}
 - **Urgency:** ${adminCase.urgency}
 - **Confidence:** ${adminCase.confidence}
@@ -320,6 +387,7 @@ ${createImpactSection(impactEntries)}
 ${createGuidanceSection(guidanceCards)}
 ${createDelayRepaySection(adminCase)}
 ${createBroadbandPriceRiseSection(adminCase)}
+${createEmailSafetySection(adminCase)}
 
 ## Evidence Locker
 

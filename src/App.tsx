@@ -94,12 +94,52 @@ const emptyAdminItemForm: AdminItemFormValues = {
   rawText: "",
 };
 
+const FIRST_RUN_DISCLAIMER_STORAGE_KEY =
+  "admin-avenger-first-run-disclaimer-v1";
+
+const readFirstRunDisclaimerDismissed = () => {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  try {
+    return (
+      window.localStorage.getItem(FIRST_RUN_DISCLAIMER_STORAGE_KEY) ===
+      "dismissed"
+    );
+  } catch {
+    return false;
+  }
+};
+
+const saveFirstRunDisclaimerDismissed = () => {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(FIRST_RUN_DISCLAIMER_STORAGE_KEY, "dismissed");
+  } catch {
+    // Keep the app usable if localStorage is unavailable.
+  }
+};
+
 const buildInitialCases = () =>
   sampleFindings.map((finding) => {
-    const item = sampleAdminItems.find((adminItem) => adminItem.id === finding.itemId);
+    const item = sampleAdminItems.find(
+      (adminItem) => adminItem.id === finding.itemId,
+    );
     return createAdminCase(finding, item ?? sampleAdminItems[0]);
   });
-
+const createEmptyState = (): StoredAdminAvengerState => ({
+  adminItems: [],
+  findings: [],
+  adminCases: [],
+  drafts: [],
+  impactEntries: [],
+  selectedFindingId: undefined,
+  selectedCaseId: undefined,
+});
 const createDemoState = (): StoredAdminAvengerState => {
   const adminCases = buildInitialCases();
 
@@ -109,8 +149,12 @@ const createDemoState = (): StoredAdminAvengerState => {
     adminCases,
     drafts: [],
     impactEntries: adminCases.flatMap((adminCase) => {
-      const item = sampleAdminItems.find((adminItem) => adminItem.id === adminCase.itemId);
-      const finding = sampleFindings.find((adminFinding) => adminFinding.id === adminCase.findingId);
+      const item = sampleAdminItems.find(
+        (adminItem) => adminItem.id === adminCase.itemId,
+      );
+      const finding = sampleFindings.find(
+        (adminFinding) => adminFinding.id === adminCase.findingId,
+      );
       return deriveImpactFromCase(adminCase, item, finding);
     }),
     selectedFindingId: sampleFindings[0]?.id,
@@ -119,35 +163,59 @@ const createDemoState = (): StoredAdminAvengerState => {
 };
 
 function App() {
-  const [initialState] = useState(() => loadSavedAdminAvengerState(createDemoState()));
-  const [storageLoadDiagnostic] = useState(() => getLastStorageLoadDiagnostic());
+  const [initialState] = useState(() =>
+    loadSavedAdminAvengerState(createEmptyState()),
+  );
+  const [storageLoadDiagnostic] = useState(() =>
+    getLastStorageLoadDiagnostic(),
+  );
   const skippedInitialInvalidStorageSaveRef = useRef(false);
   const [items, setItems] = useState<AdminItem[]>(initialState.adminItems);
-  const [findings, setFindings] = useState<AdminFinding[]>(initialState.findings);
-  const [adminCases, setAdminCases] = useState<AdminCase[]>(initialState.adminCases);
+  const [findings, setFindings] = useState<AdminFinding[]>(
+    initialState.findings,
+  );
+  const [adminCases, setAdminCases] = useState<AdminCase[]>(
+    initialState.adminCases,
+  );
   const [drafts, setDrafts] = useState<AdminDraft[]>(initialState.drafts);
-  const [impactEntries, setImpactEntries] = useState<ImpactEntry[]>(initialState.impactEntries);
-  const [selectedFindingId, setSelectedFindingId] = useState(initialState.selectedFindingId);
-  const [selectedCaseId, setSelectedCaseId] = useState(initialState.selectedCaseId);
+  const [impactEntries, setImpactEntries] = useState<ImpactEntry[]>(
+    initialState.impactEntries,
+  );
+  const [selectedFindingId, setSelectedFindingId] = useState(
+    initialState.selectedFindingId,
+  );
+  const [selectedCaseId, setSelectedCaseId] = useState(
+    initialState.selectedCaseId,
+  );
   const [analysisStatus, setAnalysisStatus] = useState<ServiceStatus>("idle");
   const [analysisError, setAnalysisError] = useState<string>();
   const [draftStatus, setDraftStatus] = useState<ServiceStatus>("idle");
   const [draftError, setDraftError] = useState<string>();
-  const [adminItemForm, setAdminItemForm] = useState<AdminItemFormValues>(emptyAdminItemForm);
+  const [adminItemForm, setAdminItemForm] =
+    useState<AdminItemFormValues>(emptyAdminItemForm);
   const [homeResult, setHomeResult] = useState<HomeAnalysisResult>();
   const [currentView, setCurrentView] = useState<AppView>("home");
   const [storageSaveError, setStorageSaveError] = useState("");
+  const [isFirstRunDisclaimerDismissed, setIsFirstRunDisclaimerDismissed] =
+    useState(readFirstRunDisclaimerDismissed);
   const [dataControlMessage, setDataControlMessage] = useState("");
-  const [inboxScanSettings, setInboxScanSettings] =
-    useState<InboxScanSettings>(loadInboxScanSettings);
+  const [inboxScanSettings, setInboxScanSettings] = useState<InboxScanSettings>(
+    loadInboxScanSettings,
+  );
 
   const selectedCase =
     adminCases.find((adminCase) => adminCase.id === selectedCaseId) ??
     adminCases.find((adminCase) => adminCase.findingId === selectedFindingId);
   const selectedItem = items.find((item) => item.id === selectedCase?.itemId);
-  const selectedFinding = findings.find((finding) => finding.id === selectedCase?.findingId);
-  const selectedDraft = drafts.find((draft) => draft.findingId === selectedCase?.findingId);
-  const selectedDrafts = drafts.filter((draft) => draft.findingId === selectedCase?.findingId);
+  const selectedFinding = findings.find(
+    (finding) => finding.id === selectedCase?.findingId,
+  );
+  const selectedDraft = drafts.find(
+    (draft) => draft.findingId === selectedCase?.findingId,
+  );
+  const selectedDrafts = drafts.filter(
+    (draft) => draft.findingId === selectedCase?.findingId,
+  );
 
   const currentStoredState = (): StoredAdminAvengerState => ({
     adminItems: items,
@@ -163,7 +231,8 @@ function App() {
     () =>
       [...findings].sort(
         (first, second) =>
-          new Date(second.createdAt).getTime() - new Date(first.createdAt).getTime(),
+          new Date(second.createdAt).getTime() -
+          new Date(first.createdAt).getTime(),
       ),
     [findings],
   );
@@ -220,7 +289,9 @@ function App() {
 
   useEffect(() => subscribeToStorageSaveErrors(setStorageSaveError), []);
 
-  const handleUpdateInboxScanSettings = (updates: Partial<InboxScanSettings>) => {
+  const handleUpdateInboxScanSettings = (
+    updates: Partial<InboxScanSettings>,
+  ) => {
     setInboxScanSettings((current) => ({ ...current, ...updates }));
   };
 
@@ -238,25 +309,35 @@ function App() {
     scannedCases: AdminCase[],
   ) => {
     const newImpactEntries = scannedCases.flatMap((adminCase) => {
-      const finding = scannedFindings.find((current) => current.id === adminCase.findingId);
+      const finding = scannedFindings.find(
+        (current) => current.id === adminCase.findingId,
+      );
       return deriveImpactFromCase(adminCase, item, finding);
     });
 
     setItems((currentItems) =>
-      currentItems.some((current) => current.id === item.id) ? currentItems : [item, ...currentItems],
+      currentItems.some((current) => current.id === item.id)
+        ? currentItems
+        : [item, ...currentItems],
     );
     setFindings((currentFindings) => [
       ...scannedFindings.filter(
-        (finding) => !currentFindings.some((current) => current.id === finding.id),
+        (finding) =>
+          !currentFindings.some((current) => current.id === finding.id),
       ),
       ...currentFindings,
     ]);
     setAdminCases((currentCases) => [
-      ...scannedCases.filter((adminCase) => !currentCases.some((current) => current.id === adminCase.id)),
+      ...scannedCases.filter(
+        (adminCase) =>
+          !currentCases.some((current) => current.id === adminCase.id),
+      ),
       ...currentCases,
     ]);
     setImpactEntries((currentEntries) => [
-      ...newImpactEntries.filter((entry) => !currentEntries.some((current) => current.id === entry.id)),
+      ...newImpactEntries.filter(
+        (entry) => !currentEntries.some((current) => current.id === entry.id),
+      ),
       ...currentEntries,
     ]);
   };
@@ -267,7 +348,11 @@ function App() {
   ) => {
     const safetyFinding = createEmailSafetyFinding(item, assessment);
     const safetyCase = createAdminCase(safetyFinding, item);
-    const safetyImpactEntries = deriveImpactFromCase(safetyCase, item, safetyFinding);
+    const safetyImpactEntries = deriveImpactFromCase(
+      safetyCase,
+      item,
+      safetyFinding,
+    );
 
     setItems((currentItems) =>
       currentItems.some((currentItem) => currentItem.id === item.id)
@@ -286,7 +371,9 @@ function App() {
   };
 
   const handleSelectFinding = (findingId: string) => {
-    const relatedCase = adminCases.find((adminCase) => adminCase.findingId === findingId);
+    const relatedCase = adminCases.find(
+      (adminCase) => adminCase.findingId === findingId,
+    );
 
     setSelectedFindingId(findingId);
     setSelectedCaseId(relatedCase?.id);
@@ -338,9 +425,13 @@ function App() {
     }
 
     const analysedFindings = analysisResult.findings;
-    const newCases = analysedFindings.map((finding) => createAdminCase(finding, item));
+    const newCases = analysedFindings.map((finding) =>
+      createAdminCase(finding, item),
+    );
     const newImpactEntries = newCases.flatMap((adminCase) => {
-      const finding = analysedFindings.find((adminFinding) => adminFinding.id === adminCase.findingId);
+      const finding = analysedFindings.find(
+        (adminFinding) => adminFinding.id === adminCase.findingId,
+      );
       return deriveImpactFromCase(adminCase, item, finding);
     });
     const result = {
@@ -351,9 +442,15 @@ function App() {
 
     if (openCaseFile) {
       setItems((currentItems) => [item, ...currentItems]);
-      setFindings((currentFindings) => [...analysedFindings, ...currentFindings]);
+      setFindings((currentFindings) => [
+        ...analysedFindings,
+        ...currentFindings,
+      ]);
       setAdminCases((currentCases) => [...newCases, ...currentCases]);
-      setImpactEntries((currentEntries) => [...newImpactEntries, ...currentEntries]);
+      setImpactEntries((currentEntries) => [
+        ...newImpactEntries,
+        ...currentEntries,
+      ]);
       setSelectedFindingId(analysedFindings[0].id);
       setSelectedCaseId(newCases[0].id);
     }
@@ -384,15 +481,22 @@ function App() {
     return Boolean(result);
   };
 
-  const handleSaveHomeResultCase = (caseId: string, saveMode: "case" | "record" = "case") => {
-    const existingCase = adminCases.find((adminCase) => adminCase.id === caseId);
+  const handleSaveHomeResultCase = (
+    caseId: string,
+    saveMode: "case" | "record" = "case",
+  ) => {
+    const existingCase = adminCases.find(
+      (adminCase) => adminCase.id === caseId,
+    );
 
     if (existingCase) {
       handleOpenCase(caseId);
       return;
     }
 
-    const resultCase = homeResult?.cases.find((adminCase) => adminCase.id === caseId);
+    const resultCase = homeResult?.cases.find(
+      (adminCase) => adminCase.id === caseId,
+    );
 
     if (!homeResult || !resultCase) {
       return;
@@ -406,7 +510,11 @@ function App() {
       const finding = homeResult.findings.find(
         (adminFinding) => adminFinding.id === adminCase.findingId,
       );
-      const opportunity = deriveOpportunityCard(adminCase, homeResult.item, finding);
+      const opportunity = deriveOpportunityCard(
+        adminCase,
+        homeResult.item,
+        finding,
+      );
 
       return {
         ...adminCase,
@@ -428,7 +536,9 @@ function App() {
       } satisfies AdminCase;
     });
     const newImpactEntries = casesToSave.flatMap((adminCase) => {
-      const finding = homeResult.findings.find((adminFinding) => adminFinding.id === adminCase.findingId);
+      const finding = homeResult.findings.find(
+        (adminFinding) => adminFinding.id === adminCase.findingId,
+      );
       return saveMode === "record"
         ? deriveImpactFromCase(adminCase, homeResult.item, finding).filter(
             (entry) => entry.type === "no_saving",
@@ -444,22 +554,29 @@ function App() {
     setFindings((currentFindings) => [
       ...homeResult.findings
         .map((finding) =>
-          saveMode === "record" ? { ...finding, status: "no_action_needed" as const } : finding,
+          saveMode === "record"
+            ? { ...finding, status: "no_action_needed" as const }
+            : finding,
         )
         .filter(
-          (finding) => !currentFindings.some((currentFinding) => currentFinding.id === finding.id),
+          (finding) =>
+            !currentFindings.some(
+              (currentFinding) => currentFinding.id === finding.id,
+            ),
         ),
       ...currentFindings,
     ]);
     setAdminCases((currentCases) => [
       ...casesToSave.filter(
-        (adminCase) => !currentCases.some((currentCase) => currentCase.id === adminCase.id),
+        (adminCase) =>
+          !currentCases.some((currentCase) => currentCase.id === adminCase.id),
       ),
       ...currentCases,
     ]);
     setImpactEntries((currentEntries) => [
       ...newImpactEntries.filter(
-        (entry) => !currentEntries.some((currentEntry) => currentEntry.id === entry.id),
+        (entry) =>
+          !currentEntries.some((currentEntry) => currentEntry.id === entry.id),
       ),
       ...currentEntries,
     ]);
@@ -576,7 +693,9 @@ function App() {
     );
     setFindings((currentFindings) =>
       currentFindings.map((finding) =>
-        finding.id === changedCase.findingId ? { ...finding, deadline: chaseDate } : finding,
+        finding.id === changedCase.findingId
+          ? { ...finding, deadline: chaseDate }
+          : finding,
       ),
     );
   };
@@ -713,7 +832,9 @@ function App() {
     };
     const changedFields = [
       nextValues.title !== changedCase.title ? "title" : undefined,
-      nextValues.nextAction !== changedCase.nextAction ? "next action" : undefined,
+      nextValues.nextAction !== changedCase.nextAction
+        ? "next action"
+        : undefined,
       nextValues.chaseDate !== changedCase.chaseDate ? "chase date" : undefined,
       nextValues.outcome !== changedCase.outcome ? "outcome note" : undefined,
     ].filter(Boolean);
@@ -793,12 +914,17 @@ function App() {
 
     setFindings((currentFindings) =>
       currentFindings.map((finding) =>
-        finding.id === changedCase.findingId ? { ...finding, status: "resolved" } : finding,
+        finding.id === changedCase.findingId
+          ? { ...finding, status: "resolved" }
+          : finding,
       ),
     );
   };
 
-  const handleConfirmOutcome = (caseId: string, values: OutcomeConfirmationValues) => {
+  const handleConfirmOutcome = (
+    caseId: string,
+    values: OutcomeConfirmationValues,
+  ) => {
     const changedCase = adminCases.find((adminCase) => adminCase.id === caseId);
 
     if (!changedCase) {
@@ -807,7 +933,7 @@ function App() {
 
     const pendingEntryToPreserve =
       values.outcomeType === "still_waiting" && values.amount === undefined
-        ? impactEntries.find(
+        ? (impactEntries.find(
             (entry) =>
               entry.caseId === caseId &&
               entry.type === "pending_recovery" &&
@@ -817,7 +943,10 @@ function App() {
             changedCase,
             items.find((item) => item.id === changedCase.itemId),
             findings.find((finding) => finding.id === changedCase.findingId),
-          ).find((entry) => entry.type === "pending_recovery" && entry.amount !== undefined)
+          ).find(
+            (entry) =>
+              entry.type === "pending_recovery" && entry.amount !== undefined,
+          ))
         : undefined;
     const outcomeValues: OutcomeConfirmationValues = pendingEntryToPreserve
       ? {
@@ -832,9 +961,12 @@ function App() {
     const updatedAt = new Date().toISOString();
     const shouldShowConfirmedAmount =
       entry.amount !== undefined &&
-      ["confirmed_saved", "confirmed_recovered", "cost_increase_avoided", "deadline_protected"].includes(
-        entry.type,
-      );
+      [
+        "confirmed_saved",
+        "confirmed_recovered",
+        "cost_increase_avoided",
+        "deadline_protected",
+      ].includes(entry.type);
     const timelineTitle =
       outcomeValues.outcomeType === "still_waiting"
         ? "Still waiting recorded"
@@ -867,7 +999,10 @@ function App() {
         adminCase.id === caseId
           ? {
               ...adminCase,
-              status: outcomeValues.outcomeType === "still_waiting" ? "waiting" : "resolved",
+              status:
+                outcomeValues.outcomeType === "still_waiting"
+                  ? "waiting"
+                  : "resolved",
               outcome: outcomeNote,
               updatedAt,
               timeline: [
@@ -890,7 +1025,10 @@ function App() {
         finding.id === changedCase.findingId
           ? {
               ...finding,
-              status: outcomeValues.outcomeType === "still_waiting" ? "waiting" : "resolved",
+              status:
+                outcomeValues.outcomeType === "still_waiting"
+                  ? "waiting"
+                  : "resolved",
             }
           : finding,
       ),
@@ -912,7 +1050,9 @@ function App() {
       return;
     }
 
-    const remainingCases = adminCases.filter((adminCase) => adminCase.id !== caseId);
+    const remainingCases = adminCases.filter(
+      (adminCase) => adminCase.id !== caseId,
+    );
     const nextSelectedCase = remainingCases[0];
 
     setAdminCases(remainingCases);
@@ -920,7 +1060,9 @@ function App() {
       currentEntries.filter((entry) => entry.caseId !== deletedCase.id),
     );
     setDrafts((currentDrafts) =>
-      currentDrafts.filter((draft) => draft.findingId !== deletedCase.findingId),
+      currentDrafts.filter(
+        (draft) => draft.findingId !== deletedCase.findingId,
+      ),
     );
     setFindings((currentFindings) =>
       currentFindings.filter((finding) => finding.id !== deletedCase.findingId),
@@ -946,7 +1088,9 @@ function App() {
 
     setDrafts((currentDrafts) => [
       draft,
-      ...currentDrafts.filter((currentDraft) => currentDraft.findingId !== adminCase.findingId),
+      ...currentDrafts.filter(
+        (currentDraft) => currentDraft.findingId !== adminCase.findingId,
+      ),
     ]);
     setAdminCases((currentCases) =>
       currentCases.map((currentCase) =>
@@ -973,11 +1117,20 @@ function App() {
     setFindings((currentFindings) =>
       currentFindings.map((finding) =>
         finding.id === adminCase.findingId
-          ? { ...finding, status: "drafted", deadline: finding.deadline ?? getDefaultChaseDate() }
+          ? {
+              ...finding,
+              status: "drafted",
+              deadline: finding.deadline ?? getDefaultChaseDate(),
+            }
           : finding,
       ),
     );
     setDraftStatus("success");
+  };
+
+  const handleDismissFirstRunDisclaimer = () => {
+    saveFirstRunDisclaimerDismissed();
+    setIsFirstRunDisclaimerDismissed(true);
   };
 
   const handleResetDemoData = () => {
@@ -992,7 +1145,9 @@ function App() {
     setSelectedCaseId(demoState.selectedCaseId);
     setHomeResult(undefined);
     setInboxScanSettings(defaultInboxScanSettings);
-    setDataControlMessage("Demo data restored in this browser.");
+    setDataControlMessage(
+      "Sample demo data loaded. This is not your real admin.",
+    );
     setCurrentView("home");
   };
 
@@ -1034,6 +1189,7 @@ function App() {
     setSelectedCaseId(undefined);
     setInboxScanSettings(defaultInboxScanSettings);
     setHomeResult(undefined);
+    setIsFirstRunDisclaimerDismissed(false);
     setDataControlMessage("Local AdminAvenger data deleted from this browser.");
     setCurrentView("home");
   };
@@ -1045,6 +1201,33 @@ function App() {
       caseCount={adminCases.length}
       findingCount={findings.length}
     >
+      {isFirstRunDisclaimerDismissed ? null : (
+        <div className="mx-auto mb-4 max-w-5xl rounded-xl border border-cyan-300/25 bg-cyan-300/8 p-4 text-sm leading-6 text-slate-200 shadow-lg shadow-slate-950/20">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="font-bold text-white">Before you start</p>
+              <p className="mt-1">
+                AdminAvenger can make mistakes. It is not a lawyer, financial
+                adviser, or claims company. It does not send messages or take
+                action for you.
+              </p>
+              <p className="mt-2 text-slate-300">
+                Check important decisions yourself or get free advice if
+                something is serious. You decide what to save, send, ignore, or
+                act on.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleDismissFirstRunDisclaimer}
+              className="rounded-lg border border-cyan-300/30 bg-slate-950/70 px-4 py-2 text-sm font-bold text-cyan-100 transition hover:border-cyan-200 hover:text-white focus:outline-none focus:ring-2 focus:ring-cyan-300/40"
+            >
+              I understand
+            </button>
+          </div>
+        </div>
+      )}
+
       {storageSaveError ? (
         <div className="mb-5 rounded-lg border border-rose-400/30 bg-rose-400/10 px-4 py-3 text-sm leading-6 text-rose-100">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -1127,7 +1310,9 @@ function App() {
           finding={selectedFinding}
           draft={selectedDraft}
           drafts={selectedDrafts}
-          impactEntries={impactEntries.filter((entry) => entry.caseId === selectedCase?.id)}
+          impactEntries={impactEntries.filter(
+            (entry) => entry.caseId === selectedCase?.id,
+          )}
           allImpactEntries={impactEntries}
           draftStatus={draftStatus}
           draftError={draftError}

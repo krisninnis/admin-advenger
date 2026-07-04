@@ -805,7 +805,7 @@ export function HomeView({
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
-      <header className="space-y-3 pt-1 sm:pt-4">
+      <header className="mx-auto flex max-w-2xl flex-col items-center space-y-3 pt-1 text-center sm:pt-4">
         <div className="flex items-center gap-3">
           <img
             src="/icons/icon-192.png"
@@ -814,33 +814,31 @@ export function HomeView({
             height={48}
             className="h-11 w-11 flex-none rounded-xl shadow-lg shadow-slate-950/40 ring-1 ring-white/10 sm:h-12 sm:w-12"
           />
-          <div className="min-w-0">
-            <p className="text-base font-black tracking-tight text-white sm:text-lg">
-              AdminAvenger
-            </p>
-            <p className="text-sm font-semibold text-emerald-300">
-              Your AI fights the boring battles for you.
-            </p>
-          </div>
+          <p className="text-base font-black tracking-tight text-white sm:text-lg">
+            AdminAvenger
+          </p>
         </div>
+        <p className="text-sm font-semibold text-emerald-300">
+          Your AI fights the boring battles for you.
+        </p>
         <p className="text-xs text-slate-400 sm:text-sm">
           AI remembers. AI explains. Humans decide.
         </p>
-        <h2 className="text-3xl font-bold tracking-tight text-white sm:text-5xl">
-          Paste the email, bill, letter, or message that&apos;s bothering you.
+        <h2 className="text-2xl font-bold tracking-tight text-white sm:text-5xl">
+          Paste the bill, email, or message you want help with.
         </h2>
-        <p className="max-w-3xl text-lg leading-8 text-slate-300">
-          AdminAvenger explains what it means, shows what proof is useful, and prepares the next
-          step. You decide what happens.
+        <p className="max-w-xl text-base leading-7 text-slate-300 sm:text-lg sm:leading-8">
+          AdminAvenger explains it in plain English, tells you what to have ready, and prepares the
+          next step. You stay in control.
         </p>
       </header>
 
       <section className="rounded-lg border border-white/10 bg-slate-900/85 p-4 shadow-xl shadow-slate-950/20 sm:p-6">
         <div className="grid gap-3 sm:grid-cols-3">
           {[
-            ["paste", "Paste text", "Works now"],
-            ["image", "Take/upload photo", "Reads text locally"],
-            ["file", "Upload text file", "TXT, MD, CSV, JSON"],
+            ["paste", "Paste text", "Fastest way to check something"],
+            ["image", "Take or upload a photo", "Reads the text on your device"],
+            ["file", "Upload a file", "TXT, MD, CSV, JSON"],
           ].map(([value, label, helper]) => (
             <button
               key={value}
@@ -868,14 +866,14 @@ export function HomeView({
             onClick={() => setShowExamples((current) => !current)}
             className="rounded-lg border border-white/10 bg-slate-950 px-3 py-2 text-sm font-bold text-slate-200 transition hover:border-emerald-300/40 hover:text-white"
           >
-            {showExamples ? "Hide examples" : "Try an example"}
+            {showExamples ? "Hide examples" : "See an example"}
           </button>
           <button
             type="button"
             onClick={() => setShowDeveloperOptions((current) => !current)}
             className="rounded-lg border border-white/10 bg-slate-950 px-3 py-2 text-sm font-bold text-slate-400 transition hover:border-white/20 hover:text-white"
           >
-            Developer options
+            Advanced options
           </button>
           {inboxScanSettings.previewEnabled ? (
             <button
@@ -886,7 +884,7 @@ export function HomeView({
               }}
               className="rounded-lg border border-white/10 bg-slate-950 px-3 py-2 text-sm font-bold text-slate-400 transition hover:border-white/20 hover:text-white"
             >
-              Inbox preview
+              Inbox preview (beta)
             </button>
           ) : null}
         </div>
@@ -1043,12 +1041,12 @@ export function HomeView({
         <div className="mt-5">
           {selectedInput === "paste" ? (
             <label className="block text-sm font-semibold text-slate-300">
-              Paste the text
+              Paste your message
               <textarea
                 value={rawText}
                 onChange={(event) => setRawText(event.target.value)}
                 rows={9}
-                placeholder="Paste the provider notice, refund email, bill, letter, or message here..."
+                placeholder="Paste the email, bill, letter, or message here…"
                 className="mt-2 w-full resize-y rounded-lg border border-white/10 bg-slate-950 px-4 py-4 text-base leading-7 text-white outline-none transition placeholder:text-slate-600 focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20"
               />
             </label>
@@ -1181,10 +1179,10 @@ export function HomeView({
         </div>
 
         <p className="mt-3 rounded-lg border border-cyan-300/20 bg-cyan-300/10 px-4 py-3 text-sm leading-6 text-cyan-50/90">
-          Text you paste is checked in this browser. Nothing is uploaded in this version.
+          What you paste stays in this browser in this version. Nothing is uploaded.
           <span className="mt-1 block text-cyan-50/80">
-            You can remove account numbers or passwords before pasting. AdminAvenger does not need
-            them to help.
+            You can remove passwords or account numbers first — AdminAvenger does not need them to
+            help.
           </span>
         </p>
 

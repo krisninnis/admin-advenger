@@ -7,7 +7,7 @@ const mobileNavItems: Array<{
   label: string;
 }> = [
   { view: "home", label: "Check" },
-  { view: "cases", label: "My admin" },
+  { view: "cases", label: "Saved" },
   { view: "savings", label: "Money" },
 ];
 

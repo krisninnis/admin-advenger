@@ -20,16 +20,16 @@ const navItems: Array<{
   label: string;
   helper: string;
 }> = [
-  { view: "home", label: "Check something", helper: "Paste and understand it" },
-  { view: "cases", label: "My admin", helper: "Things you saved" },
-  { view: "savings", label: "Money", helper: "What is tracked" },
+  { view: "home", label: "Check a message", helper: "Paste a bill, email, or message" },
+  { view: "cases", label: "Saved items", helper: "Come back to saved items" },
+  { view: "savings", label: "Money tracker", helper: "Savings, refunds, and progress" },
 ];
 
 export function Sidebar({ currentView, onNavigate, caseCount, findingCount }: SidebarProps) {
   return (
     <aside className="hidden h-full flex-col border-white/10 bg-slate-950/85 px-4 py-4 md:sticky md:top-0 md:flex md:h-screen md:w-64 md:border-r lg:w-72">
-      <div className="rounded-lg border border-emerald-300/20 bg-emerald-300/10 px-4 py-4">
-        <div className="flex items-center gap-3">
+      <div className="flex flex-col items-center rounded-lg border border-emerald-300/20 bg-emerald-300/10 px-4 py-4 text-center">
+        <div className="flex flex-col items-center gap-2">
           <img
             src="/icons/icon-192.png"
             alt="AdminAvenger"

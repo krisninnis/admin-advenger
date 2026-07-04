@@ -1,1 +1,17 @@
 @import "tailwindcss";
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+html,
+body {
+  overflow-x: hidden;
+  background: #020617;
+}
+
+* {
+  overflow-wrap: anywhere;
+}

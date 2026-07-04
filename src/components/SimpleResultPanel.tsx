@@ -62,7 +62,7 @@ function ActionButton({ action, wide = false }: { action: SimpleResultAction; wi
       type="button"
       onClick={action.onClick}
       disabled={action.disabled}
-      className={`rounded-lg px-4 py-3 text-sm font-bold transition focus:outline-none focus:ring-2 disabled:cursor-not-allowed disabled:opacity-50 ${
+      className={`min-h-11 rounded-lg px-4 py-3 text-sm font-bold transition focus:outline-none focus:ring-2 disabled:cursor-not-allowed disabled:opacity-50 ${
         wide ? "w-full" : ""
       } ${actionClasses[emphasis]}`}
     >

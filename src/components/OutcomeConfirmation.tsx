@@ -502,7 +502,7 @@ export function OutcomeConfirmation({
         <p className="mt-1 text-sm leading-6 text-slate-500">
           Choose the closest outcome. You can edit the note{showMoneyFields ? " and amount" : ""} before confirming.
         </p>
-        <div className="mt-3 flex flex-wrap gap-2">
+        <div className="mt-3 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
           {outcomeNudges.map((nudge) => (
             <button
               key={nudge.label}
@@ -510,7 +510,7 @@ export function OutcomeConfirmation({
               onClick={() => {
                 setOutcome(nudge.outcomeType, nudge.note);
               }}
-              className="rounded-lg border border-white/10 bg-white/[0.045] px-3 py-2 text-xs font-bold text-slate-200 transition hover:border-emerald-300/40 hover:bg-emerald-300/10"
+              className="min-h-11 rounded-lg border border-white/10 bg-white/[0.045] px-3 py-2 text-xs font-bold text-slate-200 transition hover:border-emerald-300/40 hover:bg-emerald-300/10"
             >
               {nudge.label}
             </button>

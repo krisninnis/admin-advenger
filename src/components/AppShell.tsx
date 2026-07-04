@@ -27,8 +27,8 @@ export function AppShell({
   children,
 }: AppShellProps) {
   return (
-    <main className="min-h-screen bg-slate-950 text-white">
-      <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.16),transparent_30rem),linear-gradient(180deg,rgba(15,23,42,0),rgba(15,23,42,0.78))]">
+    <main className="min-h-screen overflow-x-hidden bg-slate-950 text-white">
+      <div className="min-h-screen overflow-x-hidden bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.16),transparent_30rem),linear-gradient(180deg,rgba(15,23,42,0),rgba(15,23,42,0.78))]">
         <div className="md:flex">
           <Sidebar
             currentView={currentView}
@@ -45,12 +45,12 @@ export function AppShell({
                 type="button"
                 onClick={() => onNavigate("settings")}
                 aria-current={currentView === "settings" ? "page" : undefined}
-                className="rounded-full border border-white/10 bg-slate-950/80 px-3 py-2 text-xs font-bold text-slate-200 transition hover:border-emerald-300/40 hover:text-white focus:outline-none focus:ring-2 focus:ring-emerald-300/40"
+                className="min-h-11 rounded-full border border-white/10 bg-slate-950/80 px-4 py-2 text-xs font-bold text-slate-200 transition hover:border-emerald-300/40 hover:text-white focus:outline-none focus:ring-2 focus:ring-emerald-300/40"
               >
                 Settings
               </button>
             </div>
-            <div className="mx-auto max-w-[1920px] px-4 pb-28 pt-5 sm:px-5 md:px-6 md:py-6 lg:px-8 lg:py-8">
+            <div className="mx-auto max-w-[1920px] px-4 pb-32 pt-5 sm:px-5 md:px-6 md:py-6 lg:px-8 lg:py-8">
               {children}
             </div>
           </div>

@@ -245,7 +245,7 @@ export function CasesView({
           onSelectFinding={onOpenFinding}
         />
 
-        <section className="rounded-lg border border-white/10 bg-white/[0.045] p-6 shadow-xl shadow-slate-950/10">
+        <section className="rounded-lg border border-white/10 bg-white/[0.045] p-4 shadow-xl shadow-slate-950/10 sm:p-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <h3 className="text-xl font-semibold text-white">Saved things</h3>
@@ -258,13 +258,13 @@ export function CasesView({
             </span>
           </div>
 
-          <div className="mt-5 flex flex-wrap gap-2">
+          <div className="mt-5 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
             {quickFilters.map((option) => (
               <button
                 key={option.value}
                 type="button"
                 onClick={() => setQuickFilter(option.value)}
-                className={`rounded-lg border px-3 py-2 text-xs font-bold transition ${
+                className={`min-h-11 rounded-lg border px-3 py-2 text-xs font-bold transition ${
                   quickFilter === option.value
                     ? "border-emerald-300/60 bg-emerald-300/12 text-white"
                     : "border-white/10 bg-slate-950 text-slate-300 hover:border-white/20"

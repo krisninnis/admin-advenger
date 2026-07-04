@@ -126,6 +126,34 @@ export function SettingsView({
         statusMessage={dataControlMessage}
       />
 
+      <section className="rounded-lg border border-cyan-300/20 bg-cyan-300/[0.06] p-5 shadow-xl shadow-slate-950/10">
+        <p className="text-sm font-bold uppercase tracking-widest text-cyan-300">
+          Phone beta
+        </p>
+        <h3 className="mt-2 text-2xl font-bold text-white">Install on your phone</h3>
+        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
+          You can add AdminAvenger to your phone home screen during the beta.
+        </p>
+        <div className="mt-5 grid gap-3 md:grid-cols-2">
+          <article className="rounded-lg border border-white/10 bg-slate-950/60 p-4">
+            <h4 className="text-sm font-bold text-white">iPhone</h4>
+            <p className="mt-2 text-sm leading-6 text-slate-400">
+              Open in Safari, tap Share, then Add to Home Screen.
+            </p>
+          </article>
+          <article className="rounded-lg border border-white/10 bg-slate-950/60 p-4">
+            <h4 className="text-sm font-bold text-white">Android</h4>
+            <p className="mt-2 text-sm leading-6 text-slate-400">
+              Open in Chrome, tap the three-dot menu, then Add to Home screen or Install app.
+            </p>
+          </article>
+        </div>
+        <p className="mt-4 rounded-lg border border-amber-300/25 bg-amber-300/10 px-4 py-3 text-sm leading-6 text-amber-50">
+          Saved data stays in the browser/app on that device. Clearing browser data or deleting
+          the app can delete saved admin unless you export a backup.
+        </p>
+      </section>
+
       <section className="rounded-lg border border-emerald-300/20 bg-emerald-300/[0.06] p-5 shadow-xl shadow-slate-950/10">
         <div>
           <p className="text-sm font-bold uppercase tracking-widest text-emerald-300">
@@ -140,7 +168,10 @@ export function SettingsView({
         </div>
         <div className="mt-5 grid gap-3 md:grid-cols-2">
           {trustSections.map((section) => (
-            <article key={section.title} className="rounded-lg border border-white/10 bg-slate-950/60 p-4">
+            <article
+              key={section.title}
+              className="rounded-lg border border-white/10 bg-slate-950/60 p-4"
+            >
               <h4 className="text-sm font-bold text-white">{section.title}</h4>
               <p className="mt-2 text-sm leading-6 text-slate-400">{section.body}</p>
             </article>

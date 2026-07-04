@@ -60,7 +60,8 @@ export function InboxScanPreview({
             Review inbox scan preview
           </span>
           <span className="mt-1 block text-sm leading-6 text-slate-400">
-            Prototype preview only — no email account is connected yet. Built from sample emails.
+            Inbox scan preview uses sample emails only. No Gmail, Outlook, or email account is
+            connected.
           </span>
         </span>
         <span className="shrink-0 rounded-full border border-cyan-300/30 px-3 py-1 text-xs font-bold text-cyan-100">

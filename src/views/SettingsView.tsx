@@ -1,8 +1,11 @@
+import { useState } from "react";
+import { CollapsibleSection } from "../components/CollapsibleSection";
 import { DataControls } from "../components/DataControls";
 import type { AppView } from "../components/Sidebar";
-import type {
-  InboxScanNotificationMethod,
-  InboxScanSettings,
+import {
+  isSelectableNotificationMethod,
+  type InboxScanNotificationMethod,
+  type InboxScanSettings,
 } from "../lib/inboxScanStorage";
 
 type SettingsViewProps = {
@@ -39,15 +42,94 @@ function ToggleRow({ label, description, checked, onChange }: ToggleRowProps) {
   );
 }
 
+// Three honest buckets so nobody can mistake a future feature for a working one.
+const availabilityGroups: Array<{
+  tone: "emerald" | "cyan" | "slate";
+  title: string;
+  caption: string;
+  items: string[];
+}> = [
+  {
+    tone: "emerald",
+    title: "Works now",
+    caption: "Available in this private beta, on this device.",
+    items: [
+      "Paste text to check",
+      "Upload a text file",
+      "Take or upload a photo (reads text on device)",
+      "Local rules check — no cloud AI",
+      "Save admin items and cases",
+      "Track money manually",
+      "Download a local backup",
+      "Install on your phone",
+      "In-app alerts",
+    ],
+  },
+  {
+    tone: "cyan",
+    title: "Beta preview",
+    caption: "Preview features that use sample or on-device data only.",
+    items: [
+      "Inbox scan preview — sample emails only, no account connected",
+      "Local Ollama developer testing (only if you enable it on this device)",
+    ],
+  },
+  {
+    tone: "slate",
+    title: "Coming later — not connected",
+    caption: "Not built in this beta. Nothing here is active and nothing is sent.",
+    items: [
+      "Real Gmail or Outlook connection",
+      "Email notifications",
+      "Text notifications",
+      "Cloud backup and sync",
+      "Automatic inbox monitoring",
+    ],
+  },
+];
+
+const availabilityToneClasses = {
+  emerald: {
+    border: "border-emerald-300/25",
+    bg: "bg-emerald-300/[0.06]",
+    dot: "text-emerald-300",
+    heading: "text-emerald-200",
+  },
+  cyan: {
+    border: "border-cyan-300/25",
+    bg: "bg-cyan-300/[0.06]",
+    dot: "text-cyan-300",
+    heading: "text-cyan-200",
+  },
+  slate: {
+    border: "border-white/10",
+    bg: "bg-slate-950/40",
+    dot: "text-slate-500",
+    heading: "text-slate-400",
+  },
+} as const;
+
 const notificationMethods: Array<{
   value: InboxScanNotificationMethod;
   label: string;
   helper: string;
-  disabled: boolean;
+  unavailableMessage?: string;
 }> = [
-  { value: "in_app", label: "In app only", helper: "Works now", disabled: false },
-  { value: "email_later", label: "Email", helper: "Coming later", disabled: true },
-  { value: "text_later", label: "Text", helper: "Coming later", disabled: true },
+  { value: "in_app", label: "In app only", helper: "Works now" },
+  {
+    value: "email_later",
+    label: "Email",
+    helper: "Coming later",
+    unavailableMessage:
+      "Email notifications are not connected in this beta. AdminAvenger will not email you. In this version, alerts only appear inside the app.",
+  },
+  {
+    value: "text_later",
+    label: "Text",
+    helper: "Coming later",
+    unavailableMessage:
+      "Text notifications are not connected in this beta. AdminAvenger will not text you. In this version, alerts only appear inside the app.",
+  },
 ];
 
 const trustSections = [
@@ -59,7 +141,7 @@ const trustSections = [
   {
     title: "What AdminAvenger cannot do",
     body:
-      "AdminAvenger does not send messages, cancel subscriptions, submit claims, contact companies, confirm fraud, give legal advice, or guarantee money back.",
+      "AdminAvenger does not send messages, cancel subscriptions, submit claims, contact companies, connect to your email, email or text you, confirm fraud, give legal advice, or guarantee money back.",
   },
   {
     title: "How to use it safely",
@@ -102,129 +184,127 @@ export function SettingsView({
   inboxScanSettings,
   onUpdateInboxScanSettings,
 }: SettingsViewProps) {
+  const [notificationNotice, setNotificationNotice] = useState<string | undefined>(undefined);
+  const activeNotificationMethod = isSelectableNotificationMethod(
+    inboxScanSettings.notificationMethod,
+  )
+    ? inboxScanSettings.notificationMethod
+    : "in_app";
+
+  const handleNotificationMethodClick = (method: (typeof notificationMethods)[number]) => {
+    if (method.unavailableMessage) {
+      // Never store email/text as active. Explain instead of pretending it worked.
+      setNotificationNotice(method.unavailableMessage);
+      return;
+    }
+
+    setNotificationNotice(undefined);
+    onUpdateInboxScanSettings({ notificationMethod: method.value });
+  };
+
   return (
     <div className="space-y-6">
       <header>
         <p className="text-sm font-bold uppercase tracking-widest text-emerald-300">
           Settings / Data
         </p>
-        <h2 className="mt-2 text-3xl font-bold tracking-tight text-white">Local data controls</h2>
+        <h2 className="mt-2 text-3xl font-bold tracking-tight text-white">Settings</h2>
         <p className="mt-2 max-w-4xl text-base leading-7 text-slate-400">
           Everything you paste or save stays in this browser on this device. Clearing browser data
-          will delete it. Use Download local backup to keep a copy.
-        </p>
-        <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-500">
-          You can remove account numbers or passwords before pasting. AdminAvenger does not need
-          them to help.
+          will delete it. Use Download local backup to keep a copy. Sections are collapsed to keep
+          things easy to scan — tap a heading to open it.
         </p>
       </header>
 
-      <DataControls
-        onResetDemoData={onResetDemoData}
-        onClearLocalData={onClearLocalData}
-        onDownloadBackup={onDownloadBackup}
-        statusMessage={dataControlMessage}
-      />
+      <CollapsibleSection
+        eyebrow="What's live"
+        title="What works now / what's coming later"
+        description="A quick, honest map of what AdminAvenger actually does in this private beta."
+        defaultOpen
+      >
+        <div className="grid gap-3 lg:grid-cols-3">
+          {availabilityGroups.map((group) => {
+            const tone = availabilityToneClasses[group.tone];
+            const isComingLater = group.tone === "slate";
 
-      <section className="rounded-lg border border-cyan-300/20 bg-cyan-300/[0.06] p-5 shadow-xl shadow-slate-950/10">
-        <p className="text-sm font-bold uppercase tracking-widest text-cyan-300">
-          Phone beta
-        </p>
-        <h3 className="mt-2 text-2xl font-bold text-white">Install on your phone</h3>
-        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
-          You can add AdminAvenger to your phone home screen during the beta.
-        </p>
-        <div className="mt-5 grid gap-3 md:grid-cols-2">
-          <article className="rounded-lg border border-white/10 bg-slate-950/60 p-4">
-            <h4 className="text-sm font-bold text-white">iPhone</h4>
-            <p className="mt-2 text-sm leading-6 text-slate-400">
-              Open in Safari, tap Share, then Add to Home Screen.
-            </p>
-          </article>
-          <article className="rounded-lg border border-white/10 bg-slate-950/60 p-4">
-            <h4 className="text-sm font-bold text-white">Android</h4>
-            <p className="mt-2 text-sm leading-6 text-slate-400">
-              Open in Chrome, tap the three-dot menu, then Add to Home screen or Install app.
-            </p>
-          </article>
+            return (
+              <article
+                key={group.title}
+                className={`rounded-lg border ${tone.border} ${tone.bg} p-4`}
+              >
+                <h4 className={`text-sm font-bold uppercase tracking-widest ${tone.heading}`}>
+                  {group.title}
+                </h4>
+                <p className="mt-1 text-xs leading-5 text-slate-500">{group.caption}</p>
+                <ul className="mt-3 space-y-2">
+                  {group.items.map((item) => (
+                    <li
+                      key={item}
+                      className={`flex gap-2 text-sm leading-6 ${
+                        isComingLater ? "text-slate-500" : "text-slate-200"
+                      }`}
+                    >
+                      <span aria-hidden className={`mt-0.5 shrink-0 font-bold ${tone.dot}`}>
+                        {isComingLater ? "○" : "✓"}
+                      </span>
+                      <span className={isComingLater ? "line-through decoration-slate-600" : ""}>
+                        {item}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                {isComingLater ? (
+                  <p className="mt-3 rounded-md border border-white/10 bg-slate-950/60 px-3 py-2 text-xs font-semibold text-slate-400">
+                    Read-only preview of the roadmap. These cannot be turned on in this beta.
+                  </p>
+                ) : null}
+              </article>
+            );
+          })}
         </div>
-        <p className="mt-4 rounded-lg border border-amber-300/25 bg-amber-300/10 px-4 py-3 text-sm leading-6 text-amber-50">
-          Saved data stays in the browser/app on that device. Clearing browser data or deleting
-          the app can delete saved admin unless you export a backup.
-        </p>
-      </section>
+      </CollapsibleSection>
 
-      <section className="rounded-lg border border-emerald-300/20 bg-emerald-300/[0.06] p-5 shadow-xl shadow-slate-950/10">
-        <div>
-          <p className="text-sm font-bold uppercase tracking-widest text-emerald-300">
-            Help & safety
-          </p>
-          <h3 className="mt-2 text-2xl font-bold text-white">
-            What AdminAvenger can and can&apos;t do
-          </h3>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
-            Plain-English guardrails for private beta. AdminAvenger prepares; you decide.
-          </p>
-        </div>
-        <div className="mt-5 grid gap-3 md:grid-cols-2">
-          {trustSections.map((section) => (
-            <article
-              key={section.title}
-              className="rounded-lg border border-white/10 bg-slate-950/60 p-4"
-            >
-              <h4 className="text-sm font-bold text-white">{section.title}</h4>
-              <p className="mt-2 text-sm leading-6 text-slate-400">{section.body}</p>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="rounded-lg border border-white/10 bg-white/[0.045] p-5 shadow-xl shadow-slate-950/10">
-        <h3 className="text-xl font-semibold text-white">Advanced / founder tools</h3>
-        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
-          Prototype-only screens for testing and overview. They are hidden from the main navigation
-          so normal use starts with checking something.
+      <CollapsibleSection
+        eyebrow="Local data"
+        title="Data controls"
+        description="Download a local backup before clearing anything you want to keep."
+        defaultOpen
+      >
+        <DataControls
+          onResetDemoData={onResetDemoData}
+          onClearLocalData={onClearLocalData}
+          onDownloadBackup={onDownloadBackup}
+          statusMessage={dataControlMessage}
+        />
+        <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-500">
+          You can remove account numbers or passwords before pasting. AdminAvenger does not need
+          them to help.
         </p>
-        <div className="mt-4 flex flex-wrap gap-3">
-          <button
-            type="button"
-            onClick={() => onNavigate("dashboard")}
-            className="rounded-lg border border-white/10 bg-slate-950 px-4 py-2.5 text-sm font-bold text-slate-200 transition hover:border-emerald-300/40 hover:text-white focus:outline-none focus:ring-2 focus:ring-emerald-300/40"
-          >
-            Open dashboard
-          </button>
-          <button
-            type="button"
-            onClick={() => onNavigate("validation")}
-            className="rounded-lg border border-white/10 bg-slate-950 px-4 py-2.5 text-sm font-bold text-slate-200 transition hover:border-emerald-300/40 hover:text-white focus:outline-none focus:ring-2 focus:ring-emerald-300/40"
-          >
-            Open validation notes
-          </button>
-        </div>
-      </section>
+      </CollapsibleSection>
 
-      <section className="rounded-lg border border-white/10 bg-white/[0.045] p-5 shadow-xl shadow-slate-950/10">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h3 className="text-xl font-semibold text-white">Inbox scan</h3>
-          <span className="rounded-full border border-cyan-300/30 bg-cyan-300/10 px-3 py-1 text-xs font-bold text-cyan-100">
-            Prototype preview only — no email account is connected yet
-          </span>
-        </div>
-        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
-          AdminAvenger should only scan with your permission. In a future connected version, you
-          will be able to disconnect, delete scan data, and choose what types of alerts you receive.
+      <CollapsibleSection
+        eyebrow="Inbox scan"
+        title="Inbox scan preview"
+        badge="Sample emails only — no account connected"
+        badgeTone="cyan"
+        description="Inbox scan preview uses sample emails only. No Gmail, Outlook, or email account is connected."
+      >
+        <p className="max-w-3xl text-sm leading-6 text-slate-400">
+          Real inbox connection is not part of this private beta yet. For now, you can paste emails
+          manually or try the sample preview. In a future connected version, you would be able to
+          disconnect, delete scan data, and choose which alerts you receive.
         </p>
 
         <div className="mt-5 grid gap-3">
           <ToggleRow
             label="Inbox scan preview"
-            description="Show the local inbox scan preview on the Home screen. This uses sample emails only."
+            description="Show the sample inbox scan preview on the Home screen. This uses sample emails only — no email account is connected."
             checked={inboxScanSettings.previewEnabled}
             onChange={(checked) => onUpdateInboxScanSettings({ previewEnabled: checked })}
           />
           <ToggleRow
             label="Startup prompt"
-            description="Show the optional inbox scan prompt when you open Home."
+            description="Show the optional inbox scan preview prompt when you open Home."
             checked={inboxScanSettings.showStartupPrompt}
             onChange={(checked) =>
               onUpdateInboxScanSettings({
@@ -241,50 +321,55 @@ export function SettingsView({
             onChange={(checked) => onUpdateInboxScanSettings({ showEmailSafetyCheckButton: checked })}
           />
           <ToggleRow
-            label="Notify me about possible savings"
+            label="Highlight possible savings"
             description="Highlight refunds, subscriptions, price rises, and possible recovery in the preview."
             checked={inboxScanSettings.notifySavings}
             onChange={(checked) => onUpdateInboxScanSettings({ notifySavings: checked })}
           />
           <ToggleRow
-            label="Notify me about suspicious emails"
+            label="Highlight suspicious emails"
             description="Highlight emails that show warning signs so you can verify before acting."
             checked={inboxScanSettings.notifySuspicious}
             onChange={(checked) => onUpdateInboxScanSettings({ notifySuspicious: checked })}
           />
         </div>
 
-        <div className="mt-5">
+        <div className="mt-6">
           <p className="text-sm font-bold text-white">Notification method</p>
           <p className="mt-1 text-sm leading-6 text-slate-400">
-            Email and text notifications are not built yet. Nothing is sent in this prototype.
+            In this version, alerts only appear inside the app. Email and text are not connected and
+            nothing is sent.
           </p>
           <div className="mt-3 grid gap-2 sm:grid-cols-3">
             {notificationMethods.map((method) => {
-              const isActive = inboxScanSettings.notificationMethod === method.value;
+              const unavailable = Boolean(method.unavailableMessage);
+              const isActive = !unavailable && activeNotificationMethod === method.value;
 
               return (
                 <button
                   key={method.value}
                   type="button"
-                  disabled={method.disabled}
-                  onClick={() =>
-                    method.disabled
-                      ? undefined
-                      : onUpdateInboxScanSettings({ notificationMethod: method.value })
-                  }
+                  aria-disabled={unavailable}
+                  onClick={() => handleNotificationMethodClick(method)}
                   className={`rounded-lg border p-3 text-left transition focus:outline-none focus:ring-2 focus:ring-emerald-300/40 ${
-                    method.disabled
+                    unavailable
                       ? "cursor-not-allowed border-white/5 bg-slate-950/40 text-slate-500"
                       : isActive
                         ? "border-emerald-300/60 bg-emerald-300/12 text-white"
                         : "border-white/10 bg-slate-950 text-slate-300 hover:border-white/20 hover:text-white"
                   }`}
                 >
-                  <span className="block text-sm font-bold">{method.label}</span>
+                  <span className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-bold">{method.label}</span>
+                    {isActive ? (
+                      <span className="rounded-full border border-emerald-300/40 bg-emerald-300/10 px-2 py-0.5 text-[10px] font-bold text-emerald-100">
+                        Active
+                      </span>
+                    ) : null}
+                  </span>
                   <span
                     className={`mt-1 block text-xs font-semibold ${
-                      method.disabled ? "text-amber-300/80" : "text-slate-500"
+                      unavailable ? "text-amber-300/80" : "text-slate-500"
                     }`}
                   >
                     {method.helper}
@@ -293,21 +378,135 @@ export function SettingsView({
               );
             })}
           </div>
+          {notificationNotice ? (
+            <p
+              role="status"
+              className="mt-3 rounded-lg border border-amber-300/25 bg-amber-300/10 px-4 py-3 text-sm leading-6 text-amber-50"
+            >
+              {notificationNotice}
+            </p>
+          ) : null}
         </div>
-      </section>
+      </CollapsibleSection>
 
-      <section className="rounded-lg border border-white/10 bg-white/[0.045] p-5 shadow-xl shadow-slate-950/10">
-        <h3 className="text-xl font-semibold text-white">Privacy note</h3>
-        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
-          No account, database, provider integration, autonomous agent, or action-sending workflow
-          is connected. The inbox scan is a local prototype using sample emails: it does not connect
-          to Gmail or Outlook, and no real email tokens are stored. Optional local Ollama testing
-          only contacts an AI engine running on this device. Clearing local data removes the saved
-          prototype workspace, validation notes, and feedback from this browser. Export anything
-          useful before clearing data you want to keep. The local backup export is a JSON file for
-          safekeeping; automatic import is not built in this prototype.
+      <CollapsibleSection
+        eyebrow="Beta feedback"
+        title="Tell us what alerts you'd want"
+        badge="Local only"
+        badgeTone="amber"
+        description="Optional. Saved only in this browser for beta feedback. It does not send your contact details anywhere."
+      >
+        <ToggleRow
+          label="Mention this in beta feedback"
+          description="Note that you'd like to hear when email or text alerts are ready. This is saved only in this browser. AdminAvenger will not email or text you, and no contact details are collected."
+          checked={inboxScanSettings.betaInterestFutureAlerts}
+          onChange={(checked) =>
+            onUpdateInboxScanSettings({ betaInterestFutureAlerts: checked })
+          }
+        />
+        <label className="mt-3 block">
+          <span className="block text-sm font-bold text-white">What would you want alerts for?</span>
+          <span className="mt-1 block text-xs leading-5 text-slate-500">
+            Free text, saved locally and included in your local backup. Please do not enter your
+            phone number or email address — they are not needed and not collected.
+          </span>
+          <textarea
+            value={inboxScanSettings.betaAlertsNote}
+            onChange={(event) =>
+              onUpdateInboxScanSettings({ betaAlertsNote: event.target.value.slice(0, 500) })
+            }
+            rows={3}
+            maxLength={500}
+            placeholder="e.g. refund deadlines, price rises, subscriptions renewing soon"
+            className="mt-2 w-full rounded-lg border border-white/10 bg-slate-950/60 p-3 text-sm leading-6 text-slate-200 placeholder:text-slate-600 focus:border-emerald-300/40 focus:outline-none focus:ring-2 focus:ring-emerald-300/30"
+          />
+        </label>
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        eyebrow="Phone beta"
+        title="Install on your phone"
+        badge="Works now"
+        badgeTone="emerald"
+        description="You can add AdminAvenger to your phone home screen during the beta."
+      >
+        <div className="grid gap-3 md:grid-cols-2">
+          <article className="rounded-lg border border-white/10 bg-slate-950/60 p-4">
+            <h4 className="text-sm font-bold text-white">iPhone</h4>
+            <p className="mt-2 text-sm leading-6 text-slate-400">
+              Open in Safari, tap Share, then Add to Home Screen.
+            </p>
+          </article>
+          <article className="rounded-lg border border-white/10 bg-slate-950/60 p-4">
+            <h4 className="text-sm font-bold text-white">Android</h4>
+            <p className="mt-2 text-sm leading-6 text-slate-400">
+              Open in Chrome, tap the three-dot menu, then Add to Home screen or Install app.
+            </p>
+          </article>
+        </div>
+        <p className="mt-4 rounded-lg border border-amber-300/25 bg-amber-300/10 px-4 py-3 text-sm leading-6 text-amber-50">
+          Saved data stays in the browser/app on that device. Clearing browser data or deleting the
+          app can delete saved admin unless you export a backup.
         </p>
-      </section>
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        eyebrow="Help & safety"
+        title="What AdminAvenger can and can't do"
+        description="Plain-English guardrails for private beta. AdminAvenger prepares; you decide."
+      >
+        <div className="grid gap-3 md:grid-cols-2">
+          {trustSections.map((section) => (
+            <article
+              key={section.title}
+              className="rounded-lg border border-white/10 bg-slate-950/60 p-4"
+            >
+              <h4 className="text-sm font-bold text-white">{section.title}</h4>
+              <p className="mt-2 text-sm leading-6 text-slate-400">{section.body}</p>
+            </article>
+          ))}
+        </div>
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        eyebrow="Privacy note"
+        title="What is and isn't connected"
+        description="A summary of what stays on this device."
+      >
+        <p className="max-w-3xl text-sm leading-6 text-slate-400">
+          No account, database, provider integration, autonomous agent, or action-sending workflow
+          is connected. The inbox scan is a local preview using sample emails: it does not connect to
+          Gmail or Outlook, and no real email tokens are stored. AdminAvenger does not email or text
+          you, and never stores phone numbers or email addresses. Optional local Ollama testing only
+          contacts an AI engine running on this device. The beta feedback note is saved only in this
+          browser and included in the local backup. Clearing local data removes the saved workspace,
+          validation notes, inbox scan preferences, and feedback from this browser. The local backup
+          export is a JSON file for safekeeping; automatic import is not built in this prototype.
+        </p>
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        eyebrow="Advanced"
+        title="Advanced / founder tools"
+        description="Prototype-only screens for testing and overview. Tucked away so normal use starts with checking something."
+      >
+        <div className="flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={() => onNavigate("dashboard")}
+            className="rounded-lg border border-white/10 bg-slate-950 px-4 py-2.5 text-sm font-bold text-slate-200 transition hover:border-emerald-300/40 hover:text-white focus:outline-none focus:ring-2 focus:ring-emerald-300/40"
+          >
+            Open dashboard
+          </button>
+          <button
+            type="button"
+            onClick={() => onNavigate("validation")}
+            className="rounded-lg border border-white/10 bg-slate-950 px-4 py-2.5 text-sm font-bold text-slate-200 transition hover:border-emerald-300/40 hover:text-white focus:outline-none focus:ring-2 focus:ring-emerald-300/40"
+          >
+            Open validation notes
+          </button>
+        </div>
+      </CollapsibleSection>
     </div>
   );
 }

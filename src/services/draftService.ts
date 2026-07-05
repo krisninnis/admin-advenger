@@ -78,6 +78,20 @@ const createMockDraftForCase = (adminCase: AdminCase): AdminDraft => {
     };
   }
 
+  if (adminCase.decisionResult) {
+    const decision = adminCase.decisionResult;
+
+    return {
+      id: `draft-${crypto.randomUUID()}`,
+      findingId: adminCase.findingId,
+      subject: decision.title,
+      body: decision.draftMessage ?? "Hello,\n\nI am asking you to review this notice or letter. Please confirm what evidence you need and the next step.\n\nKind regards,",
+      recommendedNextStep: decision.nextSteps[0] ?? "Gather the evidence and check the deadline before acting.",
+      chaseAfterDays: 7,
+      createdAt: new Date().toISOString(),
+    };
+  }
+
   if (adminCase.delayRepayAssessment) {
     const { extracted, evidenceMissing } = adminCase.delayRepayAssessment;
     const missingLine =
@@ -162,6 +176,13 @@ const createMockDraftForCase = (adminCase: AdminCase): AdminDraft => {
       body:
         "Hello,\n\nI am following up on the item below. Please confirm the current status and any action required from me.\n\nThank you.",
       recommendedNextStep: "Check the original text and make the draft more specific.",
+      chaseAfterDays: 7,
+    },
+    admin_dispute: {
+      subject: `Review request: ${adminCase.title}`,
+      body:
+        "Hello,\n\nI am asking you to review this notice or letter. Please confirm what evidence you need and the next step.\n\nKind regards,",
+      recommendedNextStep: "Gather the evidence and check the deadline before acting.",
       chaseAfterDays: 7,
     },
   };

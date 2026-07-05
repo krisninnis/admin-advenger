@@ -79,6 +79,7 @@ const opportunityTypeLabels: Record<string, string> = {
   delivery_update: "Delivery update",
   receipt_guardian: "Proof saved",
   suspicious_email_risk: "Email safety",
+  admin_dispute_check: "Admin/rights check",
   no_action_needed: "No action needed",
 };
 

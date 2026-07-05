@@ -1,3 +1,5 @@
+import type { DecisionResult } from "./lib/decisionEngine/types";
+
 export type SourceType =
   | "email"
   | "pdf"
@@ -16,6 +18,7 @@ export type FindingCategory =
   | "bill_increase"
   | "warranty"
   | "important_reply"
+  | "admin_dispute"
   | "unknown";
 
 export type FindingUrgency = "low" | "medium" | "high";
@@ -121,6 +124,7 @@ export type OpportunityType =
   | "warranty_or_fault"
   | "bill_or_price_increase"
   | "suspicious_email_risk"
+  | "admin_dispute_check"
   | "no_action_needed"
   | "needs_human_check"
   | "unknown";
@@ -432,6 +436,7 @@ export type AdminCase = {
   delayRepayAssessment?: DelayRepayAssessment;
   broadbandPriceRiseAssessment?: BroadbandPriceRiseAssessment;
   emailSafetyAssessment?: EmailSafetyAssessment;
+  decisionResult?: DecisionResult;
   createdAt: string;
   updatedAt: string;
   evidence: EvidenceItem[];

@@ -9,6 +9,7 @@ import type {
 } from "../types";
 import { assessBroadbandPriceRise, isBroadbandPriceRiseScenario } from "./broadbandPriceRiseAssessment";
 import { assessUkTrainDelayRefund } from "./delayRepayAssessment";
+import { analyseDecisionProblem } from "./decisionEngine/decisionEngine";
 import {
   extractEnergyAnnualCosts,
   extractTotalCostMention,
@@ -289,6 +290,22 @@ const evidenceForFinding = (
     ];
   }
 
+  if (finding.category === "admin_dispute") {
+    const decision = analyseDecisionProblem(text);
+
+    return [
+      ...decision.sourceFacts.map((fact) => createEvidence(caseId, fact.label, fact.value, "detected")),
+      ...decision.possibleGrounds.map((ground) => createEvidence(caseId, "Possible ground", ground, "detected")),
+      ...decision.evidenceNeeded.map((need) =>
+        createEvidence(caseId, `Missing: ${need}`, "Needed before acting", "manual"),
+      ),
+      ...decision.deadlines.map((deadline) => createEvidence(caseId, "Deadline/urgency", deadline, "manual")),
+      ...decision.risks.map((risk) => createEvidence(caseId, "Risk", risk, "manual")),
+      createEvidence(caseId, "Safety note", decision.safetyNotes[0] ?? "", "manual"),
+      createEvidence(caseId, "Source", item.title, "user_text"),
+    ];
+  }
+
   const lowerText = text.toLowerCase();
   const money = getEvidenceValue(text, /(?:£|GBP\s?)\d+(?:,\d{3})*(?:\.\d{2})?/i, "Amount not stated");
   const dateClue = getEvidenceValue(
@@ -534,6 +551,10 @@ export const createAdminCase = (finding: AdminFinding, item: AdminItem): AdminCa
   const isTravelRecoveryCase = isTravelRecoveryFinding(finding, item);
   const isEnergyPriceChangeCase = isEnergyPriceChangeFinding(finding, item);
   const isEmailSafetyCase = isSuspiciousEmailFinding(finding, item);
+  const isDecisionEngineCase = finding.category === "admin_dispute";
+  const decisionResult = isDecisionEngineCase
+    ? analyseDecisionProblem(`${item.title}\n${item.rawText}`)
+    : undefined;
   const travelRecovery = extractTravelRecoveryDetails(`${item.title}\n${item.rawText}`);
   const energyPriceChange = extractEnergyAnnualCosts(`${item.title}\n${item.rawText}`);
   const emailSafetyAssessment = assessEmailSafety(`${item.title}\n${item.rawText}`, item.sourceType);
@@ -580,6 +601,8 @@ export const createAdminCase = (finding: AdminFinding, item: AdminItem): AdminCa
             ? "Possible money recovery found"
           : isEnergyPriceChangeCase
             ? "Energy prices are changing"
+          : isDecisionEngineCase
+            ? decisionResult!.title
           : finding.title,
     category: finding.category,
     summary: isBroadbandPriceRiseCase
@@ -594,6 +617,8 @@ export const createAdminCase = (finding: AdminFinding, item: AdminItem): AdminCa
             ? "This looks like a travel disruption where an extra hotel night may have created a recoverable cost. AdminAvenger found the amount, booking reference, company replies, and missing proof needed before asking for repayment."
           : isEnergyPriceChangeCase
             ? "AdminAvenger found an energy price-change notice with old and new annual estimates. This is a checking opportunity, not a confirmed saving."
+          : isDecisionEngineCase
+            ? `${decisionResult!.plainEnglishSummary} ${decisionResult!.whatThisLooksLike}`
         : finding.summary,
     valueLabel: isBroadbandPriceRiseCase
       ? broadbandPriceRiseAssessment.annualIncrease
@@ -609,6 +634,14 @@ export const createAdminCase = (finding: AdminFinding, item: AdminItem): AdminCa
           : "Potential recovery amount needs checking"
       : isEmailSafetyCase
         ? emailSafetyAssessment.overallLabel
+      : isDecisionEngineCase
+        ? decisionResult!.amountMentioned
+          ? `${decisionResult!.amountMentioned} (${
+              decisionResult!.amountTreatment === "amount_being_demanded"
+                ? "amount being demanded"
+                : "amount mentioned"
+            })`
+          : finding.estimatedValue
       : finding.estimatedValue,
     urgency: finding.urgency,
     confidence: finding.confidence,
@@ -625,6 +658,8 @@ export const createAdminCase = (finding: AdminFinding, item: AdminItem): AdminCa
             ? "Gather the proof of payment, loveholidays confirmation, booking reference, and any flight-change evidence. Then send Air Mauritius a concise reimbursement request for the extra hotel night. Ask them to confirm if anything else is needed."
           : isEnergyPriceChangeCase
             ? "Review whether a cheaper tariff, fixed deal, supplier switch, or support option is worth checking. Keep this as evidence of the new annual estimate."
+          : isDecisionEngineCase
+            ? decisionResult!.nextSteps.slice(0, 2).join(" ")
         : finding.suggestedAction,
     chaseDate,
     broadbandPriceRiseAssessment: isBroadbandPriceRiseCase
@@ -632,6 +667,7 @@ export const createAdminCase = (finding: AdminFinding, item: AdminItem): AdminCa
       : undefined,
     delayRepayAssessment: isDelayRepayCase ? delayRepayAssessment : undefined,
     emailSafetyAssessment: isEmailSafetyCase ? emailSafetyAssessment : undefined,
+    decisionResult: isDecisionEngineCase ? decisionResult : undefined,
     createdAt: finding.createdAt,
     updatedAt: now,
     evidence: evidenceForFinding(caseId, finding, item),

@@ -20,6 +20,15 @@ import {
   type PhotoIntakeMetadata,
 } from "../lib/photoIntake";
 import { assessEmailSafety } from "../lib/suspiciousEmail";
+import {
+  isCoarsePointerEnvironment,
+  shouldSubmitOnEnterKey,
+} from "../lib/checkInputKeyboard";
+import {
+  photoAcceptAttribute,
+  quickUploadAcceptAttribute,
+  textFileAcceptAttribute,
+} from "../lib/fileIntakeAccept";
 import type { ServiceStatus } from "../services/analysisService";
 import { readTextFromPhoto } from "../services/localOcrService";
 import {
@@ -65,6 +74,7 @@ const categoryLabels: Record<AdminCase["category"], string> = {
   bill_increase: "Bill or price increase",
   warranty: "Warranty",
   important_reply: "Important reply",
+  admin_dispute: "Admin/rights check",
   unknown: "Needs review",
 };
 
@@ -77,7 +87,8 @@ const categoryPriority: Record<AdminCase["category"], number> = {
   important_reply: 5,
   deadline: 6,
   job_application: 7,
-  unknown: 8,
+  admin_dispute: 8,
+  unknown: 9,
 };
 
 const urgencyPriority: Record<AdminCase["urgency"], number> = {
@@ -423,6 +434,8 @@ export function HomeView({
   const [showExamples, setShowExamples] = useState(false);
   const [showDeveloperOptions, setShowDeveloperOptions] = useState(false);
   const [showInboxTools, setShowInboxTools] = useState(false);
+  const [showAddMenu, setShowAddMenu] = useState(false);
+  const [isDesktopPointer, setIsDesktopPointer] = useState(false);
   const isChecking = analysisStatus === "loading";
   const isAiReading = aiStatus === "loading";
   const isReadingPhoto = ocrStatus === "reading";
@@ -553,6 +566,10 @@ export function HomeView({
   useEffect(() => {
     saveAiProviderSettings(aiSettings);
   }, [aiSettings]);
+
+  useEffect(() => {
+    setIsDesktopPointer(!isCoarsePointerEnvironment());
+  }, []);
 
   const clearInput = () => {
     if (imagePreviewUrl) {
@@ -803,6 +820,29 @@ export function HomeView({
     }
   };
 
+  const handleQuickPhotoCapture = async (file?: File) => {
+    setShowAddMenu(false);
+    setSelectedInput("image");
+    await handleImageUpload(file);
+  };
+
+  const handleQuickFileUpload = async (file?: File) => {
+    setShowAddMenu(false);
+
+    if (!file) {
+      return;
+    }
+
+    if (isSupportedPhotoFile(file)) {
+      setSelectedInput("image");
+      await handleImageUpload(file);
+      return;
+    }
+
+    setSelectedInput("file");
+    await handleFileUpload(file);
+  };
+
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       <header className="mx-auto flex max-w-2xl flex-col items-center space-y-3 pt-1 text-center sm:pt-4">
@@ -1040,16 +1080,99 @@ export function HomeView({
 
         <div className="mt-5">
           {selectedInput === "paste" ? (
-            <label className="block text-sm font-semibold text-slate-300">
-              Paste your message
+            <div>
+              <div className="flex items-center justify-between gap-3">
+                <label className="block text-sm font-semibold text-slate-300" htmlFor="paste-message">
+                  Paste your message
+                </label>
+                <div
+                  className="relative"
+                  onBlur={(event) => {
+                    if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+                      setShowAddMenu(false);
+                    }
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") {
+                      setShowAddMenu(false);
+                    }
+                  }}
+                >
+                  <button
+                    type="button"
+                    aria-label="Add photo or file"
+                    aria-haspopup="menu"
+                    aria-expanded={showAddMenu}
+                    onClick={() => setShowAddMenu((current) => !current)}
+                    className="flex h-9 w-9 flex-none items-center justify-center rounded-full border border-white/15 bg-slate-950 text-lg font-bold text-slate-200 transition hover:border-emerald-300/50 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/60"
+                  >
+                    <span aria-hidden="true">+</span>
+                  </button>
+
+                  {showAddMenu ? (
+                    <div
+                      role="menu"
+                      aria-label="Add photo or file"
+                      className="absolute right-0 z-10 mt-2 w-48 space-y-1 rounded-lg border border-white/10 bg-slate-900 p-2 shadow-xl shadow-slate-950/40"
+                    >
+                      <label
+                        role="menuitem"
+                        className="flex cursor-pointer items-center rounded-md px-3 py-2 text-sm font-semibold text-slate-200 transition hover:bg-white/5 hover:text-white focus-within:ring-2 focus-within:ring-emerald-300/60"
+                      >
+                        Take photo
+                        <input
+                          type="file"
+                          accept={photoAcceptAttribute}
+                          capture="environment"
+                          onChange={(event) => void handleQuickPhotoCapture(event.target.files?.[0])}
+                          className="sr-only"
+                        />
+                      </label>
+                      <label
+                        role="menuitem"
+                        className="flex cursor-pointer items-center rounded-md px-3 py-2 text-sm font-semibold text-slate-200 transition hover:bg-white/5 hover:text-white focus-within:ring-2 focus-within:ring-emerald-300/60"
+                      >
+                        Upload file
+                        <input
+                          type="file"
+                          accept={quickUploadAcceptAttribute}
+                          onChange={(event) => void handleQuickFileUpload(event.target.files?.[0])}
+                          className="sr-only"
+                        />
+                      </label>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
               <textarea
+                id="paste-message"
                 value={rawText}
                 onChange={(event) => setRawText(event.target.value)}
+                onKeyDown={(event) => {
+                  if (
+                    shouldSubmitOnEnterKey({
+                      key: event.key,
+                      shiftKey: event.shiftKey,
+                      isComposing: event.nativeEvent.isComposing,
+                      hasText: rawText.trim().length > 0,
+                      isBusy: isChecking || isAiReading || isReadingPhoto,
+                      isCoarsePointer: !isDesktopPointer,
+                    })
+                  ) {
+                    event.preventDefault();
+                    void handleCheck();
+                  }
+                }}
                 rows={9}
                 placeholder="Paste the email, bill, letter, or message here…"
                 className="mt-2 w-full resize-y rounded-lg border border-white/10 bg-slate-950 px-4 py-4 text-base leading-7 text-white outline-none transition placeholder:text-slate-600 focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20"
               />
-            </label>
+              {isDesktopPointer ? (
+                <p className="mt-1 text-xs text-slate-500">
+                  Press Enter to check, Shift+Enter for a new line.
+                </p>
+              ) : null}
+            </div>
           ) : (
             <div className="rounded-lg border border-dashed border-white/15 bg-slate-950/60 p-5">
               <label className="block text-base font-bold text-white">
@@ -1063,11 +1186,7 @@ export function HomeView({
                 <input
                   key={`${selectedInput}-${inputResetKey}`}
                   type="file"
-                  accept={
-                    selectedInput === "image"
-                      ? "image/*"
-                      : ".txt,.md,.csv,.json,.pdf,.doc,.docx,text/plain,text/markdown,text/csv,application/json"
-                  }
+                  accept={selectedInput === "image" ? photoAcceptAttribute : textFileAcceptAttribute}
                   capture={selectedInput === "image" ? "environment" : undefined}
                   onChange={(event) =>
                     selectedInput === "image"
@@ -1159,6 +1278,7 @@ export function HomeView({
             type="button"
             onClick={handleCheck}
             disabled={isChecking || isAiReading || isReadingPhoto}
+            aria-busy={isChecking || isAiReading || isReadingPhoto}
             className="w-full rounded-lg bg-emerald-400 px-5 py-4 text-lg font-bold text-slate-950 shadow-lg shadow-emerald-950/30 transition hover:bg-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:ring-offset-2 focus:ring-offset-slate-950 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400 disabled:shadow-none"
           >
             {isReadingPhoto

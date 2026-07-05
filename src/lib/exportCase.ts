@@ -22,6 +22,7 @@ const categoryLabels: Record<AdminCase["category"], string> = {
   bill_increase: "Bill increase",
   warranty: "Warranty",
   important_reply: "Important reply",
+  admin_dispute: "Admin/rights check",
   unknown: "Unknown",
 };
 
@@ -38,6 +39,7 @@ const opportunityTypeLabels: Record<string, string> = {
   delivery_update: "Delivery update",
   receipt_guardian: "Proof saved",
   suspicious_email_risk: "Email safety",
+  admin_dispute_check: "Admin/rights check",
   no_action_needed: "No action needed",
 };
 

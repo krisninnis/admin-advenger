@@ -16,6 +16,7 @@ const categoryLabels: Record<AdminFinding["category"], string> = {
   bill_increase: "Bill increase",
   warranty: "Warranty",
   important_reply: "Important reply",
+  admin_dispute: "Admin/rights check",
   unknown: "Unknown",
 };
 

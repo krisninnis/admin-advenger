@@ -22,6 +22,7 @@ const recordTypes = new Set<OpportunityType>([
   "no_action_needed",
   "delivery_update",
   "receipt_guardian",
+  "admin_dispute_check",
 ]);
 
 export const getGuidedCaseMode = (

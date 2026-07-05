@@ -219,7 +219,8 @@ export function GuidedRecoveryPanel({
     (isSafetyCase ||
       opportunity.opportunityType === "no_action_needed" ||
       opportunity.opportunityType === "delivery_update" ||
-      opportunity.opportunityType === "receipt_guardian");
+      opportunity.opportunityType === "receipt_guardian" ||
+      opportunity.opportunityType === "admin_dispute_check");
 
   return (
     <div className="space-y-4">

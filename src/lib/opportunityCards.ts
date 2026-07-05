@@ -95,6 +95,10 @@ const getOpportunityType = (adminCase: AdminCase, item?: AdminItem): Opportunity
     return "bill_or_price_increase";
   }
 
+  if (adminCase.decisionResult) {
+    return "admin_dispute_check";
+  }
+
   if (
     adminCase.category === "bill_increase" &&
     (/energy prices are changing/i.test(adminCase.title) || isEnergyPriceChangeText(text))
@@ -265,6 +269,53 @@ export const deriveOpportunityCard = (
         "Only mark savings confirmed if you actually reduce the bill or avoid the rise.",
       ],
       riskLevel: getRiskLevel(adminCase),
+      confidenceLabel: adminCase.confidence,
+      sourceCaseType: adminCase.category,
+      createdAt,
+      updatedAt,
+    };
+  }
+
+  if (adminCase.decisionResult) {
+    const decision = adminCase.decisionResult;
+    const amountLabel =
+      decision.amountTreatment === "amount_being_demanded"
+        ? "Amount being demanded"
+        : decision.amountTreatment === "amount_mentioned_only"
+          ? "Amount mentioned"
+          : undefined;
+    const decisionAmount = decision.amountMentioned ? toAmount(decision.amountMentioned) : undefined;
+
+    return {
+      id: `opportunity-${adminCase.id}`,
+      caseId: adminCase.id,
+      opportunityType,
+      title: decision.title,
+      plainEnglishSummary: `${decision.plainEnglishSummary} ${decision.whatThisLooksLike}`,
+      // Amounts here are only ever "amount being demanded"/"amount mentioned" - never
+      // a confirmed saving or pending recovery. Status "unknown" keeps that safe framing.
+      moneyAtStake:
+        amountLabel && decisionAmount !== undefined
+          ? moneyImpact(amountLabel, decisionAmount, "one_off", "unknown")
+          : undefined,
+      opportunityNote: decision.safetyNotes[0],
+      statusLabel: decision.strengthLabel,
+      evidenceFound: [
+        ...decision.sourceFacts.map((fact) => `${fact.label}: ${fact.value}`),
+        ...decision.possibleGrounds,
+      ],
+      // Fold "Questions to answer" into the missing-information list (What to have
+      // ready) rather than adding a new UI section - this stays behind the single
+      // Check a message result card.
+      missingInformation: [
+        ...decision.evidenceNeeded,
+        ...decision.deadlines,
+        ...(decision.questionsToAnswer ?? []),
+      ],
+      nextBestAction:
+        decision.nextSteps[0] ?? "Gather the evidence and check the deadline before acting.",
+      recommendedPathSteps: decision.nextSteps,
+      riskLevel: decision.caseStrength === "urgent_get_advice" ? "high" : getRiskLevel(adminCase),
       confidenceLabel: adminCase.confidence,
       sourceCaseType: adminCase.category,
       createdAt,

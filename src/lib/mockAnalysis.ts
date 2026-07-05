@@ -8,6 +8,8 @@ import type {
 } from "../types";
 import { assessBroadbandPriceRise, isBroadbandPriceRiseScenario } from "./broadbandPriceRiseAssessment";
 import { assessUkTrainDelayRefund } from "./delayRepayAssessment";
+import { classifyDecisionDocument } from "./decisionEngine/classifier";
+import { analyseDecisionProblem } from "./decisionEngine/decisionEngine";
 import {
   extractEnergyAnnualCosts,
   extractTotalCostMention,
@@ -560,6 +562,55 @@ const createReceiptFinding = (item: AdminItem): AdminFinding => ({
   createdAt: new Date().toISOString(),
 });
 
+// The Decision Engine only takes over for text that clearly matches one of its
+// supported rights/dispute document types (parking, bailiff, debt, TV Licence,
+// bank complaint, consumer dispute). It never guesses on plain/ambiguous text -
+// that keeps the existing refund/subscription/energy/safety flows in charge
+// wherever they already apply.
+const isDecisionEngineDocument = (text: string) =>
+  classifyDecisionDocument(text) !== "unknown_admin_dispute";
+
+const decisionUrgencyMap: Record<
+  ReturnType<typeof analyseDecisionProblem>["caseStrength"],
+  FindingUrgency
+> = {
+  urgent_get_advice: "high",
+  stronger_possible_ground: "medium",
+  possible_ground: "medium",
+  weak_or_missing_evidence: "low",
+  not_enough_information: "low",
+};
+
+const decisionConfidenceMap: Record<
+  ReturnType<typeof analyseDecisionProblem>["caseStrength"],
+  FindingConfidence
+> = {
+  urgent_get_advice: "high",
+  stronger_possible_ground: "high",
+  possible_ground: "medium",
+  weak_or_missing_evidence: "low",
+  not_enough_information: "low",
+};
+
+const createDecisionEngineFinding = (item: AdminItem, text: string): AdminFinding => {
+  const decision = analyseDecisionProblem(text);
+
+  return {
+    id: `finding-${crypto.randomUUID()}`,
+    itemId: item.id,
+    category: "admin_dispute",
+    title: decision.title,
+    summary: decision.plainEnglishSummary,
+    whyItMatters: decision.whatThisLooksLike,
+    suggestedAction: decision.nextSteps[0] ?? "Review the notice and gather evidence before acting.",
+    estimatedValue: decision.amountMentioned,
+    urgency: decisionUrgencyMap[decision.caseStrength],
+    confidence: decisionConfidenceMap[decision.caseStrength],
+    status: "new",
+    createdAt: new Date().toISOString(),
+  };
+};
+
 export const analyseAdminItem = (item: AdminItem): AdminFinding[] => {
   const text = `${item.title} ${item.rawText} ${sourceTypeLabels[item.sourceType]}`.toLowerCase();
   const emailSafetyAssessment = assessEmailSafety(`${item.title}\n${item.rawText}`);
@@ -654,6 +705,29 @@ export const analyseAdminItem = (item: AdminItem): AdminFinding[] => {
       }
     : undefined;
 
+  // Decision Engine only ever runs after every other dedicated flow above has had a
+  // chance to claim the message. This keeps refund/subscription/energy/safety/travel/
+  // broadband/train-delay flows fully in charge wherever they already work well, and
+  // lets Decision Engine catch parking/debt/bailiff/TV Licence/bank/consumer dispute
+  // style messages that nothing else here already handles better.
+  const decisionEngineFinding =
+    !highRiskEmailFinding &&
+    !approvedRefundFinding &&
+    !travelRecoveryFinding &&
+    !travelEvidenceCheckFinding &&
+    !subscriptionFinding &&
+    !energyPriceChangeFinding &&
+    !noActionFinding &&
+    !receiptFinding &&
+    !deliveryIssueFinding &&
+    !deliveryUpdateFinding &&
+    !appointmentTaskFinding &&
+    !broadbandPriceRiseFinding &&
+    !trainDelayFinding &&
+    isDecisionEngineDocument(`${item.title}\n${item.rawText}`)
+      ? createDecisionEngineFinding(item, `${item.title}\n${item.rawText}`)
+      : undefined;
+
   const findings = categoryRules
     .filter((rule) => {
       if (
@@ -673,6 +747,10 @@ export const analyseAdminItem = (item: AdminItem): AdminFinding[] => {
       }
 
       if (deliveryIssueFinding || deliveryUpdateFinding) {
+        return false;
+      }
+
+      if (decisionEngineFinding) {
         return false;
       }
 
@@ -711,6 +789,7 @@ export const analyseAdminItem = (item: AdminItem): AdminFinding[] => {
     appointmentTaskFinding,
     broadbandPriceRiseFinding,
     trainDelayFinding,
+    decisionEngineFinding,
   ].filter((finding): finding is AdminFinding => Boolean(finding));
   const allFindings = [...priorityFindings, ...findings];
 

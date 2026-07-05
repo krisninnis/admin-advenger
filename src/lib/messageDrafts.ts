@@ -430,6 +430,30 @@ const createEmailSafetyChecklist = (adminCase: AdminCase, opportunity: Opportuni
   );
 };
 
+const createAdminDisputeMessage = (adminCase: AdminCase, opportunity: OpportunityCard) => {
+  const decision = adminCase.decisionResult;
+  const fullText =
+    decision?.draftMessage ??
+    joinMessage([
+      "Hello,",
+      "I am asking you to review this notice or letter.",
+      "Please confirm what evidence you need and the next step.",
+      "Kind regards,",
+    ]);
+
+  return makeDraft(
+    adminCase,
+    "admin_dispute_check",
+    decision?.title ?? "Admin dispute review request",
+    undefined,
+    fullText,
+    opportunity.evidenceFound,
+    opportunity.missingInformation,
+    decision?.safetyNotes[0] ??
+      "AdminAvenger has not sent this. This is a draft for you to review, edit, and send yourself.",
+  );
+};
+
 const createGenericMessage = (adminCase: AdminCase, opportunity: OpportunityCard) => {
   const fullText = joinMessage([
     "Hello,",
@@ -491,6 +515,10 @@ export const createPreparedMessageDraft = ({
 
   if (opportunity.opportunityType === "delivery_issue") {
     return createDeliveryMessage(adminCase, item);
+  }
+
+  if (opportunity.opportunityType === "admin_dispute_check") {
+    return createAdminDisputeMessage(adminCase, opportunity);
   }
 
   return createGenericMessage(adminCase, opportunity);

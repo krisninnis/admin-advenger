@@ -188,6 +188,17 @@ export const deriveImpactFromCase = (
     ];
   }
 
+  if (card.opportunityType === "admin_dispute_check") {
+    return [
+      makeEntry(
+        adminCase,
+        "no_saving",
+        "not_applicable",
+        "Admin/rights notice checked. Any amount mentioned is not counted as money saved or recovered.",
+      ),
+    ];
+  }
+
   return [];
 };
 

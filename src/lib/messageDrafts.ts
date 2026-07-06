@@ -454,6 +454,83 @@ const createAdminDisputeMessage = (adminCase: AdminCase, opportunity: Opportunit
   );
 };
 
+// Universal Credit sanction notices never come with module-authored draft
+// wording (see decisionEngine/modules/ucSanction.ts - it has evidenceNeeded
+// and questionsToAnswer, but no draftMessage), so this builds a UC-journal
+// style message from the same sourceFacts/evidenceNeeded/questionsToAnswer
+// the rest of the app already shows, rather than the generic
+// "review this notice or letter" fallback above. Kept hedged throughout:
+// "from what is shown", "please confirm", "I would like this looked at
+// again" - never an assertion that the sanction was wrong.
+const createUcSanctionJournalMessage = (adminCase: AdminCase) => {
+  const decision = adminCase.decisionResult;
+  const sanctionStartDate = decision?.sourceFacts.find(
+    (fact) => fact.label === "Sanction start date",
+  )?.value;
+  const fullText = joinMessage([
+    "Hello,",
+    "I am asking for clarification about my Universal Credit sanction.",
+    sanctionStartDate
+      ? `From what is shown, the sanction starts on ${sanctionStartDate}.`
+      : "From what is shown, I have received a sanction decision.",
+    "Please confirm the exact reason given for the sanction and the decision date.",
+    "I would like this looked at again if a Mandatory Reconsideration applies, and I am asking for clarification about hardship support if I am struggling to cover food, heating, or rent while the sanction applies.",
+    "Kind regards,",
+  ]);
+
+  return makeDraft(
+    adminCase,
+    "uc_sanction_journal_message",
+    "Universal Credit sanction - request for clarification",
+    "Universal Credit journal (or DWP Universal Credit helpline)",
+    fullText,
+    compact([
+      sanctionStartDate ? `Sanction start date: ${sanctionStartDate}` : undefined,
+      ...(decision?.sourceFacts.map((fact) => `${fact.label}: ${fact.value}`) ?? []),
+    ]),
+    decision?.evidenceNeeded ?? [],
+    decision?.safetyNotes[0] ??
+      "AdminAvenger has not sent this. This message only asks for clarification. It does not dispute the sanction for you.",
+  );
+};
+
+// Same reasoning as above for UC statements/deductions - ucStatement.ts and
+// ucDeductions.ts both have rich sourceFacts (advance repayment, overpayment
+// recovery, deduction rate) but no draftMessage. "Please provide a
+// breakdown" mirrors the project's preferred safety wording exactly.
+const createUcDeductionBreakdownMessage = (adminCase: AdminCase) => {
+  const decision = adminCase.decisionResult;
+  const deductionFacts = (decision?.sourceFacts ?? []).filter((fact) =>
+    /advance repayment|overpayment recovery|third party deduction|deduction rate|overpayment amount/i.test(
+      fact.label,
+    ),
+  );
+  const fullText = joinMessage([
+    "Hello,",
+    "I am asking for clarification about deductions shown on my Universal Credit statement.",
+    deductionFacts.length > 0
+      ? `From what is shown: ${deductionFacts
+          .map((fact) => `${fact.label.toLowerCase()} ${fact.value}`)
+          .join(", ")}.`
+      : "From what is shown, one or more deductions have been applied to my payment.",
+    "Please provide a breakdown of each deduction, including what it is for, the total amount still owed, and the rate being taken each month.",
+    "If the deductions are causing hardship, please also confirm what support or a lower deduction rate may be available.",
+    "Kind regards,",
+  ]);
+
+  return makeDraft(
+    adminCase,
+    "uc_deduction_breakdown_request",
+    "Universal Credit deductions - request for a breakdown",
+    "Universal Credit journal (or DWP Universal Credit helpline)",
+    fullText,
+    compact(deductionFacts.map((fact) => `${fact.label}: ${fact.value}`)),
+    decision?.evidenceNeeded ?? [],
+    decision?.safetyNotes[0] ??
+      "AdminAvenger has not sent this. This message only asks for a breakdown. It does not dispute the deduction for you.",
+  );
+};
+
 const createGenericMessage = (adminCase: AdminCase, opportunity: OpportunityCard) => {
   const fullText = joinMessage([
     "Hello,",
@@ -518,6 +595,16 @@ export const createPreparedMessageDraft = ({
   }
 
   if (opportunity.opportunityType === "admin_dispute_check") {
+    const documentType = adminCase.decisionResult?.documentType;
+
+    if (documentType === "benefits_uc_sanction") {
+      return createUcSanctionJournalMessage(adminCase);
+    }
+
+    if (documentType === "benefits_uc_statement" || documentType === "benefits_uc_deductions") {
+      return createUcDeductionBreakdownMessage(adminCase);
+    }
+
     return createAdminDisputeMessage(adminCase, opportunity);
   }
 

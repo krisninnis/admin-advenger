@@ -18,6 +18,12 @@ type SimpleResultPanelProps = {
   details?: ReactNode;
   note?: string;
   compact?: boolean;
+  // The Guided Next Step button (e.g. "Create Mandatory Reconsideration
+  // draft") - shown right next to "Best next step" so there is always one
+  // obvious clickable action after a Check a message result. Separate from
+  // primaryAction/secondaryActions above, which are the existing save/ignore
+  // flow and must keep working unchanged.
+  guidedNextStepButton?: { label: string; onClick: () => void };
 };
 
 const moneyRowsFor = (opportunity: OpportunityCard) =>
@@ -93,6 +99,7 @@ export function SimpleResultPanel({
   details,
   note,
   compact = false,
+  guidedNextStepButton,
 }: SimpleResultPanelProps) {
   const moneyRows = moneyRowsFor(opportunity);
   const showNoMoneyLine = moneyRows.length === 0 && needsNoMoneyLine(opportunity);
@@ -163,6 +170,15 @@ export function SimpleResultPanel({
         <p className="mt-2 text-base leading-7 text-cyan-50/90">
           {opportunity.nextBestAction}
         </p>
+        {guidedNextStepButton ? (
+          <button
+            type="button"
+            onClick={guidedNextStepButton.onClick}
+            className="mt-4 min-h-11 rounded-lg bg-cyan-400 px-4 py-3 text-sm font-bold text-slate-950 shadow-lg shadow-cyan-950/30 transition hover:bg-cyan-300 focus:outline-none focus:ring-2 focus:ring-cyan-200 focus:ring-offset-2 focus:ring-offset-slate-900"
+          >
+            {guidedNextStepButton.label}
+          </button>
+        ) : null}
       </div>
 
       {note ? <p className="mt-4 text-sm leading-6 text-slate-500">{note}</p> : null}

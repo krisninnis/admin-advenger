@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { EmailSafetyModal } from "../components/EmailSafetyModal";
+import { GuidedNextStepPanel } from "../components/GuidedNextStepPanel";
 import { InboxScanPreview } from "../components/InboxScanPreview";
 import { InboxScanPromptCard } from "../components/InboxScanPromptCard";
 import { OpportunityCardPanel } from "../components/OpportunityCardPanel";
@@ -7,6 +8,7 @@ import { SimpleResultPanel, type SimpleResultAction } from "../components/Simple
 import { StatusBadge } from "../components/StatusBadge";
 import type { InboxScanSettings } from "../lib/inboxScanStorage";
 import { getGuidedCaseMode, type GuidedCaseMode } from "../lib/guidedCaseMode";
+import { deriveGuidedNextStep } from "../lib/guidedNextSteps";
 import {
   loadAiProviderSettings,
   saveAiProviderSettings,
@@ -431,6 +433,7 @@ export function HomeView({
   const [aiFallbackHint, setAiFallbackHint] = useState("");
   const [showDetailed, setShowDetailed] = useState(false);
   const [showEmailSafety, setShowEmailSafety] = useState(false);
+  const [showGuidedNextStep, setShowGuidedNextStep] = useState(false);
   const [showExamples, setShowExamples] = useState(false);
   const [showDeveloperOptions, setShowDeveloperOptions] = useState(false);
   const [showInboxTools, setShowInboxTools] = useState(false);
@@ -452,6 +455,14 @@ export function HomeView({
     primaryCase && primaryOpportunity
       ? getGuidedCaseMode(primaryCase, primaryOpportunity)
       : undefined;
+  // Guided Next Step - the single clickable action shown next to "Best next
+  // step" (create a draft, add evidence, answer questions, check a
+  // deadline). Derived the same way primaryOpportunity is: computed fresh
+  // from the case/item/finding, never stored on the case itself.
+  const guidedNextStep = useMemo(
+    () => (primaryCase ? deriveGuidedNextStep(primaryCase, result?.item, primaryFinding) : undefined),
+    [primaryCase, result?.item, primaryFinding],
+  );
   const hasClearCase = Boolean(
     primaryCase &&
       (primaryCase.category !== "unknown" ||
@@ -824,6 +835,27 @@ export function HomeView({
     setShowAddMenu(false);
     setSelectedInput("image");
     await handleImageUpload(file);
+  };
+
+  // Reuses the exact same save-flow decision the existing primary/secondary
+  // Save buttons already make (record vs. case, per opportunity type) -
+  // this never introduces a second, different way of saving a case.
+  const handleSaveToCaseFromGuidedPanel = () => {
+    if (!primaryCase) {
+      return;
+    }
+
+    if (
+      hideSaveCase ||
+      primaryOpportunity?.opportunityType === "receipt_guardian" ||
+      primaryOpportunity?.opportunityType === "suspicious_email_risk"
+    ) {
+      onSaveRecord(primaryCase.id);
+    } else {
+      onSaveCase(primaryCase.id);
+    }
+
+    setShowGuidedNextStep(false);
   };
 
   const handleQuickFileUpload = async (file?: File) => {
@@ -1337,6 +1369,22 @@ export function HomeView({
           onToggleDetails={() => setShowDetailed((current) => !current)}
           note={`Nothing has been saved yet. ${recordSaveHint}`}
           details={<OpportunityCardPanel opportunity={primaryOpportunity} />}
+          guidedNextStepButton={
+            guidedNextStep
+              ? {
+                  label: guidedNextStep.primaryAction.label,
+                  onClick: () => setShowGuidedNextStep(true),
+                }
+              : undefined
+          }
+        />
+      ) : null}
+
+      {showGuidedNextStep && guidedNextStep ? (
+        <GuidedNextStepPanel
+          guidedNextStep={guidedNextStep}
+          onClose={() => setShowGuidedNextStep(false)}
+          onSaveToCase={primaryCase ? handleSaveToCaseFromGuidedPanel : undefined}
         />
       ) : null}
 

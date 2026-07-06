@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { CollapsibleSection } from "../components/CollapsibleSection";
 import { DataControls } from "../components/DataControls";
+import { LegalDocumentViewer } from "../components/LegalDocumentViewer";
 import type { AppView } from "../components/Sidebar";
+import { legalDocumentOrder, legalDocuments, type LegalDocumentId } from "../data/legalNotices";
 import {
   isSelectableNotificationMethod,
   type InboxScanNotificationMethod,
@@ -16,6 +18,8 @@ type SettingsViewProps = {
   onNavigate: (view: AppView) => void;
   inboxScanSettings: InboxScanSettings;
   onUpdateInboxScanSettings: (updates: Partial<InboxScanSettings>) => void;
+  onViewTermsAgain: () => void;
+  onResetTermsAcceptance: () => void;
 };
 
 type ToggleRowProps = {
@@ -183,8 +187,13 @@ export function SettingsView({
   onNavigate,
   inboxScanSettings,
   onUpdateInboxScanSettings,
+  onViewTermsAgain,
+  onResetTermsAcceptance,
 }: SettingsViewProps) {
   const [notificationNotice, setNotificationNotice] = useState<string | undefined>(undefined);
+  const [activeLegalDocument, setActiveLegalDocument] = useState<LegalDocumentId | undefined>(
+    undefined,
+  );
   const activeNotificationMethod = isSelectableNotificationMethod(
     inboxScanSettings.notificationMethod,
   )
@@ -469,6 +478,57 @@ export function SettingsView({
           ))}
         </div>
       </CollapsibleSection>
+
+      <CollapsibleSection
+        eyebrow="Legal & safety"
+        title="Terms & Safety Notice"
+        description="Review what you agreed to, read each document, or reset acceptance for testing."
+      >
+        <div className="flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={onViewTermsAgain}
+            className="min-h-11 rounded-lg border border-emerald-300/30 bg-emerald-300/10 px-4 py-2.5 text-sm font-bold text-emerald-100 transition hover:border-emerald-200 hover:text-white focus:outline-none focus:ring-2 focus:ring-emerald-300/40"
+          >
+            View Terms &amp; Safety Notice again
+          </button>
+          <button
+            type="button"
+            onClick={onResetTermsAcceptance}
+            className="min-h-11 rounded-lg border border-white/10 bg-slate-950 px-4 py-2.5 text-sm font-bold text-slate-200 transition hover:border-white/20 hover:text-white focus:outline-none focus:ring-2 focus:ring-slate-400/40"
+          >
+            Reset acceptance (testing)
+          </button>
+        </div>
+
+        <p className="mt-4 text-sm font-bold text-white">Read an individual document</p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {legalDocumentOrder.map((id) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setActiveLegalDocument(id)}
+              className="min-h-9 rounded-full border border-white/10 bg-slate-950 px-3 py-1.5 text-xs font-bold text-slate-200 underline decoration-slate-500 decoration-dotted underline-offset-4 transition hover:border-white/20 hover:text-white focus:outline-none focus:ring-2 focus:ring-emerald-300/40"
+            >
+              {legalDocuments[id].title}
+            </button>
+          ))}
+        </div>
+
+        <p className="mt-4 max-w-3xl text-xs leading-5 text-slate-500">
+          "Reset acceptance" clears your saved Terms &amp; Safety acceptance from this browser and
+          shows the acceptance gate again next time the app loads. It does not delete your cases,
+          drafts, or money-tracking entries.
+        </p>
+      </CollapsibleSection>
+
+      {activeLegalDocument ? (
+        <LegalDocumentViewer
+          documentId={activeLegalDocument}
+          onSelectDocument={setActiveLegalDocument}
+          onClose={() => setActiveLegalDocument(undefined)}
+        />
+      ) : null}
 
       <CollapsibleSection
         eyebrow="Privacy"

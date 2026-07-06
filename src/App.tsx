@@ -16,6 +16,11 @@ import {
 import { deriveOpportunityCard } from "./lib/opportunityCards";
 import { createEmailSafetyFinding } from "./lib/suspiciousEmail";
 import {
+  hasAcceptedCurrentTerms,
+  resetTermsAcceptance,
+} from "./lib/termsAcceptance";
+import { TermsSafetyGate } from "./components/TermsSafetyGate";
+import {
   clearAllAdminAvengerLocalData,
   createAdminAvengerBackup,
   getLastStorageLoadDiagnostic,
@@ -94,36 +99,6 @@ const emptyAdminItemForm: AdminItemFormValues = {
   rawText: "",
 };
 
-const FIRST_RUN_DISCLAIMER_STORAGE_KEY =
-  "admin-avenger-first-run-disclaimer-v1";
-
-const readFirstRunDisclaimerDismissed = () => {
-  if (typeof window === "undefined") {
-    return false;
-  }
-
-  try {
-    return (
-      window.localStorage.getItem(FIRST_RUN_DISCLAIMER_STORAGE_KEY) ===
-      "dismissed"
-    );
-  } catch {
-    return false;
-  }
-};
-
-const saveFirstRunDisclaimerDismissed = () => {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  try {
-    window.localStorage.setItem(FIRST_RUN_DISCLAIMER_STORAGE_KEY, "dismissed");
-  } catch {
-    // Keep the app usable if localStorage is unavailable.
-  }
-};
-
 const buildInitialCases = () =>
   sampleFindings.map((finding) => {
     const item = sampleAdminItems.find(
@@ -196,8 +171,11 @@ function App() {
   const [homeResult, setHomeResult] = useState<HomeAnalysisResult>();
   const [currentView, setCurrentView] = useState<AppView>("home");
   const [storageSaveError, setStorageSaveError] = useState("");
-  const [isFirstRunDisclaimerDismissed, setIsFirstRunDisclaimerDismissed] =
-    useState(readFirstRunDisclaimerDismissed);
+  // Blocking pre-use legal/safety gate - the app is not usable at all until
+  // this is true. See src/lib/termsAcceptance.ts and
+  // src/components/TermsSafetyGate.tsx.
+  const [hasAcceptedTerms, setHasAcceptedTerms] = useState(hasAcceptedCurrentTerms);
+  const [showTermsReview, setShowTermsReview] = useState(false);
   const [dataControlMessage, setDataControlMessage] = useState("");
   const [inboxScanSettings, setInboxScanSettings] = useState<InboxScanSettings>(
     loadInboxScanSettings,
@@ -1128,9 +1106,25 @@ function App() {
     setDraftStatus("success");
   };
 
-  const handleDismissFirstRunDisclaimer = () => {
-    saveFirstRunDisclaimerDismissed();
-    setIsFirstRunDisclaimerDismissed(true);
+  const handleAcceptTerms = () => {
+    // TermsSafetyGate itself calls recordTermsAcceptance() before invoking
+    // this callback, so by the time we get here storage already reflects
+    // acceptance - this just lets the app render.
+    setHasAcceptedTerms(true);
+  };
+
+  const handleViewTermsAgain = () => {
+    setShowTermsReview(true);
+  };
+
+  const handleCloseTermsReview = () => {
+    setShowTermsReview(false);
+  };
+
+  const handleResetTermsAcceptance = () => {
+    resetTermsAcceptance();
+    setShowTermsReview(false);
+    setHasAcceptedTerms(false);
   };
 
   const handleResetDemoData = () => {
@@ -1180,6 +1174,7 @@ function App() {
     }
 
     clearAllAdminAvengerLocalData();
+    resetTermsAcceptance();
     setItems([]);
     setFindings([]);
     setAdminCases([]);
@@ -1189,10 +1184,17 @@ function App() {
     setSelectedCaseId(undefined);
     setInboxScanSettings(defaultInboxScanSettings);
     setHomeResult(undefined);
-    setIsFirstRunDisclaimerDismissed(false);
+    setHasAcceptedTerms(false);
     setDataControlMessage("Local AdminAvenger data deleted from this browser.");
     setCurrentView("home");
   };
+
+  // Pre-use legal/safety gate: nothing else in the app renders or is
+  // reachable until the user accepts the current Terms, Privacy Notice, and
+  // Safety Notice version. This is a hard blocker, not a dismissible banner.
+  if (!hasAcceptedTerms) {
+    return <TermsSafetyGate mode="blocking" onAccept={handleAcceptTerms} />;
+  }
 
   return (
     <AppShell
@@ -1201,32 +1203,9 @@ function App() {
       caseCount={adminCases.length}
       findingCount={findings.length}
     >
-      {isFirstRunDisclaimerDismissed ? null : (
-        <div className="mx-auto mb-4 max-w-5xl rounded-xl border border-cyan-300/25 bg-cyan-300/8 p-4 text-sm leading-6 text-slate-200 shadow-lg shadow-slate-950/20">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <p className="font-bold text-white">Before you start</p>
-              <p className="mt-1">
-                AdminAvenger can make mistakes. It is not a lawyer, financial
-                adviser, or claims company. It does not send messages or take
-                action for you.
-              </p>
-              <p className="mt-2 text-slate-300">
-                Check important decisions yourself or get free advice if
-                something is serious. You decide what to save, send, ignore, or
-                act on.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={handleDismissFirstRunDisclaimer}
-              className="rounded-lg border border-cyan-300/30 bg-slate-950/70 px-4 py-2 text-sm font-bold text-cyan-100 transition hover:border-cyan-200 hover:text-white focus:outline-none focus:ring-2 focus:ring-cyan-300/40"
-            >
-              I understand
-            </button>
-          </div>
-        </div>
-      )}
+      {showTermsReview ? (
+        <TermsSafetyGate mode="review" onClose={handleCloseTermsReview} />
+      ) : null}
 
       {storageSaveError ? (
         <div className="mb-5 rounded-lg border border-rose-400/30 bg-rose-400/10 px-4 py-3 text-sm leading-6 text-rose-100">
@@ -1341,6 +1320,8 @@ function App() {
           onNavigate={setCurrentView}
           inboxScanSettings={inboxScanSettings}
           onUpdateInboxScanSettings={handleUpdateInboxScanSettings}
+          onViewTermsAgain={handleViewTermsAgain}
+          onResetTermsAcceptance={handleResetTermsAcceptance}
         />
       ) : null}
     </AppShell>

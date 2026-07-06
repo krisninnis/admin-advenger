@@ -54,6 +54,20 @@ export const analyseConsumerDispute = ({
         : []),
       "The strength depends on dates, proof of purchase, what was promised, and what went wrong.",
     ],
+    confidence: {
+      level: mentionsFault || mentionsRefund || mentionsDelivery ? "medium" : "low",
+      reason:
+        mentionsFault || mentionsRefund || mentionsDelivery
+          ? "The text names a recognisable consumer issue (fault, refund refusal, or delivery problem)."
+          : "The text mentions a consumer-style problem but does not clearly name the issue.",
+    },
+    uncertainty: [
+      "Whether the seller's terms, warranty, or consumer rights actually apply is not something AdminAvenger can check from text alone.",
+    ],
+    cannotKnow: [
+      "Whether a refund, repair, or replacement will be agreed.",
+      "The seller's specific returns or warranty policy beyond what is stated here.",
+    ],
     evidenceNeeded: [
       "Receipt, order confirmation, invoice, or payment proof.",
       "Photos or videos of the fault or problem if relevant.",

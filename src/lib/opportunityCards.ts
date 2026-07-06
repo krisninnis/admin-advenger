@@ -69,6 +69,23 @@ export const formatMoneyImpact = (impact?: MoneyImpact) => {
   return `${impact.label}: ${amount}${frequency}`;
 };
 
+// Translates a raw low/medium/high confidence level into a short plain-English
+// phrase for display. The raw word itself must never reach the user
+// (decision-engine-standard.md Section 7) - this is the single place that
+// phrasing lives so every surface (Check a message, Cases, Inbox Scan) stays
+// consistent.
+export const describeConfidence = (level: "low" | "medium" | "high"): string => {
+  switch (level) {
+    case "high":
+      return "Clear match";
+    case "medium":
+      return "Reasonable match - worth checking";
+    case "low":
+    default:
+      return "Rough guess - check carefully";
+  }
+};
+
 const getRiskLevel = (adminCase: AdminCase): OpportunityCard["riskLevel"] => {
   if (adminCase.urgency === "high") {
     return "high";
@@ -283,7 +300,9 @@ export const deriveOpportunityCard = (
         ? "Amount being demanded"
         : decision.amountTreatment === "amount_mentioned_only"
           ? "Amount mentioned"
-          : undefined;
+          : decision.amountTreatment === "possible_refund_or_reduction"
+            ? "Possible reduction (not confirmed)"
+            : undefined;
     const decisionAmount = decision.amountMentioned ? toAmount(decision.amountMentioned) : undefined;
 
     return {
@@ -291,9 +310,14 @@ export const deriveOpportunityCard = (
       caseId: adminCase.id,
       opportunityType,
       title: decision.title,
-      plainEnglishSummary: `${decision.plainEnglishSummary} ${decision.whatThisLooksLike}`,
-      // Amounts here are only ever "amount being demanded"/"amount mentioned" - never
-      // a confirmed saving or pending recovery. Status "unknown" keeps that safe framing.
+      // Confidence is folded into the summary in plain language, never as the raw
+      // "high"/"medium"/"low" word or a percentage (decision-engine-standard.md
+      // Section 7) - `confidence.reason` is already written in plain English by
+      // the module itself.
+      plainEnglishSummary: `${decision.plainEnglishSummary} ${decision.whatThisLooksLike} ${decision.confidence.reason}`.trim(),
+      // Amounts here are only ever "amount being demanded"/"amount mentioned"/
+      // "possible reduction" - never a confirmed saving or pending recovery.
+      // Status "unknown" keeps that safe framing.
       moneyAtStake:
         amountLabel && decisionAmount !== undefined
           ? moneyImpact(amountLabel, decisionAmount, "one_off", "unknown")
@@ -304,13 +328,17 @@ export const deriveOpportunityCard = (
         ...decision.sourceFacts.map((fact) => `${fact.label}: ${fact.value}`),
         ...decision.possibleGrounds,
       ],
-      // Fold "Questions to answer" into the missing-information list (What to have
-      // ready) rather than adding a new UI section - this stays behind the single
-      // Check a message result card.
+      // Fold "Questions to answer" and "What could change this" (uncertainty +
+      // cannotKnow) into the missing-information list (What to have ready)
+      // rather than adding a new UI section - this stays behind the single
+      // Check a message result card (decision-engine-standard.md Section 7
+      // explicitly allows combining uncertainty + cannotKnow for readability).
       missingInformation: [
         ...decision.evidenceNeeded,
         ...decision.deadlines,
         ...(decision.questionsToAnswer ?? []),
+        ...decision.uncertainty,
+        ...decision.cannotKnow,
       ],
       nextBestAction:
         decision.nextSteps[0] ?? "Gather the evidence and check the deadline before acting.",

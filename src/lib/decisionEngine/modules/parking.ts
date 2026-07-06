@@ -127,6 +127,19 @@ export const analyseParkingTicket = ({
       possibleGrounds.length > 0
         ? possibleGrounds
         : ["I cannot see a strong challenge ground yet from this text alone."],
+    confidence: {
+      level: hasReason ? "medium" : "low",
+      reason: hasReason
+        ? "The text names a possible challenge reason that matches common parking-notice grounds."
+        : "The text matches parking-notice wording, but does not name a specific challenge reason.",
+    },
+    uncertainty: hasReason
+      ? ["Whether the evidence actually supports the reason mentioned is not something AdminAvenger can check from text alone."]
+      : ["No specific challenge reason was found in this text - there may be one that was not described."],
+    cannotKnow: [
+      "Whether an appeal would succeed.",
+      "Whether this is a council PCN or a private parking charge, unless that is stated.",
+    ],
     evidenceNeeded: [
       "Photo of the notice.",
       "Photos of signs at the car park or street.",

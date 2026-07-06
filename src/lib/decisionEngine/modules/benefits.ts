@@ -7,6 +7,12 @@ import type {
 } from "../types";
 import { BENEFITS_SAFETY_NOTE, DECISION_SAFETY_NOTE } from "../types";
 
+// This module is the PIP engine only. Universal Credit statements/sanctions,
+// WCA/LCWRA, migration notices, change of circumstances, Council Tax
+// Reduction, and crisis support each live in their own dedicated module file
+// (see decision-engine-standard.md Section 2 - one file per engine) even
+// though they share the "benefits" document-type prefix and the same
+// DecisionResult shape.
 export type BenefitsDocumentType = Extract<
   DecisionDocumentType,
   | "benefits_evidence_prep"
@@ -361,6 +367,8 @@ export const analyseBenefitsProblem = (
     ...(mentionsScotlandAdp ? [{ label: "Scotland ADP mentioned", value: "Yes" }] : []),
   ];
 
+  const hasAnyActivity = dailyLivingFound.length > 0 || mobilityFound.length > 0;
+
   return {
     documentType,
     title: stage.title,
@@ -369,6 +377,19 @@ export const analyseBenefitsProblem = (
     strengthLabel: stage.strengthLabel,
     whatThisLooksLike: stage.whatThisLooksLike,
     possibleGrounds: [...stage.whatMattersMost, ...activityGrounds],
+    confidence: {
+      level: hasAnyActivity ? "high" : "medium",
+      reason: hasAnyActivity
+        ? "The message matches this PIP stage's usual wording and names specific daily living/mobility activities."
+        : "The message matches this PIP stage's usual wording, but does not name specific activities yet.",
+    },
+    uncertainty: hasAnyActivity
+      ? []
+      : ["Which specific daily living or mobility activities are affected is not clear from this text alone."],
+    cannotKnow: [
+      "Whether DWP will accept the evidence or award any particular points.",
+      "The exact wording of the decision letter beyond what has been pasted here.",
+    ],
     evidenceNeeded: [...stage.evidenceNeeded, ...evidenceEngineItems],
     deadlines: stage.deadlines,
     risks: stage.risks,

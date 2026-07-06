@@ -1,3 +1,4 @@
+import { describeConfidence } from "../lib/opportunityCards";
 import type { AdminFinding } from "../types";
 import { StatusBadge } from "./StatusBadge";
 
@@ -65,7 +66,7 @@ export function FindingsList({
               <div className="mt-4 flex flex-wrap items-center gap-2">
                 <StatusBadge urgency={finding.urgency} label={`${finding.urgency} urgency`} />
                 <span className="rounded-full border border-white/10 bg-slate-950 px-2.5 py-1 text-xs font-semibold text-slate-300">
-                  {finding.confidence} confidence
+                  {describeConfidence(finding.confidence)}
                 </span>
                 {finding.estimatedValue ? (
                   <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2.5 py-1 text-xs font-semibold text-emerald-200">

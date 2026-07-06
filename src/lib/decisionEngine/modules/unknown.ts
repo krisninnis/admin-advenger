@@ -15,6 +15,16 @@ export const analyseUnknownAdminDispute = (
   possibleGrounds: [
     "No clear challenge ground was found from this text alone.",
   ],
+  confidence: {
+    level: "low",
+    reason: "The text does not clearly match any of the document types AdminAvenger currently recognises.",
+  },
+  uncertainty: [
+    "What kind of letter, email, bill, or notice this is is not clear from this text alone.",
+  ],
+  cannotKnow: [
+    "What this document is actually about, or what action (if any) it needs.",
+  ],
   evidenceNeeded: [
     "Full letter, email, bill, or notice.",
     "Date, sender/company, reference number, and amount if there is one.",

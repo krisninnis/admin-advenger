@@ -144,4 +144,92 @@ describe("Benefits & PIP Evidence Helper (Decision Engine)", () => {
       expect(flattened).not.toMatch(/dwp is (definitely |100% )?wrong/);
     }
   });
+
+  describe("Universal Credit Statement and Sanction Routing", () => {
+    const ucStatementText = `Universal Credit statement
+Assessment period: 1 June to 30 June 2026
+Standard allowance: £393.45
+Housing: £500.00
+Total before deductions: £893.45
+What we take off:
+Advance repayment: £50.00
+Overpayment recovery: £30.00
+Your payment this month: £813.45`;
+
+    const ucSanctionText = `Universal Credit
+We have decided to apply a sanction because you did not attend your work search review appointment.
+The sanction starts on 10 July 2026.
+If you disagree, you can ask for a mandatory reconsideration.
+If you cannot pay for food, heating or rent, you may be able to ask about hardship support.`;
+
+    it("UC statement beats generic deadline, has correct documentType, and extracts statement facts", () => {
+      const result = analyseDecisionProblem(ucStatementText);
+
+      expect(result.documentType).toBe("benefits_uc_statement");
+      expect(result.title).toBe("Universal Credit statement check");
+      expect(result.sourceFacts).toContainEqual(
+        expect.objectContaining({ label: "Assessment period", value: "1 June to 30 June 2026" })
+      );
+      expect(result.sourceFacts).toContainEqual(
+        expect.objectContaining({ label: "Deductions section found", value: "Yes" })
+      );
+      expect(result.sourceFacts).toContainEqual(
+        expect.objectContaining({ label: "Advance repayment", value: "£50.00" })
+      );
+      expect(result.sourceFacts).toContainEqual(
+        expect.objectContaining({ label: "Overpayment recovery", value: "£30.00" })
+      );
+      expect(result.sourceFacts).toContainEqual(
+        expect.objectContaining({ label: "Payment this month", value: "£813.45" })
+      );
+
+      // explaining deductions in grounds
+      expect(result.possibleGrounds.some(g => g.includes("Deductions were applied"))).toBe(true);
+
+      // money safety
+      expect(result.amountMentioned).toBe("£813.45");
+      expect(result.amountTreatment).toBe("amount_mentioned_only");
+
+      // next steps suggest rate reduction or breakdown
+      expect(result.nextSteps.some(step => step.toLowerCase().includes("hardship"))).toBe(true);
+
+      // confidence/uncertainty/cannotKnow
+      expect(result.confidence?.level).toBe("high");
+      expect(result.cannotKnow?.length).toBeGreaterThan(0);
+    });
+
+    it("UC sanction beats generic deadline, has correct documentType, and extracts sanction date", () => {
+      const result = analyseDecisionProblem(ucSanctionText);
+
+      expect(result.documentType).toBe("benefits_uc_sanction");
+      expect(result.title).toBe("Universal Credit sanction check");
+      expect(result.sourceFacts).toContainEqual(
+        expect.objectContaining({ label: "Sanction start date", value: "10 July 2026" })
+      );
+      expect(result.possibleGrounds.some(g => g.includes("Mandatory Reconsideration"))).toBe(true);
+      expect(result.possibleGrounds.some(g => g.includes("Hardship support"))).toBe(true);
+
+      const flattened = flattenDecisionResultText(result);
+      expect(containsForbiddenPhrase(flattened)).toBe(false);
+      expect(flattened.toLowerCase()).not.toMatch(/dwp is (definitely )?wrong/);
+      expect(flattened.toLowerCase()).not.toMatch(/you (will|are going to) (win|qualify|be awarded)/);
+    });
+
+    it("PIP decision still works perfectly", () => {
+      const result = analyseDecisionProblem(sampleTexts.pipDecisionZeroPoints);
+      expect(result.documentType).toBe("benefits_decision");
+    });
+
+    it("gracefully degrades for partial UC statement input", () => {
+      const partialText = "Universal Credit statement with Advance repayment: £45.00";
+      const result = analyseDecisionProblem(partialText);
+
+      expect(result.documentType).toBe("benefits_uc_statement");
+      expect(result.sourceFacts).toContainEqual(
+        expect.objectContaining({ label: "Advance repayment", value: "£45.00" })
+      );
+      expect(result.uncertainty).toContain("Exact dates of the assessment period are not confirmed.");
+      expect(result.cannotKnow?.length).toBeGreaterThan(0);
+    });
+  });
 });

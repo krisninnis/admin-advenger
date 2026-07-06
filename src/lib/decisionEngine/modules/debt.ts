@@ -40,6 +40,21 @@ export const analyseDebtOrBailiff = (
       "You may need proof of what the debt is for and how the amount was calculated.",
       "If you already paid, have an arrangement, or dispute the account, gather that evidence.",
     ],
+    confidence: {
+      level: isBailiff ? "high" : "medium",
+      reason: isBailiff
+        ? "The text matches standard bailiff/enforcement wording clearly."
+        : "The text matches standard debt-collection wording, but the underlying account details are not shown.",
+    },
+    uncertainty: [
+      "Whether the amount, creditor, and reference are correct is not something AdminAvenger can check from text alone.",
+    ],
+    cannotKnow: [
+      "Whether the debt itself is owed or has already been paid.",
+      isBailiff
+        ? "The exact enforcement stage or powers involved beyond what is stated here."
+        : "Whether the account has been correctly passed to this creditor or collector.",
+    ],
     evidenceNeeded: [
       "Original bill, agreement, account statement, or demand letter.",
       "Creditor name and reference number.",

@@ -13,7 +13,7 @@ import {
   type AiMode,
 } from "../lib/aiProviderSettings";
 import { buildAdminTextFromAiExtraction } from "../lib/aiExtractionAdapter";
-import { deriveOpportunityCard } from "../lib/opportunityCards";
+import { deriveOpportunityCard, describeConfidence } from "../lib/opportunityCards";
 import {
   createPhotoIntakeMetadata,
   isSupportedPhotoFile,
@@ -1374,7 +1374,7 @@ export function HomeView({
                 </>
               ) : (
                 <span className="rounded-full border border-white/10 bg-slate-950 px-2.5 py-1 text-xs font-semibold text-slate-300">
-                  {primaryCase.confidence} confidence
+                  {describeConfidence(primaryCase.confidence)}
                 </span>
               )}
             </div>

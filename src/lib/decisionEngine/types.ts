@@ -10,6 +10,19 @@ export type DecisionDocumentType =
   | "benefits_decision"
   | "benefits_appeal"
   | "benefits_review"
+  // Benefits Recovery Layer - hidden engines behind Check a message. The user
+  // never sees these names; the classifier picks silently (classifier.ts) and
+  // every result still flows through the same DecisionResult shape, pipeline,
+  // UI, and safety rules as every other document type (see
+  // decision-engine-standard.md Section 1).
+  | "benefits_uc_statement"
+  | "benefits_uc_sanction"
+  | "benefits_uc_deductions"
+  | "benefits_wca_lcwra"
+  | "benefits_migration_notice"
+  | "benefits_change_of_circumstances"
+  | "council_tax_reduction"
+  | "benefits_crisis_support"
   | "unknown_admin_dispute";
 
 export type DecisionCaseStrength =
@@ -31,6 +44,18 @@ export type DecisionSourceFact = {
   sourceQuote?: string;
 };
 
+export type DecisionConfidenceLevel = "low" | "medium" | "high";
+
+// Answers "how sure is AdminAvenger that it has read this document correctly?" -
+// this is about AdminAvenger's own classification/read, never about the
+// strength of the user's case (see caseStrength/strengthLabel for that) and
+// never rendered to the user as the literal word "high"/"medium"/"low" or a
+// percentage - the renderer translates `reason` into plain language.
+export type DecisionConfidence = {
+  level: DecisionConfidenceLevel;
+  reason: string;
+};
+
 export type DecisionResult = {
   documentType: DecisionDocumentType;
   title: string;
@@ -39,6 +64,16 @@ export type DecisionResult = {
   strengthLabel: string;
   whatThisLooksLike: string;
   possibleGrounds: string[];
+
+  // Required on every module - never optional, never inferred by the
+  // renderer. `confidence` is AdminAvenger's own read of the document.
+  // `uncertainty` is what's missing or could change the advice. `cannotKnow`
+  // is the honest edge of what this tool can conclude from the document
+  // alone. An empty array is a legitimate answer; omitting the field is not.
+  confidence: DecisionConfidence;
+  uncertainty: string[];
+  cannotKnow: string[];
+
   evidenceNeeded: string[];
   deadlines: string[];
   risks: string[];
@@ -48,8 +83,9 @@ export type DecisionResult = {
   amountMentioned?: string;
   amountTreatment: DecisionAmountTreatment;
   sourceFacts: DecisionSourceFact[];
-  // Optional "Questions to answer" section. Only benefits/PIP results set this today;
-  // other modules simply omit it and the UI folds it into the missing-information list.
+  // Optional "Questions to answer" section. Only benefits-family results set this
+  // today; other modules simply omit it and the UI folds it into the
+  // missing-information list.
   questionsToAnswer?: string[];
 };
 

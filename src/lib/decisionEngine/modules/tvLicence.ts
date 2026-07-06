@@ -8,6 +8,9 @@ export const analyseTvLicence = ({
   const mentionsLiveTv = /live tv/i.test(normalisedText);
   const mentionsVisit = /visit|enforcement/i.test(normalisedText);
 
+  const hasClearTvLicenceSignals =
+    mentionsIplayer || mentionsLiveTv || mentionsVisit;
+
   return {
     documentType: "tv_licence",
     title: "TV Licence letter check",
@@ -22,7 +25,23 @@ export const analyseTvLicence = ({
     possibleGrounds: [
       "Whether you need a licence depends on what you watch or record.",
       "The key questions are whether you watch or record live TV, or use BBC iPlayer.",
-      "If you believe a no-licence-needed declaration may apply, use the official route only if the declaration is accurate.",
+      "If you believe a no-licence-needed declaration applies, use the official route only if the declaration is accurate.",
+    ],
+    confidence: {
+      level: hasClearTvLicenceSignals ? "medium" : "low",
+      reason: hasClearTvLicenceSignals
+        ? "The text mentions TV Licensing, BBC iPlayer, live TV, a visit, or enforcement wording, so this appears to be in the TV Licence area."
+        : "Only limited TV Licence wording was found, so the letter should be checked carefully before relying on this result.",
+    },
+    uncertainty: [
+      "Whether a TV Licence is needed depends on what is watched, how it is watched, and whether live TV or BBC iPlayer is used at the address.",
+      "The letter alone may not show the full history of contact with TV Licensing.",
+      "The correct next step may depend on whether the address, name, and reference details are accurate.",
+    ],
+    cannotKnow: [
+      "AdminAvenger cannot decide whether you legally need a TV Licence.",
+      "AdminAvenger cannot know from this letter alone whether anyone at the address watches or records live TV or uses BBC iPlayer.",
+      "AdminAvenger cannot verify whether any visit or enforcement wording is accurate or current.",
     ],
     evidenceNeeded: [
       "The full TV Licensing letter.",

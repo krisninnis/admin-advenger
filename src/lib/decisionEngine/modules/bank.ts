@@ -37,6 +37,20 @@ export const analyseBankComplaint = ({
       "If a final response or deadlock letter is present, there may be an escalation route to check.",
       "If a fee, closure, refund refusal, or marker is disputed, dates and written proof matter.",
     ],
+    confidence: {
+      level: mentionsFinalResponse || mentionsOmbudsman ? "medium" : "low",
+      reason:
+        mentionsFinalResponse || mentionsOmbudsman
+          ? "The text names a final response, deadlock, or ombudsman route, which are recognisable escalation markers."
+          : "The text mentions a bank/finance issue but does not clearly show what stage it is at.",
+    },
+    uncertainty: [
+      "Whether an escalation route (such as the Financial Ombudsman) is actually available yet depends on details not shown here.",
+    ],
+    cannotKnow: [
+      "Whether the bank's decision will be overturned.",
+      "The bank's specific complaint-handling timeline beyond what is stated here.",
+    ],
     evidenceNeeded: [
       "Bank letter or final response.",
       "Complaint reference.",

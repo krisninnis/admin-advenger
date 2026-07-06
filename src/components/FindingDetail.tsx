@@ -1,3 +1,4 @@
+import { describeConfidence } from "../lib/opportunityCards";
 import type { AdminFinding, AdminItem, FindingStatus } from "../types";
 import { StatusBadge } from "./StatusBadge";
 
@@ -59,7 +60,7 @@ export function FindingDetail({ finding, item, onStatusChange }: FindingDetailPr
       <div className="mt-5 flex flex-wrap gap-2">
         <StatusBadge urgency={finding.urgency} label={`${finding.urgency} urgency`} />
         <span className="rounded-full border border-white/10 bg-slate-950 px-2.5 py-1 text-xs font-semibold text-slate-300">
-          {finding.confidence} confidence
+          {describeConfidence(finding.confidence)}
         </span>
         {finding.deadline ? (
           <span className="rounded-full border border-amber-400/30 bg-amber-400/10 px-2.5 py-1 text-xs font-semibold text-amber-200">

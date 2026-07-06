@@ -5,6 +5,7 @@ import {
   summariseInboxScan,
 } from "../lib/inboxScan";
 import type { InboxScanPreview as InboxScanPreviewItem } from "../lib/inboxScan";
+import { describeConfidence } from "../lib/opportunityCards";
 import type { AdminCase, AdminFinding, AdminItem } from "../types";
 import { OpportunityCardPanel } from "./OpportunityCardPanel";
 
@@ -109,7 +110,7 @@ export function InboxScanPreview({
                   : (opportunity.statusLabel ?? "Potential — not confirmed yet");
                 const confidenceLabel = preview.isRisk
                   ? `${opportunity.riskLevel} risk`
-                  : `${opportunity.confidenceLabel} confidence`;
+                  : describeConfidence(opportunity.confidenceLabel);
                 const whyItMatters =
                   opportunity.opportunityNote ??
                   preview.primaryFinding?.whyItMatters ??
@@ -146,7 +147,7 @@ export function InboxScanPreview({
                       <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-slate-200">
                         {moneyLabel}
                       </span>
-                      <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 capitalize text-slate-200">
+                      <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-slate-200 first-letter:capitalize">
                         {confidenceLabel}
                       </span>
                     </div>

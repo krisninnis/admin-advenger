@@ -12,3 +12,10 @@ export const textFileAcceptAttribute =
 // photo or a document and routes to the right handler based on the file it
 // receives.
 export const quickUploadAcceptAttribute = `${photoAcceptAttribute},${textFileAcceptAttribute}`;
+
+// Used by the "Upload existing photo" option inside the camera capture panel
+// (src/components/PhotoCapturePanel.tsx). Deliberately narrower than the
+// generic photoAcceptAttribute ("image/*") so the file picker only offers
+// formats AdminAvenger can actually try to read, including the HEIC/HEIF
+// formats modern phone cameras commonly save photos as.
+export const photoCaptureAcceptAttribute = "image/png,image/jpeg,image/webp,image/heic,image/heif";

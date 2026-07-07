@@ -4,6 +4,7 @@ import { GuidedNextStepPanel } from "../components/GuidedNextStepPanel";
 import { InboxScanPreview } from "../components/InboxScanPreview";
 import { InboxScanPromptCard } from "../components/InboxScanPromptCard";
 import { OpportunityCardPanel } from "../components/OpportunityCardPanel";
+import { PhotoCapturePanel } from "../components/PhotoCapturePanel";
 import { SimpleResultPanel, type SimpleResultAction } from "../components/SimpleResultPanel";
 import { StatusBadge } from "../components/StatusBadge";
 import type { InboxScanSettings } from "../lib/inboxScanStorage";
@@ -434,6 +435,7 @@ export function HomeView({
   const [showDetailed, setShowDetailed] = useState(false);
   const [showEmailSafety, setShowEmailSafety] = useState(false);
   const [showGuidedNextStep, setShowGuidedNextStep] = useState(false);
+  const [showPhotoCapturePanel, setShowPhotoCapturePanel] = useState(false);
   const [showExamples, setShowExamples] = useState(false);
   const [showDeveloperOptions, setShowDeveloperOptions] = useState(false);
   const [showInboxTools, setShowInboxTools] = useState(false);
@@ -916,9 +918,23 @@ export function HomeView({
               key={value}
               type="button"
               onClick={() => {
-                setSelectedInput(value as "paste" | "image" | "file");
                 setUploadNote("");
                 setInputMessage("");
+
+                // "Take or upload a photo" opens the in-app camera capture
+                // panel first, rather than immediately switching to the
+                // inline image section - the panel itself is what lets the
+                // user choose between taking a new photo and uploading an
+                // existing one. The inline image-review section below still
+                // appears once a photo is actually produced, because
+                // handleQuickPhotoCapture (passed to the panel) sets
+                // selectedInput to "image" itself.
+                if (value === "image") {
+                  setShowPhotoCapturePanel(true);
+                  return;
+                }
+
+                setSelectedInput(value as "paste" | "image" | "file");
               }}
               className={`min-h-24 rounded-lg border p-4 text-left transition focus:outline-none focus:ring-2 focus:ring-emerald-300/40 ${
                 selectedInput === value
@@ -1385,6 +1401,13 @@ export function HomeView({
           guidedNextStep={guidedNextStep}
           onClose={() => setShowGuidedNextStep(false)}
           onSaveToCase={primaryCase ? handleSaveToCaseFromGuidedPanel : undefined}
+        />
+      ) : null}
+
+      {showPhotoCapturePanel ? (
+        <PhotoCapturePanel
+          onUsePhoto={(file) => void handleQuickPhotoCapture(file)}
+          onClose={() => setShowPhotoCapturePanel(false)}
         />
       ) : null}
 

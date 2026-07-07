@@ -46,6 +46,12 @@ import {
   readTextFromImage,
 } from "../lib/photoOcr";
 import {
+  OCR_KEY_DETAILS_CHECK_MESSAGE,
+  OCR_KEY_DETAILS_HEADING,
+  OCR_KEY_DETAILS_LOW_QUALITY_CAUTION,
+  extractOcrKeyDetails,
+} from "../lib/ocrKeyDetails";
+import {
   extractAdminFactsWithOllama,
   OllamaExtractionError,
 } from "../services/ollamaExtractionService";
@@ -457,6 +463,15 @@ export function HomeView({
   const isAiReading = aiStatus === "loading";
   const isReadingPhoto = ocrStatus === "reading";
   const isLocalOllamaMode = aiSettings.mode === "local_ollama";
+  // "Key details found" card (see src/lib/ocrKeyDetails.ts) - recomputed from
+  // whatever is currently in the editable OCR textarea, so editing the text
+  // updates the card too. Purely local regex matching over text already on
+  // this device; never runs while ocrStatus isn't "success" for nothing to
+  // needlessly recompute while OCR itself is still reading.
+  const ocrKeyDetails = useMemo(
+    () => (ocrStatus === "success" ? extractOcrKeyDetails(ocrText) : { details: [], warnings: [] }),
+    [ocrStatus, ocrText],
+  );
   const primaryCase = useMemo(
     () => (result ? getMostImportantCase(result.cases) : undefined),
     [result],
@@ -1339,6 +1354,26 @@ export function HomeView({
                       <ul className="space-y-1 text-sm leading-6 text-amber-100">
                         {ocrWarnings.map((warning) => (
                           <li key={warning}>{warning}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                  {ocrKeyDetails.details.length > 0 ? (
+                    <div className="mt-3 rounded-lg border border-cyan-300/25 bg-cyan-300/[0.07] px-4 py-3">
+                      <p className="text-sm font-bold text-cyan-50">{OCR_KEY_DETAILS_HEADING}</p>
+                      <p className="mt-1 text-xs leading-5 text-cyan-50/80">
+                        {OCR_KEY_DETAILS_CHECK_MESSAGE}
+                      </p>
+                      {ocrWarnings.length > 0 ? (
+                        <p className="mt-1 text-xs leading-5 text-amber-200">
+                          {OCR_KEY_DETAILS_LOW_QUALITY_CAUTION}
+                        </p>
+                      ) : null}
+                      <ul className="mt-3 space-y-1.5 text-sm leading-6 text-cyan-50">
+                        {ocrKeyDetails.details.map((detail, index) => (
+                          <li key={`${detail.kind}-${detail.value}-${index}`} title={detail.caution}>
+                            <span className="font-semibold">{detail.label}:</span> {detail.value}
+                          </li>
                         ))}
                       </ul>
                     </div>

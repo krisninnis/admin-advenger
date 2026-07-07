@@ -11,9 +11,15 @@ import {
   CAPTURED_PHOTO_JPEG_QUALITY,
   CAPTURED_PHOTO_MIME_TYPE,
   PHOTO_STAYS_LOCAL_MESSAGE,
+  PHOTO_PRIMARY_RETAKE_BUTTON_CLASSNAME,
+  PHOTO_PRIMARY_USE_BUTTON_CLASSNAME,
   PHOTO_RETAKE_RECOMMENDED_LABEL,
   PHOTO_REVIEW_ACTIONS_CLASSNAME,
+  PHOTO_REVIEW_CONTENT_CLASSNAME,
+  PHOTO_REVIEW_WARNING_CLASSNAME,
+  PHOTO_SECONDARY_USE_BUTTON_CLASSNAME,
   PHOTO_UNREADABLE_FALLBACK_MESSAGE,
+  PHOTO_USE_ANYWAY_LABEL,
   PHOTO_USE_THIS_PHOTO_LABEL,
   capturePhotoFromVideoElement,
   classifyCameraError,
@@ -333,6 +339,26 @@ describe("document capture coach live guidance copy", () => {
   it("has explicit labels for retake recommendation while keeping use-photo available", () => {
     expect(PHOTO_RETAKE_RECOMMENDED_LABEL).toBe("Retake recommended");
     expect(PHOTO_USE_THIS_PHOTO_LABEL).toBe("Use this photo");
+    expect(PHOTO_USE_ANYWAY_LABEL).toBe("Use anyway");
+  });
+
+  it("makes Retake recommended the primary action for poor photos", () => {
+    expect(PHOTO_PRIMARY_RETAKE_BUTTON_CLASSNAME).toContain("bg-amber-300");
+    expect(PHOTO_PRIMARY_RETAKE_BUTTON_CLASSNAME).not.toContain("border border-white/10");
+    expect(PHOTO_SECONDARY_USE_BUTTON_CLASSNAME).toContain("border border-white/10");
+    expect(PHOTO_SECONDARY_USE_BUTTON_CLASSNAME).not.toContain("bg-emerald-400");
+  });
+
+  it("keeps Use this photo primary for good or okay photos", () => {
+    expect(PHOTO_PRIMARY_USE_BUTTON_CLASSNAME).toContain("bg-emerald-400");
+    expect(PHOTO_PRIMARY_USE_BUTTON_CLASSNAME).not.toContain("border border-white/10");
+  });
+
+  it("keeps the warning panel in scrollable content before the sticky action row", () => {
+    expect(PHOTO_REVIEW_CONTENT_CLASSNAME).toContain("overflow-y-auto");
+    expect(PHOTO_REVIEW_CONTENT_CLASSNAME).not.toContain("sticky");
+    expect(PHOTO_REVIEW_WARNING_CLASSNAME).not.toContain("sticky");
+    expect(PHOTO_REVIEW_ACTIONS_CLASSNAME).toContain("sticky");
   });
 });
 

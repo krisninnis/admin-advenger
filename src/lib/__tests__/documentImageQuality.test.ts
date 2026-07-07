@@ -234,6 +234,12 @@ describe("getClutterWarning", () => {
     expect(warning?.severity).toBe("info");
   });
 
+  it("warns about background when the likely page area is too small", () => {
+    const warning = getClutterWarning(0.05, 0.2);
+    expect(warning?.code).toBe("background_clutter");
+    expect(warning?.message).toBe(BACKGROUND_CLUTTER_MESSAGE);
+  });
+
   it("does not warn when the frame is mostly neutral", () => {
     expect(getClutterWarning(0.05)).toBeUndefined();
   });
@@ -341,6 +347,26 @@ describe("evaluateDocumentImageQuality", () => {
     expect(result.warnings[0]?.code).toBe("document_too_small");
     expect(result.warnings[0]?.message).toBe(DOCUMENT_TOO_SMALL_MESSAGE);
     expect(result.score).toBe("poor");
+  });
+
+  it("a far-away A4-like page on a coloured background leads with move-closer then background", () => {
+    const image = buildImage(120, 160, (row, col) =>
+      row >= 50 && row < 110 && col >= 40 && col < 80 ? [235, 235, 235] : [20, 70, 40],
+    );
+    const occupancyRatio = computeDocumentOccupancyRatio(image, 120, 160);
+    const clutterRatio = computeBackgroundClutterRatio(image, 120, 160);
+    const result = evaluateDocumentImageQuality({
+      ...GOOD_METRICS,
+      occupancyRatio,
+      clutterRatio,
+    });
+    const visibleMessages = getVisibleDocumentQualityWarningMessages(result);
+
+    expect(occupancyRatio).toBeLessThan(0.55);
+    expect(result.warnings[0]?.code).toBe("document_too_small");
+    expect(result.warnings[1]?.code).toBe("background_clutter");
+    expect(visibleMessages[0]).toBe(DOCUMENT_TOO_SMALL_MESSAGE);
+    expect(visibleMessages[1]).toBe(BACKGROUND_CLUTTER_MESSAGE);
   });
 
   it("shows document-too-small before tilt and background warnings", () => {

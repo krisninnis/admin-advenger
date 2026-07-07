@@ -62,11 +62,29 @@ export const CAMERA_PREVIEW_ACTIONS_CLASSNAME =
 export const PHOTO_REVIEW_ACTIONS_CLASSNAME =
   "sticky bottom-0 z-10 mt-auto grid gap-2 rounded-xl border border-white/10 bg-slate-900/95 p-2 shadow-2xl shadow-slate-950/50 backdrop-blur sm:grid-cols-3";
 
+export const PHOTO_REVIEW_CONTENT_CLASSNAME =
+  "min-h-0 flex-1 space-y-3 overflow-y-auto pb-4 pr-1";
+
+export const PHOTO_REVIEW_WARNING_CLASSNAME = "rounded-lg border px-4 py-3 text-sm leading-6";
+
 export const PHOTO_TAKE_PHOTO_LABEL = "Take photo";
 export const PHOTO_USE_THIS_PHOTO_LABEL = "Use this photo";
+export const PHOTO_USE_ANYWAY_LABEL = "Use anyway";
 export const PHOTO_RETAKE_LABEL = "Retake";
 export const PHOTO_RETAKE_RECOMMENDED_LABEL = "Retake recommended";
 export const PHOTO_CANCEL_LABEL = "Cancel";
+
+export const PHOTO_PRIMARY_USE_BUTTON_CLASSNAME =
+  "min-h-11 rounded-lg bg-emerald-400 px-4 py-3 text-sm font-bold text-slate-950 shadow-lg shadow-emerald-950/30 transition hover:bg-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-200";
+
+export const PHOTO_SECONDARY_USE_BUTTON_CLASSNAME =
+  "min-h-11 rounded-lg border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-slate-200 transition hover:border-white/20 hover:text-white focus:outline-none focus:ring-2 focus:ring-emerald-300/40";
+
+export const PHOTO_PRIMARY_RETAKE_BUTTON_CLASSNAME =
+  "min-h-11 rounded-lg bg-amber-300 px-4 py-3 text-sm font-bold text-slate-950 shadow-lg shadow-amber-950/30 transition hover:bg-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-100";
+
+export const PHOTO_SECONDARY_RETAKE_BUTTON_CLASSNAME =
+  "min-h-11 rounded-lg border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-slate-200 transition hover:border-white/20 hover:text-white";
 
 const permissionDeniedErrorNames = new Set(["NotAllowedError", "PermissionDeniedError", "SecurityError"]);
 

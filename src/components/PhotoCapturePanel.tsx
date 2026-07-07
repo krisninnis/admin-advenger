@@ -9,11 +9,18 @@ import {
   CAMERA_UNAVAILABLE_MESSAGE,
   PHOTO_STAYS_LOCAL_MESSAGE,
   PHOTO_CANCEL_LABEL,
+  PHOTO_PRIMARY_RETAKE_BUTTON_CLASSNAME,
+  PHOTO_PRIMARY_USE_BUTTON_CLASSNAME,
   PHOTO_RETAKE_LABEL,
   PHOTO_RETAKE_RECOMMENDED_LABEL,
   PHOTO_REVIEW_ACTIONS_CLASSNAME,
+  PHOTO_REVIEW_CONTENT_CLASSNAME,
+  PHOTO_REVIEW_WARNING_CLASSNAME,
+  PHOTO_SECONDARY_RETAKE_BUTTON_CLASSNAME,
+  PHOTO_SECONDARY_USE_BUTTON_CLASSNAME,
   PHOTO_UNREADABLE_FALLBACK_MESSAGE,
   PHOTO_TAKE_PHOTO_LABEL,
+  PHOTO_USE_ANYWAY_LABEL,
   PHOTO_USE_THIS_PHOTO_LABEL,
   capturePhotoFromVideoElement,
   photoCaptureReducer,
@@ -337,66 +344,85 @@ export function PhotoCapturePanel({ onUsePhoto, onClose }: PhotoCapturePanelProp
 
         {stage === "captured" ? (
           <div className="mt-4 flex min-h-0 flex-1 flex-col gap-3">
-            {capturedPreviewUrl ? (
-              <img
-                src={capturedPreviewUrl}
-                alt="Captured photo preview"
-                className="max-h-[min(42dvh,18rem)] w-full shrink-0 rounded-lg border border-white/10 object-contain"
-              />
-            ) : null}
-            {/* Document Capture Coach - capture review. Never blocks: "Use
-                this photo" below is always rendered and enabled regardless
-                of this result - it only changes what is said, and whether
-                Retake is visually emphasised (see shouldEmphasizeRetake). */}
-            {documentQuality ? (
-              <div
-                className={`max-h-[28dvh] overflow-y-auto rounded-lg border px-4 py-3 text-sm leading-6 ${
-                  documentQuality.score === "good"
-                    ? "border-emerald-300/25 bg-emerald-300/10 text-emerald-50"
-                    : "border-amber-300/30 bg-amber-300/10 text-amber-50"
-                }`}
-              >
-                <p className="font-bold">
-                  {documentQuality.score === "good"
-                    ? DOCUMENT_QUALITY_GOOD_MESSAGE
-                    : DOCUMENT_QUALITY_WARNING_MESSAGE}
-                </p>
-                {documentQuality.score !== "good" ? (
-                  <>
-                    <ul className="mt-2 space-y-1">
-                      {getVisibleDocumentQualityWarningMessages(documentQuality).map((message) => (
-                        <li key={message}>{message}</li>
-                      ))}
-                    </ul>
-                    <p className="mt-2">{DOCUMENT_QUALITY_TIP_MESSAGE}</p>
-                    <p className="mt-1">{DOCUMENT_QUALITY_CONTINUE_MESSAGE}</p>
-                  </>
-                ) : null}
-              </div>
-            ) : null}
+            <div className={PHOTO_REVIEW_CONTENT_CLASSNAME}>
+              {capturedPreviewUrl ? (
+                <img
+                  src={capturedPreviewUrl}
+                  alt="Captured photo preview"
+                  className="max-h-[min(36dvh,16rem)] w-full rounded-lg border border-white/10 object-contain"
+                />
+              ) : null}
+              {/* Document Capture Coach - capture review. Never blocks:
+                  "Use anyway" / "Use this photo" below always goes through
+                  the same handler; poor photos only change the warning and
+                  button hierarchy. */}
+              {documentQuality ? (
+                <div
+                  className={`${PHOTO_REVIEW_WARNING_CLASSNAME} ${
+                    documentQuality.score === "good"
+                      ? "border-emerald-300/25 bg-emerald-300/10 text-emerald-50"
+                      : "border-amber-300/30 bg-amber-300/10 text-amber-50"
+                  }`}
+                >
+                  <p className="font-bold">
+                    {documentQuality.score === "good"
+                      ? DOCUMENT_QUALITY_GOOD_MESSAGE
+                      : retakeRecommended
+                        ? PHOTO_RETAKE_RECOMMENDED_LABEL
+                        : DOCUMENT_QUALITY_WARNING_MESSAGE}
+                  </p>
+                  {documentQuality.score !== "good" ? (
+                    <>
+                      <p className="mt-1">{DOCUMENT_QUALITY_WARNING_MESSAGE}</p>
+                      <ul className="mt-2 space-y-1">
+                        {getVisibleDocumentQualityWarningMessages(documentQuality).map((message) => (
+                          <li key={message}>{message}</li>
+                        ))}
+                      </ul>
+                      <p className="mt-2">{DOCUMENT_QUALITY_TIP_MESSAGE}</p>
+                      <p className="mt-1">{DOCUMENT_QUALITY_CONTINUE_MESSAGE}</p>
+                    </>
+                  ) : null}
+                </div>
+              ) : null}
+              <p className="text-sm leading-6 text-slate-400">{PHOTO_UNREADABLE_FALLBACK_MESSAGE}</p>
+            </div>
             <div className={PHOTO_REVIEW_ACTIONS_CLASSNAME}>
-              <button
-                type="button"
-                onClick={handleUseThisPhoto}
-                className={
-                  retakeRecommended
-                    ? "min-h-11 rounded-lg border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-slate-200 transition hover:border-white/20 hover:text-white focus:outline-none focus:ring-2 focus:ring-emerald-300/40"
-                    : "min-h-11 rounded-lg bg-emerald-400 px-4 py-3 text-sm font-bold text-slate-950 shadow-lg shadow-emerald-950/30 transition hover:bg-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-200"
-                }
-              >
-                {PHOTO_USE_THIS_PHOTO_LABEL}
-              </button>
-              <button
-                type="button"
-                onClick={handleRetake}
-                className={
-                  retakeRecommended
-                    ? "min-h-11 rounded-lg bg-amber-300 px-4 py-3 text-sm font-bold text-slate-950 shadow-lg shadow-amber-950/30 transition hover:bg-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-100"
-                    : "min-h-11 rounded-lg border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-slate-200 transition hover:border-white/20 hover:text-white"
-                }
-              >
-                {retakeRecommended ? PHOTO_RETAKE_RECOMMENDED_LABEL : PHOTO_RETAKE_LABEL}
-              </button>
+              {retakeRecommended ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleRetake}
+                    className={PHOTO_PRIMARY_RETAKE_BUTTON_CLASSNAME}
+                  >
+                    {PHOTO_RETAKE_RECOMMENDED_LABEL}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleUseThisPhoto}
+                    className={PHOTO_SECONDARY_USE_BUTTON_CLASSNAME}
+                  >
+                    {PHOTO_USE_ANYWAY_LABEL}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleUseThisPhoto}
+                    className={PHOTO_PRIMARY_USE_BUTTON_CLASSNAME}
+                  >
+                    {PHOTO_USE_THIS_PHOTO_LABEL}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleRetake}
+                    className={PHOTO_SECONDARY_RETAKE_BUTTON_CLASSNAME}
+                  >
+                    {PHOTO_RETAKE_LABEL}
+                  </button>
+                </>
+              )}
               <button
                 type="button"
                 onClick={handleCancel}
@@ -405,9 +431,6 @@ export function PhotoCapturePanel({ onUsePhoto, onClose }: PhotoCapturePanelProp
                 {PHOTO_CANCEL_LABEL}
               </button>
             </div>
-            <p className="shrink-0 text-sm leading-6 text-slate-400">
-              {PHOTO_UNREADABLE_FALLBACK_MESSAGE}
-            </p>
           </div>
         ) : null}
 

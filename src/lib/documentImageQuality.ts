@@ -85,6 +85,7 @@ const BLUR_VARIANCE_THRESHOLD = 60; // Laplacian-variance-style sharpness score
 const MIN_DOCUMENT_OCCUPANCY_RATIO = 0.55; // likely page bounding box / frame area
 const MAX_BACKGROUND_CLUTTER_RATIO = 0.35; // share of highly-saturated pixels
 const MAX_TILT_SKEW_RATIO = 0.08; // normalised left/right content-edge difference
+const BRIGHT_PIXEL_OCCUPANCY_WEIGHT = 1.4;
 
 // Analysis is done on a downscaled copy of the photo (see
 // assessDocumentImageQuality below) - these heuristics only need a rough
@@ -216,10 +217,12 @@ export const computeDocumentOccupancyRatio = (
   let maxRow = -1;
   let minCol = width;
   let maxCol = -1;
+  let brightPixelCount = 0;
 
   for (let row = 0; row < height; row += 1) {
     for (let col = 0; col < width; col += 1) {
       if (luminanceAt(pixels, row * width + col) >= PAPER_BRIGHTNESS_THRESHOLD) {
+        brightPixelCount += 1;
         if (row < minRow) minRow = row;
         if (row > maxRow) maxRow = row;
         if (col < minCol) minCol = col;
@@ -233,7 +236,15 @@ export const computeDocumentOccupancyRatio = (
   }
 
   const boundingBoxArea = (maxRow - minRow + 1) * (maxCol - minCol + 1);
-  return boundingBoxArea / (width * height);
+  const frameArea = width * height;
+  const boundingBoxRatio = boundingBoxArea / frameArea;
+  const brightPixelRatio = brightPixelCount / frameArea;
+
+  // The bright bounding box catches a page against a darker desk, but a few
+  // bright background patches can make that box look falsely large. Blend in
+  // the actual amount of paper-like bright area so a far-away A4 sheet with
+  // lots of surrounding background still gets the "move closer" warning.
+  return Math.min(boundingBoxRatio, brightPixelRatio * BRIGHT_PIXEL_OCCUPANCY_WEIGHT);
 };
 
 // Rough background-clutter estimate: a plain paper document against a plain
@@ -373,8 +384,10 @@ export const getOccupancyWarning = (
 
 export const getClutterWarning = (
   clutterRatio: number,
+  occupancyRatio?: number,
 ): DocumentImageQualityWarning | undefined =>
-  clutterRatio > MAX_BACKGROUND_CLUTTER_RATIO
+  clutterRatio > MAX_BACKGROUND_CLUTTER_RATIO ||
+  (typeof occupancyRatio === "number" && occupancyRatio < MIN_DOCUMENT_OCCUPANCY_RATIO)
     ? { code: "background_clutter", message: BACKGROUND_CLUTTER_MESSAGE, severity: "info" }
     : undefined;
 
@@ -447,7 +460,7 @@ export const evaluateDocumentImageQuality = (
     getBrightnessWarning(metrics.averageBrightness),
     getContrastWarning(metrics.contrastStdDev),
     getTiltWarning(metrics.tiltSkewEstimate),
-    getClutterWarning(metrics.clutterRatio),
+    getClutterWarning(metrics.clutterRatio, metrics.occupancyRatio),
     getLowResolutionWarning({
       width: metrics.width,
       height: metrics.height,

@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  CAMERA_GUIDANCE_FIT_MESSAGE,
+  CAMERA_GUIDANCE_TIPS,
   CAMERA_IDEAL_HEIGHT,
   CAMERA_IDEAL_WIDTH,
   CAMERA_PERMISSION_DENIED_MESSAGE,
@@ -274,6 +276,40 @@ describe("captured photo JPEG quality", () => {
   it("is high enough that a full-page letter is not destroyed by compression", () => {
     expect(CAPTURED_PHOTO_JPEG_QUALITY).toBeGreaterThanOrEqual(0.92);
     expect(CAPTURED_PHOTO_JPEG_QUALITY).toBeLessThanOrEqual(0.95);
+  });
+});
+
+// ---- Document Capture Coach live guidance ----
+describe("document capture coach live guidance copy", () => {
+  it("shows the required frame guidance message", () => {
+    expect(CAMERA_GUIDANCE_FIT_MESSAGE).toBe("Fit the letter inside the box");
+  });
+
+  it("shows the required mobile capture tips", () => {
+    expect(CAMERA_GUIDANCE_TIPS).toEqual([
+      "Move closer if the text is small",
+      "Use good light",
+      "Keep the page flat",
+      "Avoid shadows",
+    ]);
+  });
+
+  it("uses short, safe guidance copy", () => {
+    const forbiddenPatterns = [
+      /\bguaranteed?\b/i,
+      /\bverified\b/i,
+      /\bconfirmed\b/i,
+      /\bvalid claim\b/i,
+      /\binvalid claim\b/i,
+      /\bpay this\b/i,
+      /\bignore this\b/i,
+    ];
+
+    for (const message of [CAMERA_GUIDANCE_FIT_MESSAGE, ...CAMERA_GUIDANCE_TIPS]) {
+      for (const pattern of forbiddenPatterns) {
+        expect(message).not.toMatch(pattern);
+      }
+    }
   });
 });
 

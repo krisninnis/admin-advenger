@@ -1,6 +1,8 @@
 import { useEffect, useReducer, useRef, useState } from "react";
 import { photoCaptureAcceptAttribute } from "../lib/fileIntakeAccept";
 import {
+  CAMERA_GUIDANCE_FIT_MESSAGE,
+  CAMERA_GUIDANCE_TIPS,
   CAMERA_PERMISSION_DENIED_MESSAGE,
   CAMERA_UNAVAILABLE_MESSAGE,
   PHOTO_STAYS_LOCAL_MESSAGE,
@@ -10,6 +12,16 @@ import {
   requestEnvironmentCameraStream,
   stopMediaStreamTracks,
 } from "../lib/photoCapture";
+import {
+  DOCUMENT_QUALITY_CONTINUE_MESSAGE,
+  DOCUMENT_QUALITY_GOOD_MESSAGE,
+  DOCUMENT_QUALITY_TIP_MESSAGE,
+  DOCUMENT_QUALITY_WARNING_MESSAGE,
+  assessDocumentImageQuality,
+  getVisibleDocumentQualityWarningMessages,
+  shouldEmphasizeRetake,
+  type DocumentImageQualityResult,
+} from "../lib/documentImageQuality";
 
 type PhotoCapturePanelProps = {
   // Feeds a captured/uploaded photo straight into the existing photo intake
@@ -42,6 +54,7 @@ export function PhotoCapturePanel({ onUsePhoto, onClose }: PhotoCapturePanelProp
   const [stage, dispatch] = useReducer(photoCaptureReducer, "choice");
   const [errorMessage, setErrorMessage] = useState("");
   const [capturedPreviewUrl, setCapturedPreviewUrl] = useState("");
+  const [documentQuality, setDocumentQuality] = useState<DocumentImageQualityResult | undefined>();
   const streamRef = useRef<MediaStream | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const capturedFileRef = useRef<File | undefined>(undefined);
@@ -62,6 +75,7 @@ export function PhotoCapturePanel({ onUsePhoto, onClose }: PhotoCapturePanelProp
 
     setCapturedPreviewUrl("");
     capturedFileRef.current = undefined;
+    setDocumentQuality(undefined);
   };
 
   const handleCancel = () => {
@@ -123,6 +137,33 @@ export function PhotoCapturePanel({ onUsePhoto, onClose }: PhotoCapturePanelProp
     if (stage === "camera_preview" && videoRef.current && streamRef.current) {
       videoRef.current.srcObject = streamRef.current;
     }
+  }, [stage]);
+
+  // Document Capture Coach - capture review step. Runs the local, on-device
+  // quality checks (see src/lib/documentImageQuality.ts) on the just-taken
+  // photo as soon as the review screen appears, so the user sees "Good
+  // photo" or a specific "may be hard to read" warning before deciding
+  // whether to use it. Never blocks anything - "Use this photo" stays
+  // available in the JSX below regardless of what (or whether) this
+  // resolves; guards against a slow/late result landing after the user has
+  // already retaken or cancelled.
+  useEffect(() => {
+    if (stage !== "captured" || !capturedFileRef.current) {
+      return;
+    }
+
+    let cancelled = false;
+    const fileToAssess = capturedFileRef.current;
+
+    void assessDocumentImageQuality(fileToAssess).then((result) => {
+      if (!cancelled) {
+        setDocumentQuality(result);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, [stage]);
 
   // Belt-and-suspenders cleanup: stop the camera if the whole component
@@ -231,13 +272,30 @@ export function PhotoCapturePanel({ onUsePhoto, onClose }: PhotoCapturePanelProp
 
         {stage === "camera_preview" ? (
           <div className="mt-5 grid gap-3">
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              muted
-              className="w-full rounded-lg border border-white/10 bg-black"
-            />
+            {/* Document Capture Coach - live guidance (see
+                src/lib/documentImageQuality.ts for the after-the-fact checks
+                and its v2 TODOs for real page/contour detection). The
+                dashed frame is a plain CSS overlay, not real edge detection
+                - it just gives the user something to line the letter up
+                against, the same idea modern document-scanner apps use. */}
+            <div className="relative overflow-hidden rounded-lg border border-white/10 bg-black">
+              <video ref={videoRef} autoPlay playsInline muted className="w-full" />
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-6 rounded-lg border-2 border-dashed border-emerald-300/80 sm:inset-10"
+              />
+              <p
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-x-0 top-2 text-center text-xs font-bold text-white [text-shadow:0_1px_3px_rgb(0_0_0_/_0.8)]"
+              >
+                {CAMERA_GUIDANCE_FIT_MESSAGE}
+              </p>
+            </div>
+            <ul className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs leading-5 text-slate-400 sm:grid-cols-4">
+              {CAMERA_GUIDANCE_TIPS.map((tip) => (
+                <li key={tip}>{tip}</li>
+              ))}
+            </ul>
             <div className="grid gap-2 sm:grid-cols-2">
               <button
                 type="button"
@@ -266,6 +324,36 @@ export function PhotoCapturePanel({ onUsePhoto, onClose }: PhotoCapturePanelProp
                 className="max-h-72 w-full rounded-lg border border-white/10 object-contain"
               />
             ) : null}
+            {/* Document Capture Coach - capture review. Never blocks: "Use
+                this photo" below is always rendered and enabled regardless
+                of this result - it only changes what is said, and whether
+                Retake is visually emphasised (see shouldEmphasizeRetake). */}
+            {documentQuality ? (
+              <div
+                className={`rounded-lg border px-4 py-3 text-sm leading-6 ${
+                  documentQuality.score === "good"
+                    ? "border-emerald-300/25 bg-emerald-300/10 text-emerald-50"
+                    : "border-amber-300/30 bg-amber-300/10 text-amber-50"
+                }`}
+              >
+                <p className="font-bold">
+                  {documentQuality.score === "good"
+                    ? DOCUMENT_QUALITY_GOOD_MESSAGE
+                    : DOCUMENT_QUALITY_WARNING_MESSAGE}
+                </p>
+                {documentQuality.score !== "good" ? (
+                  <>
+                    <ul className="mt-2 space-y-1">
+                      {getVisibleDocumentQualityWarningMessages(documentQuality).map((message) => (
+                        <li key={message}>{message}</li>
+                      ))}
+                    </ul>
+                    <p className="mt-2">{DOCUMENT_QUALITY_TIP_MESSAGE}</p>
+                    <p className="mt-1">{DOCUMENT_QUALITY_CONTINUE_MESSAGE}</p>
+                  </>
+                ) : null}
+              </div>
+            ) : null}
             <div className="grid gap-2 sm:grid-cols-3">
               <button
                 type="button"
@@ -277,7 +365,11 @@ export function PhotoCapturePanel({ onUsePhoto, onClose }: PhotoCapturePanelProp
               <button
                 type="button"
                 onClick={handleRetake}
-                className="min-h-11 rounded-lg border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-slate-200 transition hover:border-white/20 hover:text-white"
+                className={
+                  documentQuality && shouldEmphasizeRetake(documentQuality.score)
+                    ? "min-h-11 rounded-lg border border-amber-300/50 bg-amber-300/10 px-4 py-3 text-sm font-bold text-amber-50 transition hover:border-amber-200 hover:bg-amber-300/20"
+                    : "min-h-11 rounded-lg border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-slate-200 transition hover:border-white/20 hover:text-white"
+                }
               >
                 Retake
               </button>

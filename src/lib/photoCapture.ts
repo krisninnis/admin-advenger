@@ -34,6 +34,25 @@ export const PHOTO_UNREADABLE_FALLBACK_MESSAGE =
 export const CAMERA_IDEAL_WIDTH = 1920;
 export const CAMERA_IDEAL_HEIGHT = 1080;
 
+// ---- Document Capture Coach: live camera guidance copy ----
+//
+// Shown over/alongside the live camera preview (see
+// src/components/PhotoCapturePanel.tsx) so the user lines up a good photo
+// *before* taking it, rather than only finding out afterwards - this is the
+// main lesson from modern document-scanner UX (Google ML Kit Document
+// Scanner, OpenCV-style scanners): guide the capture, don't just clean up
+// the result. Deliberately simple copy, no camera jargon, no page/contour
+// detection promised - see src/lib/documentImageQuality.ts for the actual
+// after-the-fact quality checks and its v2 TODOs for real page detection.
+export const CAMERA_GUIDANCE_FIT_MESSAGE = "Fit the letter inside the box";
+
+export const CAMERA_GUIDANCE_TIPS = [
+  "Move closer if the text is small",
+  "Use good light",
+  "Keep the page flat",
+  "Avoid shadows",
+];
+
 const permissionDeniedErrorNames = new Set(["NotAllowedError", "PermissionDeniedError", "SecurityError"]);
 
 const cameraUnavailableErrorNames = new Set([

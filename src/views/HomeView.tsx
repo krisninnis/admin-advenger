@@ -24,6 +24,10 @@ import {
   isSupportedPhotoFile,
   type PhotoIntakeMetadata,
 } from "../lib/photoIntake";
+import {
+  assessDocumentImageQuality,
+  getVisibleDocumentQualityWarningMessages,
+} from "../lib/documentImageQuality";
 import { assessEmailSafety } from "../lib/suspiciousEmail";
 import {
   isCoarsePointerEnvironment,
@@ -50,6 +54,7 @@ import {
   OCR_KEY_DETAILS_HEADING,
   OCR_KEY_DETAILS_LOW_QUALITY_CAUTION,
   extractOcrKeyDetails,
+  groupOcrKeyDetails,
 } from "../lib/ocrKeyDetails";
 import {
   extractAdminFactsWithOllama,
@@ -472,6 +477,12 @@ export function HomeView({
     () => (ocrStatus === "success" ? extractOcrKeyDetails(ocrText) : { details: [], warnings: [] }),
     [ocrStatus, ocrText],
   );
+  // Grouped into named sections (Money mentioned, Dates mentioned, etc.) for
+  // the card below - a flat list of every detail was hard to scan on mobile.
+  const ocrKeyDetailGroups = useMemo(
+    () => groupOcrKeyDetails(ocrKeyDetails.details),
+    [ocrKeyDetails],
+  );
   const primaryCase = useMemo(
     () => (result ? getMostImportantCase(result.cases) : undefined),
     [result],
@@ -794,11 +805,23 @@ export function HomeView({
 
     // Best-effort pixel dimensions (never blocks - see getImageDimensions),
     // combined with the file size to flag a photo that is likely too small
-    // or too compressed for a full-page letter before OCR even runs.
-    const dimensions = await getImageDimensions(file);
+    // or too compressed for a full-page letter before OCR even runs. Runs
+    // alongside the Document Capture Coach's own quality checks (see
+    // src/lib/documentImageQuality.ts) so every photo entry path - not just
+    // the one that goes through PhotoCapturePanel's own capture-review
+    // screen - carries the same warnings into OCR review below.
+    const [dimensions, documentQuality] = await Promise.all([
+      getImageDimensions(file),
+      assessDocumentImageQuality(file),
+    ]);
     const baseMetadata = createPhotoIntakeMetadata(file);
     setPhotoMetadata(dimensions ? { ...baseMetadata, ...dimensions } : baseMetadata);
-    const imageQualityWarnings = getImageQualityWarnings({ fileSize: file.size, ...dimensions });
+    const imageQualityWarnings = Array.from(
+      new Set([
+        ...getImageQualityWarnings({ fileSize: file.size, ...dimensions }),
+        ...getVisibleDocumentQualityWarningMessages(documentQuality),
+      ]),
+    );
 
     setOcrStatus("reading");
     setOcrWarnings(imageQualityWarnings);
@@ -1369,13 +1392,22 @@ export function HomeView({
                           {OCR_KEY_DETAILS_LOW_QUALITY_CAUTION}
                         </p>
                       ) : null}
-                      <ul className="mt-3 space-y-1.5 text-sm leading-6 text-cyan-50">
-                        {ocrKeyDetails.details.map((detail, index) => (
-                          <li key={`${detail.kind}-${detail.value}-${index}`} title={detail.caution}>
-                            <span className="font-semibold">{detail.label}:</span> {detail.value}
-                          </li>
+                      <div className="mt-3 space-y-3">
+                        {ocrKeyDetailGroups.map((group) => (
+                          <div key={group.heading}>
+                            <p className="text-xs font-bold uppercase tracking-wide text-cyan-200/70">
+                              {group.heading}
+                            </p>
+                            <ul className="mt-1 space-y-1.5 text-sm leading-6 text-cyan-50">
+                              {group.details.map((detail, index) => (
+                                <li key={`${detail.kind}-${detail.value}-${index}`} title={detail.caution}>
+                                  <span className="font-semibold">{detail.label}:</span> {detail.value}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
                         ))}
-                      </ul>
+                      </div>
                     </div>
                   ) : null}
                   <label className="mt-3 block text-sm font-bold text-emerald-50">

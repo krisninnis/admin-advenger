@@ -5,6 +5,7 @@ import {
   OCR_KEY_DETAILS_LOW_QUALITY_CAUTION,
   cleanOcrTextForReview,
   extractOcrKeyDetails,
+  groupOcrKeyDetails,
   type OcrKeyDetail,
 } from "../ocrKeyDetails";
 
@@ -149,6 +150,52 @@ describe("extractOcrKeyDetails - phone numbers", () => {
 
     expect(phones).toContain("07123 456789");
   });
+
+  it("dedupes an identical phone number appearing more than once", () => {
+    const result = extractOcrKeyDetails(
+      "Telephone: 01529 406096. Please call again on 01529 406096 if unanswered.",
+    );
+    const phones = findByKind(result.details, "phone");
+
+    expect(phones).toHaveLength(1);
+    expect(phones[0].value).toBe("01529 406096");
+  });
+
+  it("clusters near-match phone numbers (1-2 digit OCR misreads) into a single detail", () => {
+    // Regression test for a live mobile-testing bug: the same real number
+    // was OCR'd three slightly different ways in one letter.
+    const text =
+      "Telephone: 01529 406096. Also try 01529 406086 or 01529 406996. Call 01529 406096 again if needed.";
+    const result = extractOcrKeyDetails(text);
+    const phones = findByKind(result.details, "phone");
+
+    expect(phones).toHaveLength(1);
+    // "01529 406096" appears twice in the text (most frequent), so it is
+    // preferred as the primary number over the two single-occurrence variants.
+    expect(phones[0].value).toBe("01529 406096");
+    expect(phones[0].caution ?? "").toMatch(/possible OCR misread/i);
+    expect(phones[0].caution ?? "").toContain("01529 406086");
+    expect(phones[0].caution ?? "").toContain("01529 406996");
+  });
+
+  it("never claims a phone number is verified, even after clustering variants", () => {
+    const text = "Telephone: 01529 406096. Also try 01529 406086.";
+    const result = extractOcrKeyDetails(text);
+    const phones = findByKind(result.details, "phone");
+
+    expect(phones[0].caution ?? "").toMatch(/not verified/i);
+    expect(phones[0].caution ?? "").not.toMatch(/\bverified\b\s+(?:number|phone)/i);
+  });
+
+  it("does not cluster genuinely different phone numbers together", () => {
+    const text = "Head office: 01529 406096. Regional office: 02071 234567.";
+    const result = extractOcrKeyDetails(text);
+    const phones = findByKind(result.details, "phone").map((detail) => detail.value);
+
+    expect(phones).toContain("01529 406096");
+    expect(phones).toContain("02071 234567");
+    expect(phones).toHaveLength(2);
+  });
 });
 
 describe("extractOcrKeyDetails - court/proceedings wording", () => {
@@ -261,6 +308,53 @@ describe("extractOcrKeyDetails - sender/company hints", () => {
 
     expect(senders).toContain("British Gas");
   });
+
+  it("does not show a stray lowercase 'sse' OCR-noise fragment as a sender", () => {
+    // Regression test for a live mobile-testing bug: a stray "sse" fragment
+    // (matching the "SSE" energy-supplier entry case-insensitively) was
+    // surfacing as "Sender: sse" even though it was just OCR noise, not a
+    // real energy-supplier mention.
+    const result = extractOcrKeyDetails("xyz sse qwt noise fragment before the real content");
+    const senders = findByKind(result.details, "sender").map((detail) => detail.value.toLowerCase());
+
+    expect(senders).not.toContain("sse");
+  });
+
+  it("still shows ELMS Legal as a sender/company despite the short-name safety filter", () => {
+    const result = extractOcrKeyDetails(SAMPLE_LETTER);
+    const senders = findByKind(result.details, "sender");
+
+    expect(senders.some((detail) => detail.value === "ELMS Legal")).toBe(true);
+    expect(senders.every((detail) => detail.label === "Sender/company found")).toBe(true);
+  });
+
+  it("keeps DWP and HMRC despite being shorter than the generic 4-character minimum", () => {
+    const result = extractOcrKeyDetails(
+      "This letter is from the DWP regarding your Universal Credit claim. HMRC may also be in contact.",
+    );
+    const senders = findByKind(result.details, "sender").map((detail) => detail.value);
+
+    expect(senders).toContain("DWP");
+    expect(senders).toContain("HMRC");
+  });
+
+  it("rejects a short, uppercase, non-allowlisted fragment purely for being under 4 characters", () => {
+    // "SSE" itself, properly capitalised, is still only 3 characters and is
+    // not on the curated sender allowlist - it should not appear even when
+    // cased correctly, since short strings are inherently too ambiguous to
+    // show confidently as a sender.
+    const result = extractOcrKeyDetails("Your supplier SSE has written to confirm this notice.");
+    const senders = findByKind(result.details, "sender").map((detail) => detail.value);
+
+    expect(senders).not.toContain("SSE");
+  });
+
+  it("detects a generic '<Name> Ltd/Energy/Water/Bank' shaped company as a sender", () => {
+    const result = extractOcrKeyDetails("This notice was issued by Acme Water on behalf of the account holder.");
+    const senders = findByKind(result.details, "sender").map((detail) => detail.value);
+
+    expect(senders).toContain("Acme Water");
+  });
 });
 
 describe("extractOcrKeyDetails - debt collection / enforcement wording", () => {
@@ -338,6 +432,41 @@ describe("extractOcrKeyDetails - safety wording", () => {
     }
   });
 
+  const FORBIDDEN_PHRASES = [
+    /verified sender/i,
+    /confirmed deadline/i,
+    /confirmed amount owed/i,
+    /valid claim/i,
+    /invalid claim/i,
+    /you owe this/i,
+    /pay this/i,
+    /ignore this/i,
+  ];
+
+  it("never uses any of the additional forbidden phrases in details or standing card copy", () => {
+    const result = extractOcrKeyDetails(SAMPLE_LETTER);
+    const allText = [
+      OCR_KEY_DETAILS_HEADING,
+      OCR_KEY_DETAILS_CHECK_MESSAGE,
+      OCR_KEY_DETAILS_LOW_QUALITY_CAUTION,
+      ...result.details.flatMap((detail) => [detail.label, detail.value, detail.caution ?? ""]),
+    ].join(" ");
+
+    for (const pattern of FORBIDDEN_PHRASES) {
+      expect(allText).not.toMatch(pattern);
+    }
+  });
+
+  it("never uses the additional forbidden phrases even with clustered phone variants in the caution text", () => {
+    const text = "Telephone: 01529 406096. Also try 01529 406086 or 01529 406996.";
+    const result = extractOcrKeyDetails(text);
+    const allText = result.details.map((detail) => detail.caution ?? "").join(" ");
+
+    for (const pattern of FORBIDDEN_PHRASES) {
+      expect(allText).not.toMatch(pattern);
+    }
+  });
+
   it("states the exact required heading and card copy", () => {
     expect(OCR_KEY_DETAILS_HEADING).toBe("Key details found");
     expect(OCR_KEY_DETAILS_CHECK_MESSAGE).toBe(
@@ -346,6 +475,64 @@ describe("extractOcrKeyDetails - safety wording", () => {
     expect(OCR_KEY_DETAILS_LOW_QUALITY_CAUTION).toBe(
       "These details may be wrong if the photo was unclear.",
     );
+  });
+});
+
+describe("extractOcrKeyDetails - cautious labels", () => {
+  const findFirstOfKind = (details: OcrKeyDetail[], kind: OcrKeyDetail["kind"]) =>
+    findByKind(details, kind)[0];
+
+  it("uses the required cautious label text for each supported kind", () => {
+    const result = extractOcrKeyDetails(SAMPLE_LETTER);
+
+    expect(findFirstOfKind(result.details, "amount")?.label).toBe("Amount mentioned");
+    expect(findFirstOfKind(result.details, "date")?.label).toBe("Date mentioned");
+    expect(findFirstOfKind(result.details, "reference")?.label).toBe("Reference found");
+    expect(findFirstOfKind(result.details, "court_or_claim")?.label).toBe("Proceedings wording found");
+    expect(findFirstOfKind(result.details, "phone")?.label).toBe("Phone number found");
+    expect(findFirstOfKind(result.details, "sender")?.label).toBe("Sender/company found");
+    expect(findFirstOfKind(result.details, "company")?.label).toBe("Sender/company found");
+  });
+});
+
+describe("groupOcrKeyDetails", () => {
+  it("groups the sample letter's details into money/date/reference/court/contact/sender sections", () => {
+    const result = extractOcrKeyDetails(SAMPLE_LETTER);
+    const groups = groupOcrKeyDetails(result.details);
+    const headings = groups.map((group) => group.heading);
+
+    expect(headings).toContain("Money mentioned");
+    expect(headings).toContain("Dates mentioned");
+    expect(headings).toContain("References / claim numbers");
+    expect(headings).toContain("Court or proceedings wording");
+    expect(headings).toContain("Contacts");
+    expect(headings).toContain("Sender / companies");
+  });
+
+  it("only returns groups that actually have at least one detail", () => {
+    const result = extractOcrKeyDetails("Call us on 01529 406096 today.");
+    const groups = groupOcrKeyDetails(result.details);
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0].heading).toBe("Contacts");
+    expect(groups[0].details.map((detail) => detail.value)).toContain("01529 406096");
+  });
+
+  it("returns no groups at all for text with no key details", () => {
+    const result = extractOcrKeyDetails("Just a normal, unremarkable sentence with nothing to find.");
+    const groups = groupOcrKeyDetails(result.details);
+
+    expect(groups).toEqual([]);
+  });
+
+  it("groups deadline-style wording together with court/proceedings wording", () => {
+    const result = extractOcrKeyDetails(SAMPLE_LETTER);
+    const groups = groupOcrKeyDetails(result.details);
+    const courtGroup = groups.find((group) => group.heading === "Court or proceedings wording");
+
+    expect(courtGroup).toBeDefined();
+    expect(courtGroup?.details.some((detail) => detail.kind === "deadline_wording")).toBe(true);
+    expect(courtGroup?.details.some((detail) => detail.kind === "court_or_claim")).toBe(true);
   });
 });
 

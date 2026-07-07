@@ -37,6 +37,15 @@ export type OcrKeyDetails = {
   warnings: string[];
 };
 
+// A named, ordered bucket of details for the "Key details found" card's
+// grouped layout (see groupOcrKeyDetails below). Only ever built from an
+// existing OcrKeyDetail[] - grouping is purely a display concern layered on
+// top of the same extraction output, never a second extraction pass.
+export type OcrKeyDetailGroup = {
+  heading: string;
+  details: OcrKeyDetail[];
+};
+
 // ---- Standing UI copy (exported so HomeView and tests share one source) ----
 
 // Always shown on the "Key details found" card, regardless of confidence -
@@ -70,7 +79,7 @@ const PHONE_CAUTION =
 const COURT_OR_CLAIM_CAUTION =
   "This wording appears in the letter. It does not mean a claim is one way or the other - check the original document and consider getting advice if this feels serious.";
 const DEADLINE_WORDING_CAUTION =
-  "This wording appears in the letter, not a confirmed deadline. Check the exact date and any time limit on the original document.";
+  "This wording appears in the letter. It does not confirm an exact deadline - check the exact date and any time limit on the original document.";
 const DOCUMENT_TYPE_HINT_CAUTION =
   "This wording suggests a possible document type. AdminAvenger has not confirmed what this letter is.";
 const SENDER_CAUTION =
@@ -101,6 +110,93 @@ const WORD_DATE_PATTERN = new RegExp(`\\b\\d{1,2}\\s+(?:${MONTH_NAMES})\\s+\\d{4
 // numbers like "01529 406096" without trying to be a full international
 // phone-number parser.
 const PHONE_PATTERN = /\b0\d{2,4}[\s-]?\d{5,7}\b/g;
+
+// ---- Phone number dedupe / near-match clustering ----
+//
+// Live mobile testing on a real letter showed the same phone number three
+// times over as "01529 406096", "01529 406086", and "01529 406996" - almost
+// certainly one real number misread by OCR in slightly different ways each
+// time it was printed, not three genuine numbers. Rather than showing every
+// near-identical variant as if each were equally real, matches are grouped
+// into clusters of numbers that are the same length and differ in at most
+// two digit positions; only the most-seen (ties broken by first-found)
+// number in each cluster becomes a detail, and the other variants are folded
+// into that detail's caution text as unverified possible OCR misreads - this
+// never claims the chosen number is the "correct" or "verified" one, only
+// that it was the most consistently found.
+const digitsOnly = (value: string) => value.replace(/\D/g, "");
+
+const hammingDistance = (a: string, b: string): number => {
+  if (a.length !== b.length) {
+    return Number.POSITIVE_INFINITY;
+  }
+  let distance = 0;
+  for (let index = 0; index < a.length; index += 1) {
+    if (a[index] !== b[index]) {
+      distance += 1;
+    }
+  }
+  return distance;
+};
+
+const MAX_PHONE_CLUSTER_DIGIT_DISTANCE = 2;
+
+type PhoneCluster = {
+  primary: string;
+  variants: string[];
+};
+
+// Pure - greedily assigns each match to the first existing cluster whose
+// representative (the cluster's first-seen number) differs by at most two
+// digits, otherwise starts a new cluster. Within each cluster, the number
+// seen most often becomes primary (ties go to whichever was found first);
+// every other distinct number found in that cluster is kept as a variant.
+const clusterPhoneMatches = (rawMatches: string[]): PhoneCluster[] => {
+  const clusters: {
+    representativeDigits: string;
+    counts: Map<string, number>;
+    firstSeenOrder: Map<string, number>;
+  }[] = [];
+
+  rawMatches.forEach((rawMatch, index) => {
+    const value = rawMatch.replace(/\s+/g, " ").trim();
+    const digits = digitsOnly(value);
+
+    let cluster = clusters.find(
+      (existing) => hammingDistance(existing.representativeDigits, digits) <= MAX_PHONE_CLUSTER_DIGIT_DISTANCE,
+    );
+    if (!cluster) {
+      cluster = { representativeDigits: digits, counts: new Map(), firstSeenOrder: new Map() };
+      clusters.push(cluster);
+    }
+    cluster.counts.set(value, (cluster.counts.get(value) ?? 0) + 1);
+    if (!cluster.firstSeenOrder.has(value)) {
+      cluster.firstSeenOrder.set(value, index);
+    }
+  });
+
+  return clusters.map((cluster) => {
+    const values = Array.from(cluster.counts.keys()).sort((a, b) => {
+      const countDifference = (cluster.counts.get(b) ?? 0) - (cluster.counts.get(a) ?? 0);
+      if (countDifference !== 0) {
+        return countDifference;
+      }
+      return (cluster.firstSeenOrder.get(a) ?? 0) - (cluster.firstSeenOrder.get(b) ?? 0);
+    });
+    const [primary, ...variants] = values;
+    return { primary, variants };
+  });
+};
+
+// Builds the phone caution, optionally naming near-match variants that were
+// folded into this cluster - never asserting the primary number is verified,
+// only that it was the most consistently found.
+const buildPhoneCaution = (variants: string[]): string => {
+  if (variants.length === 0) {
+    return PHONE_CAUTION;
+  }
+  return `${PHONE_CAUTION} Similar numbers also appeared in the text and may be possible OCR misreads of this one: ${variants.join(", ")}.`;
+};
 
 // ---- Reference / claim numbers ----
 // Two passes, both deliberately conservative:
@@ -150,12 +246,23 @@ const PARKING_GENERIC_PHRASE = "parking";
 const KNOWN_COMPANY_PHRASES = ["Vehicle Control Services"];
 
 // ---- Known senders (kind: sender) ----
+// This is an explicit allowlist - a match against one of these exact phrases
+// is always shown, regardless of length or casing, because each one is a
+// specific, curated, low-ambiguity name rather than a generic pattern that
+// could coincidentally match OCR noise. Short official abbreviations like
+// "DWP" only belong here if they are added deliberately, not because a
+// generic pattern happened to match them.
 const KNOWN_SENDER_PHRASES = ["ELMS Legal", "DWP", "Universal Credit", "HMRC"];
 // Title Case phrase ending in "Legal" (e.g. "ELMS Legal", "Acme Legal") -
 // generic fallback for legal-firm-shaped senders not in the known list above.
 const LEGAL_FIRM_PATTERN = /\b(?:[A-Z][a-zA-Z&]*\s){0,2}[A-Z][a-zA-Z&]*\sLegal\b/g;
 // "<Place> Council" / "<Place> Borough Council" etc.
 const COUNCIL_PATTERN = /\b[A-Z][a-zA-Z]+(?:\s(?:City|Borough|District|County))?\sCouncil\b/g;
+// Generic "<Name> Ltd/Energy/Water/Bank" shaped company patterns, alongside
+// the dedicated "Legal" and "Council" patterns above - covers common company
+// suffixes the letter's sender or a related company might use.
+const COMPANY_SUFFIX_PATTERN =
+  /\b(?:[A-Z][a-zA-Z&]*\s){0,2}[A-Z][a-zA-Z&]*\s(?:Ltd|Energy|Water|Bank)\b/g;
 const ENERGY_SUPPLIER_PHRASES = [
   "British Gas",
   "EDF Energy",
@@ -169,6 +276,38 @@ const ENERGY_SUPPLIER_PHRASES = [
   "Bulb Energy",
   "SSE",
 ];
+
+// ---- Safety filter for generic (non-allowlisted) sender candidates ----
+//
+// Live mobile testing surfaced "Sender: sse" on a real letter - a stray
+// lowercase "sse" fragment in OCR noise matched the "SSE" energy-supplier
+// phrase above case-insensitively and got surfaced verbatim as if it were a
+// confirmed sender name. A real sender printed on a letterhead is a
+// capitalised name of reasonable length; a 2-3 character, all-lowercase
+// fragment is far more likely to be OCR noise that happened to match a known
+// phrase or pattern. This filter only ever applies to the *generic* passes
+// below (legal-firm pattern, council pattern, energy-supplier list, company
+// suffix pattern) - the explicit KNOWN_SENDER_PHRASES allowlist above is
+// always trusted as-is, which is exactly how "DWP" and "HMRC" keep showing
+// despite being short.
+const MIN_GENERIC_SENDER_LENGTH = 4;
+
+const isSafeGenericSenderCandidate = (value: string): boolean => {
+  const trimmed = value.trim();
+
+  if (trimmed.length < MIN_GENERIC_SENDER_LENGTH) {
+    return false;
+  }
+
+  // Reject a match with no uppercase letter at all - a genuine printed
+  // sender name is essentially always capitalised, so an all-lowercase
+  // match is far more likely to be a coincidental OCR-noise fragment.
+  if (!/[A-Z]/.test(trimmed)) {
+    return false;
+  }
+
+  return true;
+};
 
 // ---- Debt collection / enforcement wording (kind: risk_wording) ----
 const RISK_WORDING_PHRASES = [
@@ -244,21 +383,25 @@ export const extractOcrKeyDetails = (text: string): OcrKeyDetails => {
     addDetail("Date mentioned", match, "date", DATE_CAUTION);
   }
 
-  // Phone numbers
-  for (const match of findPatternOccurrences(text, PHONE_PATTERN)) {
-    addDetail("Phone number found", match.replace(/\s+/g, " ").trim(), "phone", PHONE_CAUTION);
+  // Phone numbers - clustered first so identical numbers collapse and
+  // near-match OCR variants (e.g. "01529 406096" / "01529 406086" /
+  // "01529 406996") fold into a single detail rather than showing as three
+  // separate, equally-confident phone numbers.
+  const rawPhoneMatches = findPatternOccurrences(text, PHONE_PATTERN);
+  for (const cluster of clusterPhoneMatches(rawPhoneMatches)) {
+    addDetail("Phone number found", cluster.primary, "phone", buildPhoneCaution(cluster.variants));
   }
 
   // Reference / claim numbers - standalone code-shaped tokens anywhere...
   for (const match of findPatternOccurrences(text, CODE_TOKEN_PATTERN)) {
-    addDetail("Claim number/reference found", match, "reference", REFERENCE_CAUTION);
+    addDetail("Reference found", match, "reference", REFERENCE_CAUTION);
   }
   // ...plus a keyword-adjacent pass over each line, in case a valid code
   // shorter/longer than the standalone heuristic sits right next to a label.
   for (const line of text.split("\n")) {
     if (REFERENCE_KEYWORD_PATTERN.test(line)) {
       for (const match of findPatternOccurrences(line, CODE_TOKEN_PATTERN)) {
-        addDetail("Claim number/reference found", match, "reference", REFERENCE_CAUTION);
+        addDetail("Reference found", match, "reference", REFERENCE_CAUTION);
       }
     }
   }
@@ -266,12 +409,12 @@ export const extractOcrKeyDetails = (text: string): OcrKeyDetails => {
   // Court / proceedings wording
   for (const phrase of COURT_PHRASES) {
     for (const match of findPhraseOccurrences(text, phrase)) {
-      addDetail("Court/proceedings wording found", match, "court_or_claim", COURT_OR_CLAIM_CAUTION);
+      addDetail("Proceedings wording found", match, "court_or_claim", COURT_OR_CLAIM_CAUTION);
     }
   }
   for (const pattern of COURT_WORD_PATTERNS) {
     for (const match of findPatternOccurrences(text, pattern)) {
-      addDetail("Court/proceedings wording found", match, "court_or_claim", COURT_OR_CLAIM_CAUTION);
+      addDetail("Proceedings wording found", match, "court_or_claim", COURT_OR_CLAIM_CAUTION);
     }
   }
 
@@ -309,27 +452,42 @@ export const extractOcrKeyDetails = (text: string): OcrKeyDetails => {
   }
 
   // Companies (known client/company names distinct from the letter's sender)
+  // - a curated allowlist, so no length/case filter applies here either.
   for (const phrase of KNOWN_COMPANY_PHRASES) {
     for (const match of findPhraseOccurrences(text, phrase)) {
-      addDetail("Client/company mentioned", match, "company", COMPANY_CAUTION);
+      addDetail("Sender/company found", match, "company", COMPANY_CAUTION);
     }
   }
 
-  // Senders
+  // Senders - the known-phrase allowlist is always trusted; every other,
+  // more generic pattern below is filtered through isSafeGenericSenderCandidate
+  // so a short or all-lowercase coincidental match (e.g. a stray "sse"
+  // fragment) is not surfaced as if it were a real sender.
   for (const phrase of KNOWN_SENDER_PHRASES) {
     for (const match of findPhraseOccurrences(text, phrase)) {
-      addDetail("Sender", match, "sender", SENDER_CAUTION);
+      addDetail("Sender/company found", match, "sender", SENDER_CAUTION);
     }
   }
   for (const match of findPatternOccurrences(text, LEGAL_FIRM_PATTERN)) {
-    addDetail("Sender", match, "sender", SENDER_CAUTION);
+    if (isSafeGenericSenderCandidate(match)) {
+      addDetail("Sender/company found", match, "sender", SENDER_CAUTION);
+    }
   }
   for (const match of findPatternOccurrences(text, COUNCIL_PATTERN)) {
-    addDetail("Sender", match, "sender", SENDER_CAUTION);
+    if (isSafeGenericSenderCandidate(match)) {
+      addDetail("Sender/company found", match, "sender", SENDER_CAUTION);
+    }
+  }
+  for (const match of findPatternOccurrences(text, COMPANY_SUFFIX_PATTERN)) {
+    if (isSafeGenericSenderCandidate(match)) {
+      addDetail("Sender/company found", match, "sender", SENDER_CAUTION);
+    }
   }
   for (const phrase of ENERGY_SUPPLIER_PHRASES) {
     for (const match of findPhraseOccurrences(text, phrase)) {
-      addDetail("Sender", match, "sender", SENDER_CAUTION);
+      if (isSafeGenericSenderCandidate(match)) {
+        addDetail("Sender/company found", match, "sender", SENDER_CAUTION);
+      }
     }
   }
 
@@ -342,6 +500,33 @@ export const extractOcrKeyDetails = (text: string): OcrKeyDetails => {
 
   return { details, warnings };
 };
+
+// ---- Grouped card layout ----
+//
+// The "Key details found" card used to render every detail as one long flat
+// list, which live mobile testing showed was hard to scan on a small screen.
+// This groups the same details into named sections instead - purely a
+// display re-shaping of extractOcrKeyDetails' output, so it stays a pure
+// function of an existing detail list rather than a second extraction pass.
+// Only groups that actually have at least one detail are returned, in a
+// fixed, sensible reading order (money and dates first, sender/company and
+// risk wording last).
+const OCR_KEY_DETAIL_GROUP_ORDER: { heading: string; kinds: OcrKeyDetailKind[] }[] = [
+  { heading: "Money mentioned", kinds: ["amount"] },
+  { heading: "Dates mentioned", kinds: ["date"] },
+  { heading: "References / claim numbers", kinds: ["reference"] },
+  { heading: "Court or proceedings wording", kinds: ["court_or_claim", "deadline_wording"] },
+  { heading: "Document hints", kinds: ["document_type_hint"] },
+  { heading: "Contacts", kinds: ["phone", "email"] },
+  { heading: "Sender / companies", kinds: ["sender", "company"] },
+  { heading: "Risk wording", kinds: ["risk_wording"] },
+];
+
+export const groupOcrKeyDetails = (details: OcrKeyDetail[]): OcrKeyDetailGroup[] =>
+  OCR_KEY_DETAIL_GROUP_ORDER.map(({ heading, kinds }) => ({
+    heading,
+    details: details.filter((detail) => kinds.includes(detail.kind)),
+  })).filter((group) => group.details.length > 0);
 
 // ---- OCR text cleanup (conservative, line-based) ----
 //

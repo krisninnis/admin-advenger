@@ -4,6 +4,8 @@
 
 AdminAvenger is a local-first, privacy-first admin decision assistant.
 
+AdminAvenger has a social mission: reduce the burden of confusing life admin for ordinary people without replacing human judgement, advice services, regulated professionals, or public bodies. Before product or engine work that touches user trust, high-stakes letters, benefits, debt, housing, employment, scams, or consumer harm, read `docs/product/adminavenger-social-mission-v1.md`.
+
 The product has one front door:
 
 Check a message
@@ -25,6 +27,31 @@ Never add a separate user-facing checker, selector, category picker, or benefits
 - No automatic emails
 - No automatic claims
 - No hidden money counting
+- No exploitation of vulnerable users
+- No shame, blame, pressure, or fear-based copy
+- No replacement for legal, financial, debt, benefits, medical, housing, or employment advice
+
+## Social mission guardrails
+
+AdminAvenger should help people understand and organise confusing admin. It should not pretend to be an authority, advocate, solicitor, benefits adviser, debt adviser, doctor, employer, landlord, bank, court, government department, ombudsman, or charity.
+
+The product should make users feel more capable, not more dependent. Prefer workflows that:
+
+- explain what the document appears to be
+- preserve evidence and source wording
+- show what is missing or uncertain
+- prepare editable drafts and checklists
+- encourage careful review before action
+- point to specialist advice when stakes are serious
+
+Avoid workflows or copy that:
+
+- imply AdminAvenger can decide rights or entitlement
+- guarantee outcomes or deadlines
+- encourage unsafe replies, clicks, payments, or non-payment
+- inflate savings, recovery, or value
+- hide uncertainty in Simple Mode
+- turn high-stakes problems into gamified wins
 
 ## Existing architecture
 

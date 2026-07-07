@@ -1,6 +1,8 @@
 import { useEffect, useReducer, useRef, useState } from "react";
 import { photoCaptureAcceptAttribute } from "../lib/fileIntakeAccept";
 import {
+  CAMERA_IDEAL_HEIGHT,
+  CAMERA_IDEAL_WIDTH,
   CAMERA_GUIDANCE_FRAME_CLASSNAME,
   CAMERA_GUIDANCE_FIT_MESSAGE,
   CAMERA_GUIDANCE_TIPS,
@@ -16,13 +18,19 @@ import {
   PHOTO_REVIEW_ACTIONS_CLASSNAME,
   PHOTO_REVIEW_CONTENT_CLASSNAME,
   PHOTO_REVIEW_WARNING_CLASSNAME,
+  PHOTO_CROP_FAILED_MESSAGE,
+  PHOTO_CROPPED_TO_FRAME_MESSAGE,
   PHOTO_SECONDARY_RETAKE_BUTTON_CLASSNAME,
   PHOTO_SECONDARY_USE_BUTTON_CLASSNAME,
+  PHOTO_READS_INSIDE_FRAME_MESSAGE,
   PHOTO_UNREADABLE_FALLBACK_MESSAGE,
   PHOTO_TAKE_PHOTO_LABEL,
   PHOTO_USE_ANYWAY_LABEL,
   PHOTO_USE_THIS_PHOTO_LABEL,
   capturePhotoFromVideoElement,
+  cropImageBlobToRect,
+  createCapturedPhotoFile,
+  getA4GuideCropRect,
   photoCaptureReducer,
   requestEnvironmentCameraStream,
   stopMediaStreamTracks,
@@ -69,10 +77,16 @@ export function PhotoCapturePanel({ onUsePhoto, onClose }: PhotoCapturePanelProp
   const [stage, dispatch] = useReducer(photoCaptureReducer, "choice");
   const [errorMessage, setErrorMessage] = useState("");
   const [capturedPreviewUrl, setCapturedPreviewUrl] = useState("");
+  const [croppedPreviewUrl, setCroppedPreviewUrl] = useState("");
+  const [cropWarning, setCropWarning] = useState("");
+  const [isCropping, setIsCropping] = useState(false);
   const [documentQuality, setDocumentQuality] = useState<DocumentImageQualityResult | undefined>();
   const streamRef = useRef<MediaStream | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const capturedFileRef = useRef<File | undefined>(undefined);
+  const fileForOcrRef = useRef<File | undefined>(undefined);
+  const capturedDimensionsRef = useRef<{ width: number; height: number } | undefined>(undefined);
+  const cropPromiseRef = useRef<Promise<void> | undefined>(undefined);
 
   const stopActiveStream = () => {
     stopMediaStreamTracks(streamRef.current);
@@ -87,9 +101,18 @@ export function PhotoCapturePanel({ onUsePhoto, onClose }: PhotoCapturePanelProp
     if (capturedPreviewUrl) {
       URL.revokeObjectURL(capturedPreviewUrl);
     }
+    if (croppedPreviewUrl) {
+      URL.revokeObjectURL(croppedPreviewUrl);
+    }
 
     setCapturedPreviewUrl("");
+    setCroppedPreviewUrl("");
+    setCropWarning("");
+    setIsCropping(false);
     capturedFileRef.current = undefined;
+    fileForOcrRef.current = undefined;
+    capturedDimensionsRef.current = undefined;
+    cropPromiseRef.current = undefined;
     setDocumentQuality(undefined);
   };
 
@@ -154,27 +177,67 @@ export function PhotoCapturePanel({ onUsePhoto, onClose }: PhotoCapturePanelProp
     }
   }, [stage]);
 
-  // Document Capture Coach - capture review step. Runs the local, on-device
-  // quality checks (see src/lib/documentImageQuality.ts) on the just-taken
-  // photo as soon as the review screen appears, so the user sees "Good
-  // photo" or a specific "may be hard to read" warning before deciding
-  // whether to use it. Never blocks anything - "Use this photo" stays
-  // available in the JSX below regardless of what (or whether) this
-  // resolves; guards against a slow/late result landing after the user has
-  // already retaken or cancelled.
+  // Document Capture Coach - capture review step. First crops the photo to
+  // the same approximate A4 guide frame the user saw in the camera preview,
+  // then runs quality checks on that cropped local Blob. If crop fails, the
+  // original photo is still used and the user gets a non-blocking warning.
   useEffect(() => {
     if (stage !== "captured" || !capturedFileRef.current) {
       return;
     }
 
     let cancelled = false;
-    const fileToAssess = capturedFileRef.current;
+    const sourceFile = capturedFileRef.current;
+    const dimensions = capturedDimensionsRef.current ?? {
+      width: CAMERA_IDEAL_WIDTH,
+      height: CAMERA_IDEAL_HEIGHT,
+    };
 
-    void assessDocumentImageQuality(fileToAssess).then((result) => {
-      if (!cancelled) {
-        setDocumentQuality(result);
+    setDocumentQuality(undefined);
+    setCropWarning("");
+    setIsCropping(true);
+
+    const preparePhotoForOcr = async () => {
+      try {
+        const cropRect = getA4GuideCropRect(dimensions.width, dimensions.height);
+        const croppedBlob = await cropImageBlobToRect(sourceFile, cropRect, {
+          type: sourceFile.type,
+        });
+        const croppedFile = createCapturedPhotoFile(croppedBlob, "camera-photo-cropped.jpg");
+        const croppedUrl = URL.createObjectURL(croppedFile);
+        const quality = await assessDocumentImageQuality(croppedFile);
+
+        if (cancelled) {
+          URL.revokeObjectURL(croppedUrl);
+          return;
+        }
+
+        fileForOcrRef.current = croppedFile;
+        setCroppedPreviewUrl((currentUrl) => {
+          if (currentUrl) {
+            URL.revokeObjectURL(currentUrl);
+          }
+          return croppedUrl;
+        });
+        setDocumentQuality(quality);
+      } catch {
+        const quality = await assessDocumentImageQuality(sourceFile);
+
+        if (!cancelled) {
+          fileForOcrRef.current = sourceFile;
+          setCropWarning(PHOTO_CROP_FAILED_MESSAGE);
+          setDocumentQuality(quality);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsCropping(false);
+        }
       }
-    });
+    };
+
+    const cropPromise = preparePhotoForOcr();
+    cropPromiseRef.current = cropPromise;
+    void cropPromise;
 
     return () => {
       cancelled = true;
@@ -212,16 +275,23 @@ export function PhotoCapturePanel({ onUsePhoto, onClose }: PhotoCapturePanelProp
   };
 
   const handleTakePhotoClick = async () => {
-    if (!videoRef.current) {
+    const videoElement = videoRef.current;
+
+    if (!videoElement) {
       return;
     }
 
     try {
-      const file = await capturePhotoFromVideoElement(videoRef.current);
+      const file = await capturePhotoFromVideoElement(videoElement);
       // Capture-complete cleanup - the camera does not need to stay on once
       // a frame has been captured.
       stopActiveStream();
       capturedFileRef.current = file;
+      fileForOcrRef.current = file;
+      capturedDimensionsRef.current = {
+        width: videoElement.videoWidth || CAMERA_IDEAL_WIDTH,
+        height: videoElement.videoHeight || CAMERA_IDEAL_HEIGHT,
+      };
       setCapturedPreviewUrl(URL.createObjectURL(file));
       dispatch({ type: "photo_captured" });
     } catch {
@@ -234,12 +304,18 @@ export function PhotoCapturePanel({ onUsePhoto, onClose }: PhotoCapturePanelProp
     dispatch({ type: "retake" });
   };
 
-  const handleUseThisPhoto = () => {
-    if (!capturedFileRef.current) {
+  const handleUseThisPhoto = async () => {
+    if (cropPromiseRef.current) {
+      await cropPromiseRef.current;
+    }
+
+    const fileToUse = fileForOcrRef.current ?? capturedFileRef.current;
+
+    if (!fileToUse) {
       return;
     }
 
-    onUsePhoto(capturedFileRef.current);
+    onUsePhoto(fileToUse);
     clearCapturedPreview();
     dispatch({ type: "use_photo" });
   };
@@ -345,13 +421,23 @@ export function PhotoCapturePanel({ onUsePhoto, onClose }: PhotoCapturePanelProp
         {stage === "captured" ? (
           <div className="mt-4 flex min-h-0 flex-1 flex-col gap-3">
             <div className={PHOTO_REVIEW_CONTENT_CLASSNAME}>
-              {capturedPreviewUrl ? (
+              {croppedPreviewUrl || capturedPreviewUrl ? (
                 <img
-                  src={capturedPreviewUrl}
-                  alt="Captured photo preview"
+                  src={croppedPreviewUrl || capturedPreviewUrl}
+                  alt={croppedPreviewUrl ? "Cropped photo preview" : "Captured photo preview"}
                   className="max-h-[min(36dvh,16rem)] w-full rounded-lg border border-white/10 object-contain"
                 />
               ) : null}
+              <div className="rounded-lg border border-cyan-300/20 bg-cyan-300/10 px-4 py-3 text-sm leading-6 text-cyan-50/90">
+                <p className="font-bold">
+                  {cropWarning
+                    ? PHOTO_CROP_FAILED_MESSAGE
+                    : croppedPreviewUrl
+                    ? PHOTO_CROPPED_TO_FRAME_MESSAGE
+                    : PHOTO_READS_INSIDE_FRAME_MESSAGE}
+                </p>
+                {isCropping ? <p className="mt-1 text-cyan-50/80">Cropping to the guide frame...</p> : null}
+              </div>
               {/* Document Capture Coach - capture review. Never blocks:
                   "Use anyway" / "Use this photo" below always goes through
                   the same handler; poor photos only change the warning and
@@ -399,7 +485,7 @@ export function PhotoCapturePanel({ onUsePhoto, onClose }: PhotoCapturePanelProp
                   </button>
                   <button
                     type="button"
-                    onClick={handleUseThisPhoto}
+                    onClick={() => void handleUseThisPhoto()}
                     className={PHOTO_SECONDARY_USE_BUTTON_CLASSNAME}
                   >
                     {PHOTO_USE_ANYWAY_LABEL}
@@ -409,7 +495,7 @@ export function PhotoCapturePanel({ onUsePhoto, onClose }: PhotoCapturePanelProp
                 <>
                   <button
                     type="button"
-                    onClick={handleUseThisPhoto}
+                    onClick={() => void handleUseThisPhoto()}
                     className={PHOTO_PRIMARY_USE_BUTTON_CLASSNAME}
                   >
                     {PHOTO_USE_THIS_PHOTO_LABEL}

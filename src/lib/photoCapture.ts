@@ -13,6 +13,15 @@ export type CameraStartResult =
   | { status: "success"; stream: MediaStream }
   | { status: "error"; kind: CameraErrorKind; message: string };
 
+export type CropRectRatio = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+export const A4_PORTRAIT_RATIO = 1 / 1.414;
+
 export const CAMERA_PERMISSION_DENIED_MESSAGE =
   "Camera access was blocked. You can upload a photo instead.";
 
@@ -26,6 +35,15 @@ export const PHOTO_STAYS_LOCAL_MESSAGE = "Photo stays in this browser in this ve
 // the captured photo, so it never promises every image can be read.
 export const PHOTO_UNREADABLE_FALLBACK_MESSAGE =
   "If the photo cannot be read clearly, upload a clearer image or paste the text manually.";
+
+export const PHOTO_CROPPED_TO_FRAME_MESSAGE =
+  "The photo was cropped to the guide frame before reading.";
+
+export const PHOTO_READS_INSIDE_FRAME_MESSAGE =
+  "AdminAvenger will read the area inside the frame.";
+
+export const PHOTO_CROP_FAILED_MESSAGE =
+  "We could not crop the photo automatically. You can still continue and edit the text manually.";
 
 // Requested camera resolution for the "Take a new photo" flow. A full page
 // of letter text needs enough pixels for Tesseract to resolve individual
@@ -44,9 +62,11 @@ export const CAMERA_IDEAL_HEIGHT = 1080;
 // the result. Deliberately simple copy, no camera jargon, no page/contour
 // detection promised - see src/lib/documentImageQuality.ts for the actual
 // after-the-fact quality checks and its v2 TODOs for real page detection.
-export const CAMERA_GUIDANCE_FIT_MESSAGE = "Fill this frame with the letter";
+export const CAMERA_GUIDANCE_FIT_MESSAGE = "Fill the frame with the letter";
 
 export const CAMERA_GUIDANCE_TIPS = [
+  "Anything outside the frame may be ignored",
+  "Move closer until the letter nearly fills the frame",
   "Move closer if the text is small",
   "Use good light",
   "Keep the page flat",
@@ -175,6 +195,40 @@ export const CAPTURED_PHOTO_JPEG_QUALITY = 0.95;
 // legible.
 const FALLBACK_CAPTURE_WIDTH = 1920;
 const FALLBACK_CAPTURE_HEIGHT = 1080;
+const GUIDE_FRAME_HEIGHT_RATIO = 0.82;
+const GUIDE_FRAME_MAX_WIDTH_RATIO = 0.92;
+
+const clampRatio = (value: number): number => Math.max(0, Math.min(1, value));
+
+export function getA4GuideCropRect(imageWidth: number, imageHeight: number): CropRectRatio {
+  if (!(imageWidth > 0) || !(imageHeight > 0)) {
+    return { x: 0, y: 0, width: 1, height: 1 };
+  }
+
+  let cropHeight = imageHeight * GUIDE_FRAME_HEIGHT_RATIO;
+  let cropWidth = cropHeight * A4_PORTRAIT_RATIO;
+  const maxCropWidth = imageWidth * GUIDE_FRAME_MAX_WIDTH_RATIO;
+
+  if (cropWidth > maxCropWidth) {
+    cropWidth = maxCropWidth;
+    cropHeight = cropWidth / A4_PORTRAIT_RATIO;
+  }
+
+  if (cropHeight > imageHeight) {
+    cropHeight = imageHeight;
+    cropWidth = cropHeight * A4_PORTRAIT_RATIO;
+  }
+
+  const width = clampRatio(cropWidth / imageWidth);
+  const height = clampRatio(cropHeight / imageHeight);
+
+  return {
+    x: clampRatio((1 - width) / 2),
+    y: clampRatio((1 - height) / 2),
+    width,
+    height,
+  };
+}
 
 // Pure Blob -> File conversion, kept separate from the canvas/video capture
 // step below so it can be unit tested without a DOM (this project's tests
@@ -183,6 +237,79 @@ export const createCapturedPhotoFile = (
   blob: Blob,
   fileName: string = CAPTURED_PHOTO_FILE_NAME,
 ): File => new File([blob], fileName, { type: blob.type || CAPTURED_PHOTO_MIME_TYPE });
+
+export const cropImageBlobToRect = (
+  image: Blob,
+  rect: CropRectRatio,
+  options: { type?: string; quality?: number } = {},
+): Promise<Blob> =>
+  new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(image);
+    const element = new Image();
+    const cleanUp = () => URL.revokeObjectURL(objectUrl);
+
+    element.onload = () => {
+      try {
+        const sourceX = Math.round(clampRatio(rect.x) * element.naturalWidth);
+        const sourceY = Math.round(clampRatio(rect.y) * element.naturalHeight);
+        const requestedWidth = Math.round(clampRatio(rect.width) * element.naturalWidth);
+        const requestedHeight = Math.round(clampRatio(rect.height) * element.naturalHeight);
+        const sourceWidth = Math.max(
+          1,
+          Math.min(requestedWidth, element.naturalWidth - sourceX),
+        );
+        const sourceHeight = Math.max(
+          1,
+          Math.min(requestedHeight, element.naturalHeight - sourceY),
+        );
+        const canvas = document.createElement("canvas");
+        canvas.width = sourceWidth;
+        canvas.height = sourceHeight;
+        const context = canvas.getContext("2d");
+
+        if (!context) {
+          cleanUp();
+          reject(new Error("Could not crop this photo."));
+          return;
+        }
+
+        context.drawImage(
+          element,
+          sourceX,
+          sourceY,
+          sourceWidth,
+          sourceHeight,
+          0,
+          0,
+          sourceWidth,
+          sourceHeight,
+        );
+
+        canvas.toBlob(
+          (blob) => {
+            cleanUp();
+            if (!blob) {
+              reject(new Error("Could not crop this photo."));
+              return;
+            }
+            resolve(blob);
+          },
+          options.type ?? image.type ?? CAPTURED_PHOTO_MIME_TYPE,
+          options.quality ?? CAPTURED_PHOTO_JPEG_QUALITY,
+        );
+      } catch (error) {
+        cleanUp();
+        reject(error instanceof Error ? error : new Error("Could not crop this photo."));
+      }
+    };
+
+    element.onerror = () => {
+      cleanUp();
+      reject(new Error("Could not crop this photo."));
+    };
+
+    element.src = objectUrl;
+  });
 
 // Draws the current video frame to a canvas and resolves a File. This
 // touches the DOM (canvas/video elements), so it is exercised manually in the

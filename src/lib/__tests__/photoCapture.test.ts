@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  A4_PORTRAIT_RATIO,
   CAMERA_GUIDANCE_FRAME_CLASSNAME,
   CAMERA_GUIDANCE_FIT_MESSAGE,
   CAMERA_GUIDANCE_TIPS,
@@ -17,13 +18,18 @@ import {
   PHOTO_REVIEW_ACTIONS_CLASSNAME,
   PHOTO_REVIEW_CONTENT_CLASSNAME,
   PHOTO_REVIEW_WARNING_CLASSNAME,
+  PHOTO_CROP_FAILED_MESSAGE,
+  PHOTO_CROPPED_TO_FRAME_MESSAGE,
   PHOTO_SECONDARY_USE_BUTTON_CLASSNAME,
+  PHOTO_READS_INSIDE_FRAME_MESSAGE,
   PHOTO_UNREADABLE_FALLBACK_MESSAGE,
   PHOTO_USE_ANYWAY_LABEL,
   PHOTO_USE_THIS_PHOTO_LABEL,
   capturePhotoFromVideoElement,
+  cropImageBlobToRect,
   classifyCameraError,
   createCapturedPhotoFile,
+  getA4GuideCropRect,
   getCameraErrorMessage,
   isCameraCaptureSupported,
   photoCaptureReducer,
@@ -276,6 +282,119 @@ describe("createCapturedPhotoFile", () => {
   });
 });
 
+// ---- Capture frame crop ----
+describe("A4 guide-frame crop", () => {
+  it("returns a centred portrait A4 crop rectangle", () => {
+    const rect = getA4GuideCropRect(1200, 2000);
+    const pixelRatio = (rect.width * 1200) / (rect.height * 2000);
+
+    expect(pixelRatio).toBeCloseTo(A4_PORTRAIT_RATIO, 3);
+    expect(rect.x + rect.width / 2).toBeCloseTo(0.5, 5);
+    expect(rect.y + rect.height / 2).toBeCloseTo(0.5, 5);
+  });
+
+  it("keeps the crop rectangle within image bounds", () => {
+    const testSizes = [
+      [1200, 2000],
+      [2000, 1200],
+      [500, 500],
+      [0, 0],
+    ];
+
+    for (const [width, height] of testSizes) {
+      const rect = getA4GuideCropRect(width, height);
+      expect(rect.x).toBeGreaterThanOrEqual(0);
+      expect(rect.y).toBeGreaterThanOrEqual(0);
+      expect(rect.width).toBeGreaterThan(0);
+      expect(rect.height).toBeGreaterThan(0);
+      expect(rect.x + rect.width).toBeLessThanOrEqual(1);
+      expect(rect.y + rect.height).toBeLessThanOrEqual(1);
+    }
+  });
+
+  const withFakeImageCanvas = async (
+    run: (fakeCanvas: {
+      width: number;
+      height: number;
+      drawImage: ReturnType<typeof vi.fn>;
+      toBlobArgs: unknown[];
+    }) => Promise<void>,
+  ) => {
+    const drawImage = vi.fn();
+    let toBlobArgs: unknown[] = [];
+    const fakeCanvas = {
+      width: 0,
+      height: 0,
+      getContext: () => ({ drawImage }),
+      toBlob: (callback: (blob: Blob | null) => void, type: string, quality: number) => {
+        toBlobArgs = [type, quality];
+        callback(new Blob(["cropped"], { type }));
+      },
+    };
+
+    class FakeImage {
+      naturalWidth = 1200;
+      naturalHeight = 2000;
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      set src(_value: string) {
+        this.onload?.();
+      }
+    }
+
+    vi.stubGlobal("document", {
+      createElement: () => fakeCanvas,
+    });
+    vi.stubGlobal("Image", FakeImage);
+    vi.stubGlobal("URL", {
+      createObjectURL: vi.fn(() => "blob:fake-photo"),
+      revokeObjectURL: vi.fn(),
+    });
+
+    try {
+      await run({
+        get width() {
+          return fakeCanvas.width;
+        },
+        get height() {
+          return fakeCanvas.height;
+        },
+        drawImage,
+        get toBlobArgs() {
+          return toBlobArgs;
+        },
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  };
+
+  it("crops to a Blob and preserves the image MIME type where possible", async () => {
+    await withFakeImageCanvas(async (fakeCanvas) => {
+      const source = new Blob(["full photo"], { type: "image/jpeg" });
+      const blob = await cropImageBlobToRect(source, getA4GuideCropRect(1200, 2000));
+
+      expect(blob).toBeInstanceOf(Blob);
+      expect(blob.type).toBe("image/jpeg");
+      expect(fakeCanvas.toBlobArgs[0]).toBe("image/jpeg");
+    });
+  });
+
+  it("draws only the centred guide-frame area to the crop canvas", async () => {
+    await withFakeImageCanvas(async (fakeCanvas) => {
+      const source = new Blob(["full photo"], { type: "image/jpeg" });
+      await cropImageBlobToRect(source, getA4GuideCropRect(1200, 2000));
+
+      expect(fakeCanvas.width).toBeGreaterThan(0);
+      expect(fakeCanvas.height).toBeGreaterThan(0);
+      expect(fakeCanvas.width / fakeCanvas.height).toBeCloseTo(A4_PORTRAIT_RATIO, 2);
+      expect(fakeCanvas.drawImage).toHaveBeenCalledOnce();
+      expect(fakeCanvas.drawImage.mock.calls[0][1]).toBeGreaterThan(0);
+      expect(fakeCanvas.drawImage.mock.calls[0][2]).toBeGreaterThan(0);
+    });
+  });
+});
+
 // ---- Capture quality setting ----
 // capturePhotoFromVideoElement itself touches canvas/video (DOM-only, so it
 // is exercised manually per the comment in photoCapture.ts) - but the actual
@@ -293,11 +412,13 @@ describe("captured photo JPEG quality", () => {
 // ---- Document Capture Coach live guidance ----
 describe("document capture coach live guidance copy", () => {
   it("shows the required frame guidance message", () => {
-    expect(CAMERA_GUIDANCE_FIT_MESSAGE).toBe("Fill this frame with the letter");
+    expect(CAMERA_GUIDANCE_FIT_MESSAGE).toBe("Fill the frame with the letter");
   });
 
   it("shows the required mobile capture tips", () => {
     expect(CAMERA_GUIDANCE_TIPS).toEqual([
+      "Anything outside the frame may be ignored",
+      "Move closer until the letter nearly fills the frame",
       "Move closer if the text is small",
       "Use good light",
       "Keep the page flat",
@@ -461,6 +582,9 @@ describe("camera flow copy never implies a cloud upload, send, or contact", () =
   const allMessages = [
     PHOTO_STAYS_LOCAL_MESSAGE,
     PHOTO_UNREADABLE_FALLBACK_MESSAGE,
+    PHOTO_CROPPED_TO_FRAME_MESSAGE,
+    PHOTO_READS_INSIDE_FRAME_MESSAGE,
+    PHOTO_CROP_FAILED_MESSAGE,
     CAMERA_PERMISSION_DENIED_MESSAGE,
     CAMERA_UNAVAILABLE_MESSAGE,
   ];

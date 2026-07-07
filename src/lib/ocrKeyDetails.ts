@@ -60,6 +60,8 @@ export const OCR_KEY_DETAILS_CHECK_MESSAGE =
 // itself).
 export const OCR_KEY_DETAILS_LOW_QUALITY_CAUTION =
   "These details may be wrong if the photo was unclear.";
+export const OCR_KEY_DETAILS_HIDDEN_UNRELIABLE_MESSAGE =
+  "Key details are hidden because the photo was not read clearly enough.";
 
 // ---- Per-kind caution lines ----
 //
@@ -104,6 +106,44 @@ const MONTH_NAMES =
   "jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?";
 const WORD_DATE_PATTERN = new RegExp(`\\b\\d{1,2}\\s+(?:${MONTH_NAMES})\\s+\\d{4}\\b`, "gi");
 
+const parseNumericDateParts = (value: string): { day: number; month: number; year: number } | null => {
+  const match = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+
+  if (!match) {
+    return null;
+  }
+
+  const [, dayValue, monthValue, yearValue] = match;
+  const day = Number(dayValue);
+  const month = Number(monthValue);
+  const year = yearValue.length === 2 ? 2000 + Number(yearValue) : Number(yearValue);
+
+  return { day, month, year };
+};
+
+const isPlausibleDateParts = (day: number, month: number, year: number): boolean => {
+  if (!Number.isInteger(day) || !Number.isInteger(month) || !Number.isInteger(year)) {
+    return false;
+  }
+
+  if (year < 1900 || year > 2100 || month < 1 || month > 12 || day < 1) {
+    return false;
+  }
+
+  const daysInMonth = new Date(year, month, 0).getDate();
+  return day <= daysInMonth;
+};
+
+const isPlausibleNumericDate = (value: string): boolean => {
+  const parts = parseNumericDateParts(value);
+  return parts ? isPlausibleDateParts(parts.day, parts.month, parts.year) : false;
+};
+
+const isPlausibleWordDate = (value: string): boolean => {
+  const day = Number(value.trim().match(/^(\d{1,2})\s+/i)?.[1]);
+  return Number.isInteger(day) && day >= 1 && day <= 31;
+};
+
 // ---- Phone numbers ----
 // A single, deliberately simple UK-shaped pattern (leading 0, then a 2-4
 // digit group, then a 5-7 digit group) - covers landline and mobile-style
@@ -140,6 +180,18 @@ const hammingDistance = (a: string, b: string): number => {
 };
 
 const MAX_PHONE_CLUSTER_DIGIT_DISTANCE = 2;
+const MIN_PHONE_DIGIT_LENGTH = 10;
+const UK_PHONE_PREFIX_PATTERN = /^0(?:1|2|3|7)\d{8,10}$|^0800\d{6,7}$/;
+
+const isLikelyUkPhoneNumber = (value: string): boolean => {
+  const digits = digitsOnly(value);
+
+  if (digits.length < MIN_PHONE_DIGIT_LENGTH) {
+    return false;
+  }
+
+  return UK_PHONE_PREFIX_PATTERN.test(digits);
+};
 
 type PhoneCluster = {
   primary: string;
@@ -210,6 +262,7 @@ const buildPhoneCaution = (variants: string[]): string => {
 //    the standalone heuristic prefers.
 const REFERENCE_KEYWORD_PATTERN = /\b(reference|claim\s*(?:no\.?|number)?|account(?:\s*no\.?|\s*number)?|notice\s*number|pcn)\b/i;
 const CODE_TOKEN_PATTERN = /\b(?=[A-Z0-9]{6,14}\b)(?=[A-Z0-9]*[0-9])(?=[A-Z0-9]*[A-Z])[A-Z0-9]{6,14}\b/g;
+const COMPANY_NUMBER_PATTERN = /\bcompany\s+(?:registration\s+)?number[:\s]*([0-9]{6,10})\b/gi;
 
 // ---- Court / proceedings wording ----
 // Exact phrases only (case-insensitive) - flagged as wording found, never
@@ -377,17 +430,21 @@ export const extractOcrKeyDetails = (text: string): OcrKeyDetails => {
 
   // Dates
   for (const match of findPatternOccurrences(text, NUMERIC_DATE_PATTERN)) {
-    addDetail("Date mentioned", match, "date", DATE_CAUTION);
+    if (isPlausibleNumericDate(match)) {
+      addDetail("Date mentioned", match, "date", DATE_CAUTION);
+    }
   }
   for (const match of findPatternOccurrences(text, WORD_DATE_PATTERN)) {
-    addDetail("Date mentioned", match, "date", DATE_CAUTION);
+    if (isPlausibleWordDate(match)) {
+      addDetail("Date mentioned", match, "date", DATE_CAUTION);
+    }
   }
 
   // Phone numbers - clustered first so identical numbers collapse and
   // near-match OCR variants (e.g. "01529 406096" / "01529 406086" /
   // "01529 406996") fold into a single detail rather than showing as three
   // separate, equally-confident phone numbers.
-  const rawPhoneMatches = findPatternOccurrences(text, PHONE_PATTERN);
+  const rawPhoneMatches = findPatternOccurrences(text, PHONE_PATTERN).filter(isLikelyUkPhoneNumber);
   for (const cluster of clusterPhoneMatches(rawPhoneMatches)) {
     addDetail("Phone number found", cluster.primary, "phone", buildPhoneCaution(cluster.variants));
   }
@@ -395,6 +452,12 @@ export const extractOcrKeyDetails = (text: string): OcrKeyDetails => {
   // Reference / claim numbers - standalone code-shaped tokens anywhere...
   for (const match of findPatternOccurrences(text, CODE_TOKEN_PATTERN)) {
     addDetail("Reference found", match, "reference", REFERENCE_CAUTION);
+  }
+  for (const match of text.matchAll(COMPANY_NUMBER_PATTERN)) {
+    const companyNumber = match[1];
+    if (companyNumber) {
+      addDetail("Reference found", companyNumber, "reference", REFERENCE_CAUTION);
+    }
   }
   // ...plus a keyword-adjacent pass over each line, in case a valid code
   // shorter/longer than the standalone heuristic sits right next to a label.
@@ -527,6 +590,22 @@ export const groupOcrKeyDetails = (details: OcrKeyDetail[]): OcrKeyDetailGroup[]
     heading,
     details: details.filter((detail) => kinds.includes(detail.kind)),
   })).filter((group) => group.details.length > 0);
+
+export type OcrKeyDetailVisibilityOptions = {
+  isOcrUnreliable: boolean;
+  hasUserEditedText: boolean;
+};
+
+export const getVisibleOcrKeyDetails = (
+  details: OcrKeyDetail[],
+  { isOcrUnreliable, hasUserEditedText }: OcrKeyDetailVisibilityOptions,
+): OcrKeyDetail[] => {
+  if (isOcrUnreliable && !hasUserEditedText) {
+    return [];
+  }
+
+  return details;
+};
 
 // ---- OCR text cleanup (conservative, line-based) ----
 //

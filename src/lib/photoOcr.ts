@@ -59,6 +59,17 @@ const MIN_USEFUL_TEXT_LENGTH = 8;
 // getOcrQualityWarnings.
 const LOW_CONFIDENCE_THRESHOLD = 40;
 
+// Below this confidence, the OCR result is treated as unreliable enough that
+// callers should avoid presenting extracted key details as normal facts. The
+// user can still edit the text manually and continue.
+export const OCR_UNRELIABLE_CONFIDENCE_THRESHOLD = 45;
+
+// Key details are more sensitive than the editable OCR textarea. In live
+// mobile tests, OCR around ~52% could still produce plausible-looking but
+// wrong facts, so the normal "Key details found" card waits for a stronger
+// read unless the user has manually edited the extracted text.
+export const OCR_KEY_DETAILS_CONFIDENCE_THRESHOLD = 60;
+
 // Between LOW_CONFIDENCE_THRESHOLD and this value, OCR ran and found text,
 // but real-world testing on mobile (full-page letters coming back around
 // ~54% confidence with several wrong words) showed this band still needs its
@@ -89,6 +100,18 @@ const GARBLED_NOISE_RATIO_THRESHOLD = 0.3;
 export const OCR_GARBLED_TEXT_WARNING =
   "This text doesn't look right - the photo may be unclear. Try a clearer photo or edit the text manually.";
 
+export const OCR_UNRELIABLE_MESSAGE = "We could not read this photo reliably.";
+export const OCR_UNRELIABLE_RETAKE_MESSAGE =
+  "Retake the photo closer, upload a clearer image, or paste the text manually.";
+export const OCR_UNRELIABLE_EDIT_MESSAGE =
+  "You can still edit the extracted text yourself before checking it.";
+export const OCR_CHECK_TEXT_UNRELIABLE_WARNING =
+  "Only continue if you have checked or corrected the text.";
+export const OCR_KEY_DETAILS_NOT_RELIABLE_MESSAGE =
+  "We could read some text, but not reliably enough to extract key details.";
+export const OCR_KEY_DETAILS_REVIEW_OPTIONS_MESSAGE =
+  "Retake the photo closer, upload a clearer image, paste the text manually, or edit the text below.";
+
 // Pure - deliberately simple and conservative: mostly-non-letter text, or an
 // unusually high share of characters that would not appear in normal prose,
 // is treated as likely garbled. Ordinary short sentences, numbers, and
@@ -108,6 +131,32 @@ export const isLikelyGarbledText = (text: string): boolean => {
   const noiseRatio = noiseCount / trimmed.length;
 
   return letterRatio < GARBLED_LETTER_RATIO_THRESHOLD || noiseRatio > GARBLED_NOISE_RATIO_THRESHOLD;
+};
+
+export const isOcrResultUnreliable = (text: string, confidence?: number): boolean => {
+  const trimmed = text.trim();
+
+  if (typeof confidence === "number" && confidence < OCR_UNRELIABLE_CONFIDENCE_THRESHOLD) {
+    return true;
+  }
+
+  if (trimmed.length < MIN_USEFUL_TEXT_LENGTH) {
+    return true;
+  }
+
+  return isLikelyGarbledText(trimmed);
+};
+
+export const isOcrKeyDetailsReliable = (text: string, confidence?: number): boolean => {
+  if (isOcrResultUnreliable(text, confidence)) {
+    return false;
+  }
+
+  if (typeof confidence === "number" && confidence < OCR_KEY_DETAILS_CONFIDENCE_THRESHOLD) {
+    return false;
+  }
+
+  return true;
 };
 
 // Thrown (not returned) when Tesseract itself fails to run, so callers can

@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   OCR_KEY_DETAILS_CHECK_MESSAGE,
   OCR_KEY_DETAILS_HEADING,
+  OCR_KEY_DETAILS_HIDDEN_UNRELIABLE_MESSAGE,
   OCR_KEY_DETAILS_LOW_QUALITY_CAUTION,
   cleanOcrTextForReview,
   extractOcrKeyDetails,
+  getVisibleOcrKeyDetails,
   groupOcrKeyDetails,
   type OcrKeyDetail,
 } from "../ocrKeyDetails";
@@ -96,6 +98,14 @@ describe("extractOcrKeyDetails - dates", () => {
       expect(date.label).toBe("Date mentioned");
       expect(date.label.toLowerCase()).not.toContain("deadline");
     }
+  });
+
+  it("does not surface an impossible OCR-garbage numeric date", () => {
+    const result = extractOcrKeyDetails("Amount: Â£7\nDate mentioned: 39/0/1015\nIMS Legal");
+    const dates = findByKind(result.details, "date").map((detail) => detail.value);
+
+    expect(dates).not.toContain("39/0/1015");
+    expect(dates).toEqual([]);
   });
 });
 
@@ -195,6 +205,24 @@ describe("extractOcrKeyDetails - phone numbers", () => {
     expect(phones).toContain("01529 406096");
     expect(phones).toContain("02071 234567");
     expect(phones).toHaveLength(2);
+  });
+
+  it("does not show a short company number as a phone number", () => {
+    const result = extractOcrKeyDetails("Company number 09160334. Registered office shown above.");
+    const phones = findByKind(result.details, "phone").map((detail) => detail.value);
+
+    expect(phones).not.toContain("09160334");
+    expect(phones).toEqual([]);
+  });
+
+  it("classifies a number near 'Company number' as a reference, not a phone", () => {
+    const result = extractOcrKeyDetails("Company number: 09160334\nTelephone: 01529 406096");
+    const phones = findByKind(result.details, "phone").map((detail) => detail.value);
+    const references = findByKind(result.details, "reference").map((detail) => detail.value);
+
+    expect(phones).toContain("01529 406096");
+    expect(phones).not.toContain("09160334");
+    expect(references).toContain("09160334");
   });
 });
 
@@ -475,6 +503,9 @@ describe("extractOcrKeyDetails - safety wording", () => {
     expect(OCR_KEY_DETAILS_LOW_QUALITY_CAUTION).toBe(
       "These details may be wrong if the photo was unclear.",
     );
+    expect(OCR_KEY_DETAILS_HIDDEN_UNRELIABLE_MESSAGE).toBe(
+      "Key details are hidden because the photo was not read clearly enough.",
+    );
   });
 });
 
@@ -533,6 +564,59 @@ describe("groupOcrKeyDetails", () => {
     expect(courtGroup).toBeDefined();
     expect(courtGroup?.details.some((detail) => detail.kind === "deadline_wording")).toBe(true);
     expect(courtGroup?.details.some((detail) => detail.kind === "court_or_claim")).toBe(true);
+  });
+});
+
+describe("getVisibleOcrKeyDetails", () => {
+  it("hides normal key details for moderate/poor OCR such as 52% confidence when unchanged", () => {
+    const result = extractOcrKeyDetails("Your refund of Â£42.99 is reference RF12345.");
+    const visible = getVisibleOcrKeyDetails(result.details, {
+      isOcrUnreliable: true,
+      hasUserEditedText: false,
+    });
+
+    expect(visible).toEqual([]);
+  });
+
+  it("hides normal key details for unreliable, unchanged OCR text", () => {
+    const result = extractOcrKeyDetails("Amount: Â£7\nDate: 39/0/1015\nIMS Legal");
+    const visible = getVisibleOcrKeyDetails(result.details, {
+      isOcrUnreliable: true,
+      hasUserEditedText: false,
+    });
+
+    expect(visible).toEqual([]);
+  });
+
+  it("prevents tiny random amounts and fuzzy sender names from appearing as normal facts when OCR is unreliable", () => {
+    const result = extractOcrKeyDetails("Amount: Â£7\nIMS Legal");
+    const visible = getVisibleOcrKeyDetails(result.details, {
+      isOcrUnreliable: true,
+      hasUserEditedText: false,
+    });
+
+    expect(findByKind(visible, "amount")).toEqual([]);
+    expect(findByKind(visible, "sender")).toEqual([]);
+  });
+
+  it("shows details again after the user has edited the OCR text", () => {
+    const result = extractOcrKeyDetails("Your refund of Â£42.99 is reference RF12345.");
+    const visible = getVisibleOcrKeyDetails(result.details, {
+      isOcrUnreliable: true,
+      hasUserEditedText: true,
+    });
+
+    expect(findByKind(visible, "amount").map((detail) => detail.value).join(" ")).toMatch(/42\.99/);
+  });
+
+  it("does not hide details for reliable OCR", () => {
+    const result = extractOcrKeyDetails("Your refund of Â£42.99 is reference RF12345.");
+    const visible = getVisibleOcrKeyDetails(result.details, {
+      isOcrUnreliable: false,
+      hasUserEditedText: false,
+    });
+
+    expect(visible.length).toBeGreaterThan(0);
   });
 });
 

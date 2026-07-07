@@ -19,12 +19,22 @@ import {
   OCR_READING_STATUS_MESSAGE,
   OCR_REVIEW_BEFORE_CHECKING_MESSAGE,
   OCR_RUNS_ON_DEVICE_MESSAGE,
+  OCR_CHECK_TEXT_UNRELIABLE_WARNING,
+  OCR_KEY_DETAILS_CONFIDENCE_THRESHOLD,
+  OCR_KEY_DETAILS_NOT_RELIABLE_MESSAGE,
+  OCR_KEY_DETAILS_REVIEW_OPTIONS_MESSAGE,
+  OCR_UNRELIABLE_CONFIDENCE_THRESHOLD,
+  OCR_UNRELIABLE_EDIT_MESSAGE,
+  OCR_UNRELIABLE_MESSAGE,
+  OCR_UNRELIABLE_RETAKE_MESSAGE,
   OcrReadError,
   applyGrayscaleContrast,
   combineOcrTexts,
   getOcrPreprocessScale,
   getOcrQualityWarnings,
   isLikelyGarbledText,
+  isOcrKeyDetailsReliable,
+  isOcrResultUnreliable,
   readTextFromImage,
 } from "../photoOcr";
 
@@ -175,6 +185,57 @@ describe("getOcrQualityWarnings", () => {
 
   it("does not warn on low confidence when confidence is undefined (unknown, not low)", () => {
     expect(getOcrQualityWarnings("Plenty of text was found here.", undefined)).toEqual([]);
+  });
+});
+
+// ---- Low-confidence guard used by the OCR review UI ----
+describe("isOcrResultUnreliable", () => {
+  it("marks OCR below the reliability threshold as unreliable", () => {
+    expect(isOcrResultUnreliable("This looks like enough text to review.", 30)).toBe(true);
+    expect(OCR_UNRELIABLE_CONFIDENCE_THRESHOLD).toBe(45);
+  });
+
+  it("marks very short or garbled text as unreliable even without a confidence value", () => {
+    expect(isOcrResultUnreliable("Hi", undefined)).toBe(true);
+    expect(isOcrResultUnreliable("]{-_~^%#@!*()[[}}}~~^^%%##]]", undefined)).toBe(true);
+  });
+
+  it("does not mark readable, confident OCR as unreliable", () => {
+    expect(isOcrResultUnreliable("Your refund of Â£42.99 has been approved.", 88)).toBe(false);
+  });
+
+  it("provides the exact low-confidence OCR review copy", () => {
+    expect(OCR_UNRELIABLE_MESSAGE).toBe("We could not read this photo reliably.");
+    expect(OCR_UNRELIABLE_RETAKE_MESSAGE).toBe(
+      "Retake the photo closer, upload a clearer image, or paste the text manually.",
+    );
+    expect(OCR_UNRELIABLE_EDIT_MESSAGE).toBe(
+      "You can still edit the extracted text yourself before checking it.",
+    );
+    expect(OCR_CHECK_TEXT_UNRELIABLE_WARNING).toBe(
+      "Only continue if you have checked or corrected the text.",
+    );
+  });
+});
+
+describe("isOcrKeyDetailsReliable", () => {
+  it("hides normal key details at moderate/poor confidence like 52%", () => {
+    expect(isOcrKeyDetailsReliable("This OCR text is long enough but still uncertain.", 52)).toBe(false);
+    expect(OCR_KEY_DETAILS_CONFIDENCE_THRESHOLD).toBe(60);
+  });
+
+  it("allows normal key details at 60% confidence or above", () => {
+    expect(isOcrKeyDetailsReliable("Your refund of Â£42.99 has been approved.", 60)).toBe(true);
+    expect(isOcrKeyDetailsReliable("Your refund of Â£42.99 has been approved.", 82)).toBe(true);
+  });
+
+  it("provides the exact moderate-confidence key-details copy", () => {
+    expect(OCR_KEY_DETAILS_NOT_RELIABLE_MESSAGE).toBe(
+      "We could read some text, but not reliably enough to extract key details.",
+    );
+    expect(OCR_KEY_DETAILS_REVIEW_OPTIONS_MESSAGE).toBe(
+      "Retake the photo closer, upload a clearer image, paste the text manually, or edit the text below.",
+    );
   });
 });
 

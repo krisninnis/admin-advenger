@@ -46,14 +46,24 @@ import {
   OCR_READING_STATUS_MESSAGE,
   OCR_REVIEW_BEFORE_CHECKING_MESSAGE,
   OCR_RUNS_ON_DEVICE_MESSAGE,
+  OCR_CHECK_TEXT_UNRELIABLE_WARNING,
+  OCR_KEY_DETAILS_NOT_RELIABLE_MESSAGE,
+  OCR_KEY_DETAILS_REVIEW_OPTIONS_MESSAGE,
   OcrReadError,
+  OCR_UNRELIABLE_EDIT_MESSAGE,
+  OCR_UNRELIABLE_MESSAGE,
+  OCR_UNRELIABLE_RETAKE_MESSAGE,
+  isOcrKeyDetailsReliable,
+  isOcrResultUnreliable,
   readTextFromImage,
 } from "../lib/photoOcr";
 import {
   OCR_KEY_DETAILS_CHECK_MESSAGE,
   OCR_KEY_DETAILS_HEADING,
+  OCR_KEY_DETAILS_HIDDEN_UNRELIABLE_MESSAGE,
   OCR_KEY_DETAILS_LOW_QUALITY_CAUTION,
   extractOcrKeyDetails,
+  getVisibleOcrKeyDetails,
   groupOcrKeyDetails,
 } from "../lib/ocrKeyDetails";
 import {
@@ -445,6 +455,7 @@ export function HomeView({
   const [photoMetadata, setPhotoMetadata] = useState<PhotoIntakeMetadata | undefined>();
   const [ocrStatus, setOcrStatus] = useState<OcrStatus>("idle");
   const [ocrText, setOcrText] = useState("");
+  const [ocrOriginalText, setOcrOriginalText] = useState("");
   const [ocrProgress, setOcrProgress] = useState(0);
   const [ocrError, setOcrError] = useState("");
   const [ocrConfidence, setOcrConfidence] = useState<number | undefined>();
@@ -468,6 +479,12 @@ export function HomeView({
   const isAiReading = aiStatus === "loading";
   const isReadingPhoto = ocrStatus === "reading";
   const isLocalOllamaMode = aiSettings.mode === "local_ollama";
+  const hasEditedOcrText = ocrText.trim() !== ocrOriginalText.trim();
+  const isOcrReviewUnreliable =
+    ocrStatus === "success" && isOcrResultUnreliable(ocrOriginalText || ocrText, ocrConfidence);
+  const canShowOcrKeyDetails =
+    ocrStatus === "success" && isOcrKeyDetailsReliable(ocrOriginalText || ocrText, ocrConfidence);
+  const shouldHideOcrKeyDetails = !canShowOcrKeyDetails && !hasEditedOcrText;
   // "Key details found" card (see src/lib/ocrKeyDetails.ts) - recomputed from
   // whatever is currently in the editable OCR textarea, so editing the text
   // updates the card too. Purely local regex matching over text already on
@@ -477,11 +494,19 @@ export function HomeView({
     () => (ocrStatus === "success" ? extractOcrKeyDetails(ocrText) : { details: [], warnings: [] }),
     [ocrStatus, ocrText],
   );
+  const visibleOcrKeyDetails = useMemo(
+    () =>
+      getVisibleOcrKeyDetails(ocrKeyDetails.details, {
+        isOcrUnreliable: !canShowOcrKeyDetails,
+        hasUserEditedText: hasEditedOcrText,
+      }),
+    [canShowOcrKeyDetails, hasEditedOcrText, ocrKeyDetails.details],
+  );
   // Grouped into named sections (Money mentioned, Dates mentioned, etc.) for
   // the card below - a flat list of every detail was hard to scan on mobile.
   const ocrKeyDetailGroups = useMemo(
-    () => groupOcrKeyDetails(ocrKeyDetails.details),
-    [ocrKeyDetails],
+    () => groupOcrKeyDetails(visibleOcrKeyDetails),
+    [visibleOcrKeyDetails],
   );
   const primaryCase = useMemo(
     () => (result ? getMostImportantCase(result.cases) : undefined),
@@ -635,6 +660,7 @@ export function HomeView({
     setPhotoMetadata(undefined);
     setOcrStatus("idle");
     setOcrText("");
+    setOcrOriginalText("");
     setOcrProgress(0);
     setOcrError("");
     setOcrConfidence(undefined);
@@ -838,6 +864,7 @@ export function HomeView({
       setOcrWarnings(Array.from(new Set([...imageQualityWarnings, ...result.warnings])));
       setOcrProgress(1);
       setOcrText(result.text);
+      setOcrOriginalText(result.text);
       setOcrStatus("success");
       setInputMessage("");
     } catch (error) {
@@ -1372,6 +1399,28 @@ export function HomeView({
                 <div className="mt-4 rounded-lg border border-emerald-300/20 bg-emerald-300/[0.07] p-4">
                   <p className="text-sm font-bold text-emerald-50">{OCR_ON_DEVICE_MESSAGE}</p>
                   <p className="mt-2 text-sm leading-6 text-emerald-50/80">{OCR_MISTAKES_MESSAGE}</p>
+                  {isOcrReviewUnreliable ? (
+                    <div className="mt-3 rounded-lg border border-amber-300/40 bg-amber-300/15 px-4 py-3">
+                      <p className="text-sm font-bold text-amber-50">Retake recommended</p>
+                      <p className="mt-1 text-sm font-bold text-amber-50">{OCR_UNRELIABLE_MESSAGE}</p>
+                      <p className="mt-1 text-sm leading-6 text-amber-100/90">
+                        {OCR_UNRELIABLE_RETAKE_MESSAGE}
+                      </p>
+                      <p className="mt-1 text-sm leading-6 text-amber-100/90">
+                        {OCR_UNRELIABLE_EDIT_MESSAGE}
+                      </p>
+                    </div>
+                  ) : null}
+                  {shouldHideOcrKeyDetails && !isOcrReviewUnreliable ? (
+                    <div className="mt-3 rounded-lg border border-amber-300/35 bg-amber-300/10 px-4 py-3">
+                      <p className="text-sm font-bold text-amber-50">
+                        {OCR_KEY_DETAILS_NOT_RELIABLE_MESSAGE}
+                      </p>
+                      <p className="mt-1 text-sm leading-6 text-amber-100/90">
+                        {OCR_KEY_DETAILS_REVIEW_OPTIONS_MESSAGE}
+                      </p>
+                    </div>
+                  ) : null}
                   {ocrWarnings.length > 0 ? (
                     <div className="mt-3 rounded-lg border border-amber-300/30 bg-amber-300/10 px-4 py-3">
                       <ul className="space-y-1 text-sm leading-6 text-amber-100">
@@ -1381,7 +1430,16 @@ export function HomeView({
                       </ul>
                     </div>
                   ) : null}
-                  {ocrKeyDetails.details.length > 0 ? (
+                  {shouldHideOcrKeyDetails ? (
+                    <div className="mt-3 rounded-lg border border-amber-300/25 bg-slate-950/60 px-4 py-3">
+                      <p className="text-sm font-bold text-amber-50">
+                        {OCR_KEY_DETAILS_HIDDEN_UNRELIABLE_MESSAGE}
+                      </p>
+                      <p className="mt-1 text-xs leading-5 text-amber-100/80">
+                        Edit the text below if you can read the document, then check it when you are comfortable.
+                      </p>
+                    </div>
+                  ) : visibleOcrKeyDetails.length > 0 ? (
                     <div className="mt-3 rounded-lg border border-cyan-300/25 bg-cyan-300/[0.07] px-4 py-3">
                       <p className="text-sm font-bold text-cyan-50">{OCR_KEY_DETAILS_HEADING}</p>
                       <p className="mt-1 text-xs leading-5 text-cyan-50/80">
@@ -1423,6 +1481,11 @@ export function HomeView({
                     {OCR_REVIEW_BEFORE_CHECKING_MESSAGE} {OCR_RUNS_ON_DEVICE_MESSAGE}
                     {ocrConfidence === undefined ? "" : ` OCR confidence: ${Math.round(ocrConfidence)}%.`}
                   </p>
+                  {isOcrReviewUnreliable && !hasEditedOcrText ? (
+                    <p className="mt-2 rounded-lg border border-amber-300/25 bg-amber-300/10 px-3 py-2 text-xs font-semibold leading-5 text-amber-100">
+                      {OCR_CHECK_TEXT_UNRELIABLE_WARNING}
+                    </p>
+                  ) : null}
                   <div className="mt-4 grid gap-2 sm:grid-cols-3">
                     <button
                       type="button"
@@ -1435,7 +1498,11 @@ export function HomeView({
                     <button
                       type="button"
                       onClick={handleTryAnotherPhoto}
-                      className="min-h-11 rounded-lg border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-slate-200 transition hover:border-white/20 hover:text-white"
+                      className={
+                        isOcrReviewUnreliable
+                          ? "min-h-11 rounded-lg bg-amber-300 px-4 py-3 text-sm font-bold text-slate-950 shadow-lg shadow-amber-950/30 transition hover:bg-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-100 focus:ring-offset-2 focus:ring-offset-slate-950"
+                          : "min-h-11 rounded-lg border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-slate-200 transition hover:border-white/20 hover:text-white"
+                      }
                     >
                       Try another photo
                     </button>

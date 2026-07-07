@@ -4,8 +4,10 @@ import {
   CAMERA_IDEAL_HEIGHT,
   CAMERA_IDEAL_WIDTH,
   CAMERA_GUIDANCE_FRAME_CLASSNAME,
-  CAMERA_GUIDANCE_FIT_MESSAGE,
   CAMERA_GUIDANCE_TIPS,
+  BEST_ACCURACY_RECOMMENDED_LABEL,
+  BEST_ACCURACY_SCAN_DESCRIPTION,
+  BEST_ACCURACY_SCAN_LABEL,
   CAMERA_PREVIEW_ACTIONS_CLASSNAME,
   CAMERA_PERMISSION_DENIED_MESSAGE,
   CAMERA_UNAVAILABLE_MESSAGE,
@@ -28,14 +30,24 @@ import {
   PHOTO_TAKE_PHOTO_LABEL,
   PHOTO_USE_ANYWAY_LABEL,
   PHOTO_USE_THIS_PHOTO_LABEL,
+  QUICK_SCAN_DESCRIPTION,
+  QUICK_SCAN_LABEL,
   capturePhotoFromVideoElement,
   cropImageBlobToRect,
   createCapturedPhotoFile,
+  getBestAccuracySectionForIndex,
+  getCameraGuidanceFitMessage,
+  getPhotoCaptureSectionLabel,
+  getPhotoCaptureSectionTitle,
+  getPhotoReviewQualityScore,
   mapDisplayedFrameToImageCrop,
   photoCaptureReducer,
   requestEnvironmentCameraStream,
   stopMediaStreamTracks,
+  type CapturedPhotoForOcr,
   type CropRectRatio,
+  type PhotoCaptureScanMode,
+  type PhotoCaptureSection,
 } from "../lib/photoCapture";
 import {
   DOCUMENT_QUALITY_CONTINUE_MESSAGE,
@@ -52,8 +64,9 @@ type PhotoCapturePanelProps = {
   // Feeds a captured/uploaded photo straight into the existing photo intake
   // path (the same handler the compact "+" menu's "Take photo" already
   // uses) - this component never introduces a second intake path.
-  onUsePhoto: (file: File) => void;
+  onUsePhotos: (photos: CapturedPhotoForOcr[]) => void;
   onClose: () => void;
+  defaultSection?: PhotoCaptureSection;
 };
 
 function UploadExistingPhotoInput({ onSelect }: { onSelect: (file: File) => void }) {
@@ -75,8 +88,12 @@ function UploadExistingPhotoInput({ onSelect }: { onSelect: (file: File) => void
   );
 }
 
-export function PhotoCapturePanel({ onUsePhoto, onClose }: PhotoCapturePanelProps) {
+export function PhotoCapturePanel({ onUsePhotos, onClose, defaultSection }: PhotoCapturePanelProps) {
   const [stage, dispatch] = useReducer(photoCaptureReducer, "choice");
+  const [scanMode, setScanMode] = useState<PhotoCaptureScanMode>(
+    defaultSection === "additional" ? "quick" : "best_accuracy",
+  );
+  const [capturedPhotos, setCapturedPhotos] = useState<CapturedPhotoForOcr[]>([]);
   const [errorMessage, setErrorMessage] = useState("");
   const [capturedPreviewUrl, setCapturedPreviewUrl] = useState("");
   const [croppedPreviewUrl, setCroppedPreviewUrl] = useState("");
@@ -90,6 +107,15 @@ export function PhotoCapturePanel({ onUsePhoto, onClose }: PhotoCapturePanelProp
   const fileForOcrRef = useRef<File | undefined>(undefined);
   const capturedCropRectRef = useRef<CropRectRatio | null>(null);
   const cropPromiseRef = useRef<Promise<void> | undefined>(undefined);
+
+  const currentSection: PhotoCaptureSection =
+    defaultSection === "additional"
+      ? "additional"
+      : scanMode === "best_accuracy"
+      ? getBestAccuracySectionForIndex(capturedPhotos.length)
+      : "full_page";
+  const currentSectionTitle = getPhotoCaptureSectionTitle(currentSection);
+  const currentGuidanceMessage = getCameraGuidanceFitMessage(currentSection);
 
   const stopActiveStream = () => {
     stopMediaStreamTracks(streamRef.current);
@@ -122,6 +148,7 @@ export function PhotoCapturePanel({ onUsePhoto, onClose }: PhotoCapturePanelProp
   const handleCancel = () => {
     stopActiveStream();
     clearCapturedPreview();
+    setCapturedPhotos([]);
     dispatch({ type: "cancel" });
   };
 
@@ -276,12 +303,22 @@ export function PhotoCapturePanel({ onUsePhoto, onClose }: PhotoCapturePanelProp
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleChooseTakePhoto = () => {
+  const handleChooseTakePhoto = (mode: PhotoCaptureScanMode) => {
+    setScanMode(mode);
+    setCapturedPhotos([]);
     dispatch({ type: "choose_take_photo" });
   };
 
   const handleUploadExisting = (file: File) => {
-    onUsePhoto(file);
+    const section =
+      defaultSection === "additional"
+        ? "additional"
+        : scanMode === "best_accuracy" && capturedPhotos.length > 0
+          ? currentSection
+          : "full_page";
+    const photo = { file, section, label: getPhotoCaptureSectionLabel(section) };
+
+    onUsePhotos(scanMode === "best_accuracy" && capturedPhotos.length > 0 ? [...capturedPhotos, photo] : [photo]);
     dispatch({ type: "use_photo" });
   };
 
@@ -337,13 +374,29 @@ export function PhotoCapturePanel({ onUsePhoto, onClose }: PhotoCapturePanelProp
       return;
     }
 
-    onUsePhoto(fileToUse);
+    const nextPhoto = {
+      file: fileToUse,
+      section: currentSection,
+      label: getPhotoCaptureSectionLabel(currentSection),
+    };
+
+    if (scanMode === "best_accuracy" && capturedPhotos.length === 0) {
+      setCapturedPhotos([nextPhoto]);
+      clearCapturedPreview();
+      dispatch({ type: "retake" });
+      return;
+    }
+
+    onUsePhotos(scanMode === "best_accuracy" ? [...capturedPhotos, nextPhoto] : [nextPhoto]);
+    setCapturedPhotos([]);
     clearCapturedPreview();
     dispatch({ type: "use_photo" });
   };
 
   const isCameraWorkStage = stage === "camera_preview" || stage === "captured";
-  const retakeRecommended = documentQuality ? shouldEmphasizeRetake(documentQuality.score) : false;
+  const reviewQualityScore =
+    documentQuality ? getPhotoReviewQualityScore(documentQuality.score, Boolean(cropWarning)) : undefined;
+  const retakeRecommended = reviewQualityScore ? shouldEmphasizeRetake(reviewQualityScore) : false;
 
   return (
     <div
@@ -375,13 +428,44 @@ export function PhotoCapturePanel({ onUsePhoto, onClose }: PhotoCapturePanelProp
 
         {stage === "choice" ? (
           <div className="mt-5 grid gap-3">
-            <button
-              type="button"
-              onClick={handleChooseTakePhoto}
-              className="min-h-11 rounded-lg bg-emerald-400 px-4 py-3 text-sm font-bold text-slate-950 shadow-lg shadow-emerald-950/30 transition hover:bg-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-200"
-            >
-              Take a new photo
-            </button>
+            {defaultSection === "additional" ? (
+              <button
+                type="button"
+                onClick={() => handleChooseTakePhoto("quick")}
+                className="rounded-lg border border-emerald-300/50 bg-emerald-400 px-4 py-4 text-left text-slate-950 shadow-lg shadow-emerald-950/30 transition hover:bg-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-200"
+              >
+                <span className="block text-base font-black">Add another photo</span>
+                <span className="mt-2 block text-sm font-semibold leading-6">
+                  Take one more close-up section, page 2, or the back of the letter.
+                </span>
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => handleChooseTakePhoto("best_accuracy")}
+                  className="rounded-lg border border-emerald-300/50 bg-emerald-400 px-4 py-4 text-left text-slate-950 shadow-lg shadow-emerald-950/30 transition hover:bg-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-200"
+                >
+                  <span className="block text-base font-black">{BEST_ACCURACY_SCAN_LABEL}</span>
+                  <span className="mt-1 inline-flex rounded-full bg-slate-950/15 px-2 py-0.5 text-xs font-black uppercase tracking-wide">
+                    {BEST_ACCURACY_RECOMMENDED_LABEL}
+                  </span>
+                  <span className="mt-2 block text-sm font-semibold leading-6">
+                    {BEST_ACCURACY_SCAN_DESCRIPTION}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleChooseTakePhoto("quick")}
+                  className="rounded-lg border border-white/10 bg-slate-950 px-4 py-4 text-left text-slate-200 transition hover:border-white/20 hover:text-white focus:outline-none focus:ring-2 focus:ring-emerald-300/40"
+                >
+                  <span className="block text-base font-bold">{QUICK_SCAN_LABEL}</span>
+                  <span className="mt-2 block text-sm leading-6 text-slate-400">
+                    {QUICK_SCAN_DESCRIPTION}
+                  </span>
+                </button>
+              </>
+            )}
             <UploadExistingPhotoInput onSelect={handleUploadExisting} />
           </div>
         ) : null}
@@ -394,6 +478,10 @@ export function PhotoCapturePanel({ onUsePhoto, onClose }: PhotoCapturePanelProp
 
         {stage === "camera_preview" ? (
           <div className="mt-4 flex min-h-0 flex-1 flex-col gap-2">
+            <div className="shrink-0 rounded-lg border border-emerald-300/20 bg-emerald-300/10 px-4 py-3">
+              <p className="text-sm font-black text-emerald-50">{currentSectionTitle}</p>
+              <p className="mt-1 text-sm leading-6 text-emerald-50/80">{currentGuidanceMessage}.</p>
+            </div>
             {/* Document Capture Coach - live guidance (see
                 src/lib/documentImageQuality.ts for the after-the-fact checks
                 and its v2 TODOs for real page/contour detection). The
@@ -413,7 +501,7 @@ export function PhotoCapturePanel({ onUsePhoto, onClose }: PhotoCapturePanelProp
                 aria-hidden="true"
                 className="pointer-events-none absolute inset-x-0 top-2 text-center text-xs font-bold text-white [text-shadow:0_1px_3px_rgb(0_0_0_/_0.8)]"
               >
-                {CAMERA_GUIDANCE_FIT_MESSAGE}
+                {currentGuidanceMessage}
               </p>
             </div>
             <ul className="grid shrink-0 grid-cols-2 gap-x-3 gap-y-1 text-xs leading-5 text-slate-400 sm:grid-cols-4">
@@ -443,6 +531,12 @@ export function PhotoCapturePanel({ onUsePhoto, onClose }: PhotoCapturePanelProp
         {stage === "captured" ? (
           <div className="mt-4 flex min-h-0 flex-1 flex-col gap-3">
             <div className={PHOTO_REVIEW_CONTENT_CLASSNAME}>
+              <div className="rounded-lg border border-emerald-300/20 bg-emerald-300/10 px-4 py-3">
+                <p className="text-sm font-black text-emerald-50">{currentSectionTitle}</p>
+                <p className="mt-1 text-sm leading-6 text-emerald-50/80">
+                  {currentGuidanceMessage}.
+                </p>
+              </div>
               {croppedPreviewUrl || capturedPreviewUrl ? (
                 <img
                   src={croppedPreviewUrl || capturedPreviewUrl}
@@ -467,26 +561,28 @@ export function PhotoCapturePanel({ onUsePhoto, onClose }: PhotoCapturePanelProp
               {documentQuality ? (
                 <div
                   className={`${PHOTO_REVIEW_WARNING_CLASSNAME} ${
-                    documentQuality.score === "good"
+                    reviewQualityScore === "good"
                       ? "border-emerald-300/25 bg-emerald-300/10 text-emerald-50"
                       : "border-amber-300/30 bg-amber-300/10 text-amber-50"
                   }`}
                 >
                   <p className="font-bold">
-                    {documentQuality.score === "good"
+                    {reviewQualityScore === "good"
                       ? DOCUMENT_QUALITY_GOOD_MESSAGE
                       : retakeRecommended
                         ? PHOTO_RETAKE_RECOMMENDED_LABEL
                         : DOCUMENT_QUALITY_WARNING_MESSAGE}
                   </p>
-                  {documentQuality.score !== "good" ? (
+                  {reviewQualityScore !== "good" ? (
                     <>
                       <p className="mt-1">{DOCUMENT_QUALITY_WARNING_MESSAGE}</p>
-                      <ul className="mt-2 space-y-1">
-                        {getVisibleDocumentQualityWarningMessages(documentQuality).map((message) => (
-                          <li key={message}>{message}</li>
-                        ))}
-                      </ul>
+                      {getVisibleDocumentQualityWarningMessages(documentQuality).length > 0 ? (
+                        <ul className="mt-2 space-y-1">
+                          {getVisibleDocumentQualityWarningMessages(documentQuality).map((message) => (
+                            <li key={message}>{message}</li>
+                          ))}
+                        </ul>
+                      ) : null}
                       <p className="mt-2">{DOCUMENT_QUALITY_TIP_MESSAGE}</p>
                       <p className="mt-1">{DOCUMENT_QUALITY_CONTINUE_MESSAGE}</p>
                     </>

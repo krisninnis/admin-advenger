@@ -8,6 +8,7 @@ vi.mock("tesseract.js", () => ({
 
 import {
   OCR_FAILED_MESSAGE,
+  OCR_BOTH_PHOTOS_ON_DEVICE_MESSAGE,
   OCR_GARBLED_TEXT_WARNING,
   OCR_LOW_CONFIDENCE_WARNING,
   OCR_LOW_TEXT_MESSAGE,
@@ -30,6 +31,7 @@ import {
   OcrReadError,
   applyGrayscaleContrast,
   combineOcrTexts,
+  formatOcrSectionWarning,
   getOcrPreprocessScale,
   getOcrQualityWarnings,
   isLikelyGarbledText,
@@ -361,6 +363,30 @@ describe("combineOcrTexts", () => {
     );
   });
 
+  it("combines labelled photo sections in capture order", () => {
+    expect(
+      combineOcrTexts([
+        { label: "Photo 1: top half", text: "Top text." },
+        { label: "Photo 2: bottom half", text: "Bottom text." },
+      ]),
+    ).toBe("--- Photo 1: top half ---\nTop text.\n\n--- Photo 2: bottom half ---\nBottom text.");
+  });
+
+  it("can append another labelled photo after already-reviewed text", () => {
+    expect(
+      combineOcrTexts([
+        "Already reviewed text.",
+        { label: "Additional photo", text: "Extra page text." },
+      ]),
+    ).toBe("Already reviewed text.\n\n--- Additional photo ---\nExtra page text.");
+  });
+
+  it("formats low-confidence section warnings with the photo label", () => {
+    expect(formatOcrSectionWarning("Photo 2: bottom half", OCR_LOW_CONFIDENCE_WARNING)).toBe(
+      `Photo 2: bottom half: ${OCR_LOW_CONFIDENCE_WARNING}`,
+    );
+  });
+
   it("trims each piece of text and drops empty entries", () => {
     expect(combineOcrTexts(["  First.  ", "", "   ", "Second."])).toBe("First.\n\n---\n\nSecond.");
   });
@@ -371,6 +397,12 @@ describe("combineOcrTexts", () => {
 
   it("returns the single text unchanged when there is only one photo", () => {
     expect(combineOcrTexts(["Only photo text."])).toBe("Only photo text.");
+  });
+
+  it("states the exact combined-photo local OCR copy", () => {
+    expect(OCR_BOTH_PHOTOS_ON_DEVICE_MESSAGE).toBe(
+      "We read both photos on your device. Please check the combined text before continuing.",
+    );
   });
 });
 
@@ -384,13 +416,21 @@ describe("OCR copy never implies cloud upload, sending, storage, or a guaranteed
     OCR_READING_STATUS_MESSAGE,
     OCR_RUNS_ON_DEVICE_MESSAGE,
     OCR_REVIEW_BEFORE_CHECKING_MESSAGE,
+    OCR_BOTH_PHOTOS_ON_DEVICE_MESSAGE,
     OCR_LOW_CONFIDENCE_WARNING,
     OCR_MODERATE_CONFIDENCE_WARNING,
     OCR_GARBLED_TEXT_WARNING,
+    OCR_UNRELIABLE_MESSAGE,
+    OCR_UNRELIABLE_RETAKE_MESSAGE,
+    OCR_UNRELIABLE_EDIT_MESSAGE,
+    OCR_CHECK_TEXT_UNRELIABLE_WARNING,
+    OCR_KEY_DETAILS_NOT_RELIABLE_MESSAGE,
+    OCR_KEY_DETAILS_REVIEW_OPTIONS_MESSAGE,
   ];
 
   const forbiddenPatterns = [
-    /\bupload(ed|ing)?\b/i,
+    /\bupload(?:ed|ing)?\s+(?:to|onto)\b/i,
+    /\bupload(?:ed|ing)?.*\b(?:server|cloud)\b/i,
     /\bsent to (a |the )?server\b/i,
     /\bsends?\b/i,
     /\bstored permanently\b/i,

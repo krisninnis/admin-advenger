@@ -20,6 +20,15 @@ export type CropRectRatio = {
   height: number;
 };
 
+export type PhotoCaptureScanMode = "quick" | "best_accuracy";
+export type PhotoCaptureSection = "full_page" | "top_half" | "bottom_half" | "additional";
+
+export type CapturedPhotoForOcr = {
+  file: File;
+  section: PhotoCaptureSection;
+  label: string;
+};
+
 export type DOMRectLike = {
   left: number;
   top: number;
@@ -67,6 +76,24 @@ export const PHOTO_CROP_FAILED_MESSAGE =
 export const PHOTO_CROP_UNSAFE_MESSAGE =
   "AdminAvenger could not crop this photo safely, so it will read the full photo. You can still retake it.";
 
+export const QUICK_SCAN_LABEL = "Quick scan";
+export const QUICK_SCAN_DESCRIPTION =
+  "One photo of the whole page. Fastest, but less accurate for small text.";
+export const BEST_ACCURACY_SCAN_LABEL = "Best accuracy";
+export const BEST_ACCURACY_SCAN_DESCRIPTION =
+  "Take 2 closer photos - top half and bottom half. Better for letters with small print.";
+export const BEST_ACCURACY_RECOMMENDED_LABEL = "Recommended on mobile";
+
+export const PHOTO_SECTION_FULL_PAGE_LABEL = "Photo 1: full page";
+export const PHOTO_SECTION_TOP_HALF_LABEL = "Photo 1: top half";
+export const PHOTO_SECTION_BOTTOM_HALF_LABEL = "Photo 2: bottom half";
+export const PHOTO_SECTION_ADDITIONAL_LABEL = "Additional photo";
+
+export const PHOTO_SECTION_TOP_HALF_TITLE = "Photo 1 of 2 - top half";
+export const PHOTO_SECTION_BOTTOM_HALF_TITLE = "Photo 2 of 2 - bottom half";
+export const PHOTO_SECTION_FULL_PAGE_TITLE = "Full page photo";
+export const PHOTO_SECTION_ADDITIONAL_TITLE = "Additional photo";
+
 // Requested camera resolution for the "Take a new photo" flow. A full page
 // of letter text needs enough pixels for Tesseract to resolve individual
 // characters - 1920x1080 (or the closest the device actually offers) is a
@@ -85,6 +112,9 @@ export const CAMERA_IDEAL_HEIGHT = 1080;
 // detection promised - see src/lib/documentImageQuality.ts for the actual
 // after-the-fact quality checks and its v2 TODOs for real page detection.
 export const CAMERA_GUIDANCE_FIT_MESSAGE = "Fill the frame with the letter";
+export const CAMERA_GUIDANCE_TOP_HALF_MESSAGE = "Fill the frame with the top half of the letter";
+export const CAMERA_GUIDANCE_BOTTOM_HALF_MESSAGE =
+  "Fill the frame with the bottom half of the letter";
 
 export const CAMERA_GUIDANCE_TIPS = [
   "Anything outside the frame may be ignored",
@@ -127,6 +157,55 @@ export const PHOTO_PRIMARY_RETAKE_BUTTON_CLASSNAME =
 
 export const PHOTO_SECONDARY_RETAKE_BUTTON_CLASSNAME =
   "min-h-11 rounded-lg border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-slate-200 transition hover:border-white/20 hover:text-white";
+
+export const getBestAccuracySectionForIndex = (index: number): PhotoCaptureSection =>
+  index <= 0 ? "top_half" : "bottom_half";
+
+export const getPhotoCaptureSectionLabel = (section: PhotoCaptureSection): string => {
+  switch (section) {
+    case "top_half":
+      return PHOTO_SECTION_TOP_HALF_LABEL;
+    case "bottom_half":
+      return PHOTO_SECTION_BOTTOM_HALF_LABEL;
+    case "additional":
+      return PHOTO_SECTION_ADDITIONAL_LABEL;
+    case "full_page":
+    default:
+      return PHOTO_SECTION_FULL_PAGE_LABEL;
+  }
+};
+
+export const getPhotoCaptureSectionTitle = (section: PhotoCaptureSection): string => {
+  switch (section) {
+    case "top_half":
+      return PHOTO_SECTION_TOP_HALF_TITLE;
+    case "bottom_half":
+      return PHOTO_SECTION_BOTTOM_HALF_TITLE;
+    case "additional":
+      return PHOTO_SECTION_ADDITIONAL_TITLE;
+    case "full_page":
+    default:
+      return PHOTO_SECTION_FULL_PAGE_TITLE;
+  }
+};
+
+export const getCameraGuidanceFitMessage = (section: PhotoCaptureSection): string => {
+  switch (section) {
+    case "top_half":
+      return CAMERA_GUIDANCE_TOP_HALF_MESSAGE;
+    case "bottom_half":
+      return CAMERA_GUIDANCE_BOTTOM_HALF_MESSAGE;
+    case "additional":
+    case "full_page":
+    default:
+      return CAMERA_GUIDANCE_FIT_MESSAGE;
+  }
+};
+
+export const getPhotoReviewQualityScore = <Score extends string>(
+  score: Score,
+  hasCropWarning: boolean,
+): Score | "okay" => (hasCropWarning && score === "good" ? "okay" : score);
 
 const permissionDeniedErrorNames = new Set(["NotAllowedError", "PermissionDeniedError", "SecurityError"]);
 

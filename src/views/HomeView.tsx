@@ -38,9 +38,11 @@ import {
   quickUploadAcceptAttribute,
   textFileAcceptAttribute,
 } from "../lib/fileIntakeAccept";
+import type { CapturedPhotoForOcr } from "../lib/photoCapture";
 import type { ServiceStatus } from "../services/analysisService";
 import {
   OCR_FAILED_MESSAGE,
+  OCR_BOTH_PHOTOS_ON_DEVICE_MESSAGE,
   OCR_MISTAKES_MESSAGE,
   OCR_ON_DEVICE_MESSAGE,
   OCR_READING_STATUS_MESSAGE,
@@ -53,6 +55,8 @@ import {
   OCR_UNRELIABLE_EDIT_MESSAGE,
   OCR_UNRELIABLE_MESSAGE,
   OCR_UNRELIABLE_RETAKE_MESSAGE,
+  combineOcrTexts,
+  formatOcrSectionWarning,
   isOcrKeyDetailsReliable,
   isOcrResultUnreliable,
   readTextFromImage,
@@ -460,6 +464,9 @@ export function HomeView({
   const [ocrError, setOcrError] = useState("");
   const [ocrConfidence, setOcrConfidence] = useState<number | undefined>();
   const [ocrWarnings, setOcrWarnings] = useState<string[]>([]);
+  const [ocrSectionWarnings, setOcrSectionWarnings] = useState<string[]>([]);
+  const [ocrSourceMode, setOcrSourceMode] = useState<"single" | "multi">("single");
+  const [photoCaptureIntent, setPhotoCaptureIntent] = useState<"replace" | "append">("replace");
   const [inputResetKey, setInputResetKey] = useState(0);
   const [aiSettings, setAiSettings] = useState(loadAiProviderSettings);
   const [aiStatus, setAiStatus] = useState<ServiceStatus>("idle");
@@ -684,6 +691,7 @@ export function HomeView({
     setPhotoMetadata(undefined);
     setOcrStatus("idle");
     setOcrText("");
+    setOcrOriginalText("");
     setOcrProgress(0);
     setOcrError("");
     setOcrConfidence(undefined);
@@ -793,6 +801,45 @@ export function HomeView({
     }
   };
 
+  type PhotoOcrReadResult = {
+    label?: string;
+    text: string;
+    confidence?: number;
+    warnings: string[];
+    metadata?: PhotoIntakeMetadata;
+  };
+
+  const readPhotoForOcr = async (
+    photo: { file: File; label?: string },
+    index: number,
+    total: number,
+  ): Promise<PhotoOcrReadResult> => {
+    const [dimensions, documentQuality] = await Promise.all([
+      getImageDimensions(photo.file),
+      assessDocumentImageQuality(photo.file),
+    ]);
+    const baseMetadata = createPhotoIntakeMetadata(photo.file);
+    const metadata = dimensions ? { ...baseMetadata, ...dimensions } : baseMetadata;
+    const imageQualityWarnings = Array.from(
+      new Set([
+        ...getImageQualityWarnings({ fileSize: photo.file.size, ...dimensions }),
+        ...getVisibleDocumentQualityWarningMessages(documentQuality),
+      ]),
+    );
+
+    const result = await readTextFromImage(photo.file, (progress) => {
+      setOcrProgress((index + progress.progress) / total);
+    });
+
+    return {
+      label: photo.label,
+      text: result.text,
+      confidence: result.confidence,
+      metadata,
+      warnings: Array.from(new Set([...imageQualityWarnings, ...result.warnings])),
+    };
+  };
+
   const handleImageUpload = async (file?: File) => {
     if (imagePreviewUrl) {
       URL.revokeObjectURL(imagePreviewUrl);
@@ -809,6 +856,8 @@ export function HomeView({
     setOcrError("");
     setOcrConfidence(undefined);
     setOcrWarnings([]);
+    setOcrSectionWarnings([]);
+    setOcrSourceMode("single");
 
     if (!file) {
       setUploadNote("");
@@ -829,39 +878,15 @@ export function HomeView({
       "Photo stays in this browser in this version. The full photo is not stored in this prototype - keep the original photo somewhere safe.",
     );
 
-    // Best-effort pixel dimensions (never blocks - see getImageDimensions),
-    // combined with the file size to flag a photo that is likely too small
-    // or too compressed for a full-page letter before OCR even runs. Runs
-    // alongside the Document Capture Coach's own quality checks (see
-    // src/lib/documentImageQuality.ts) so every photo entry path - not just
-    // the one that goes through PhotoCapturePanel's own capture-review
-    // screen - carries the same warnings into OCR review below.
-    const [dimensions, documentQuality] = await Promise.all([
-      getImageDimensions(file),
-      assessDocumentImageQuality(file),
-    ]);
-    const baseMetadata = createPhotoIntakeMetadata(file);
-    setPhotoMetadata(dimensions ? { ...baseMetadata, ...dimensions } : baseMetadata);
-    const imageQualityWarnings = Array.from(
-      new Set([
-        ...getImageQualityWarnings({ fileSize: file.size, ...dimensions }),
-        ...getVisibleDocumentQualityWarningMessages(documentQuality),
-      ]),
-    );
-
     setOcrStatus("reading");
-    setOcrWarnings(imageQualityWarnings);
+    setOcrWarnings([]);
 
     try {
-      const result = await readTextFromImage(file, (progress) => {
-        setOcrProgress(progress.progress);
-      });
+      const result = await readPhotoForOcr({ file }, 0, 1);
 
       setOcrConfidence(result.confidence);
-      // Combine the photo's own quality warnings with OCR's text/confidence
-      // warnings, de-duplicated (e.g. a very small, low-confidence photo
-      // should not somehow show the same warning twice).
-      setOcrWarnings(Array.from(new Set([...imageQualityWarnings, ...result.warnings])));
+      setPhotoMetadata(result.metadata);
+      setOcrWarnings(result.warnings);
       setOcrProgress(1);
       setOcrText(result.text);
       setOcrOriginalText(result.text);
@@ -870,6 +895,113 @@ export function HomeView({
     } catch (error) {
       setOcrStatus("error");
       setOcrError(error instanceof OcrReadError ? error.message : OCR_FAILED_MESSAGE);
+    }
+  };
+
+  const getLowestOcrConfidence = (values: Array<number | undefined>) => {
+    const numericValues = values.filter((value): value is number => typeof value === "number");
+    return numericValues.length > 0 ? Math.min(...numericValues) : undefined;
+  };
+
+  const handleCapturedPhotos = async (photos: CapturedPhotoForOcr[]) => {
+    if (imagePreviewUrl) {
+      URL.revokeObjectURL(imagePreviewUrl);
+      setImagePreviewUrl("");
+    }
+
+    setShowAddMenu(false);
+    setSelectedInput("image");
+    setInputMessage("");
+    setAiExtraction(undefined);
+    setPhotoMetadata(undefined);
+    setOcrStatus("idle");
+    setOcrProgress(0);
+    setOcrError("");
+
+    const isAppend = photoCaptureIntent === "append" && ocrText.trim().length > 0;
+
+    if (!isAppend) {
+      setOcrText("");
+      setOcrOriginalText("");
+      setOcrConfidence(undefined);
+      setOcrWarnings([]);
+      setOcrSectionWarnings([]);
+    }
+
+    const usablePhotos = photos.filter((photo) => isSupportedPhotoFile(photo.file));
+
+    if (usablePhotos.length === 0) {
+      setUploadedFileName("");
+      setUploadNote(
+        "This image type may not be readable here. Try JPG, PNG, WEBP, or paste the text manually.",
+      );
+      setOcrStatus("error");
+      setOcrError("AdminAvenger could not read this photo type in the browser.");
+      setPhotoCaptureIntent("replace");
+      return;
+    }
+
+    const labelSummary = usablePhotos.map((photo) => photo.label).join(", ");
+    setUploadedFileName(labelSummary);
+    setImagePreviewUrl(URL.createObjectURL(usablePhotos[0].file));
+    setUploadNote(
+      usablePhotos.length > 1
+        ? "Photo sections stay in this browser in this version. The photos are not stored in this prototype - keep the original photos somewhere safe."
+        : "Photo stays in this browser in this version. The full photo is not stored in this prototype - keep the original photo somewhere safe.",
+    );
+    setOcrSourceMode(usablePhotos.length > 1 || isAppend ? "multi" : "single");
+    setOcrStatus("reading");
+
+    try {
+      const results: PhotoOcrReadResult[] = [];
+
+      for (let index = 0; index < usablePhotos.length; index += 1) {
+        const photo = usablePhotos[index];
+        // Sequential OCR keeps the combined text in the same order the user
+        // captured the sections: top half, then bottom half, then extras.
+        // eslint-disable-next-line no-await-in-loop
+        const result = await readPhotoForOcr(photo, index, usablePhotos.length);
+        results.push(result);
+      }
+
+      const shouldLabelText = results.length > 1 || isAppend;
+      const newTextParts = shouldLabelText
+        ? results.map((result) => ({ label: result.label ?? "Photo", text: result.text }))
+        : results.map((result) => result.text);
+      const combinedText = isAppend
+        ? combineOcrTexts([ocrText, ...newTextParts])
+        : combineOcrTexts(newTextParts);
+      const labelledWarnings =
+        results.length > 1 || isAppend
+          ? results.flatMap((result) =>
+              result.warnings.map((warning) =>
+                formatOcrSectionWarning(result.label ?? "Photo", warning),
+              ),
+            )
+          : [];
+      const allWarnings =
+        results.length > 1 || isAppend
+          ? Array.from(new Set([...(isAppend ? ocrWarnings : []), ...labelledWarnings]))
+          : results[0]?.warnings ?? [];
+
+      setPhotoMetadata(results[0]?.metadata);
+      setOcrConfidence(
+        getLowestOcrConfidence([
+          ...(isAppend ? [ocrConfidence] : []),
+          ...results.map((result) => result.confidence),
+        ]),
+      );
+      setOcrWarnings(allWarnings);
+      setOcrSectionWarnings(labelledWarnings);
+      setOcrProgress(1);
+      setOcrText(combinedText);
+      setOcrOriginalText(combinedText);
+      setOcrStatus("success");
+      setPhotoCaptureIntent("replace");
+    } catch (error) {
+      setOcrStatus("error");
+      setOcrError(error instanceof OcrReadError ? error.message : OCR_FAILED_MESSAGE);
+      setPhotoCaptureIntent("replace");
     }
   };
 
@@ -919,6 +1051,12 @@ export function HomeView({
   // photoOcr.ts for why this needs its own small design pass first.
   const handleTryAnotherPhoto = () => {
     void handleImageUpload(undefined);
+    setPhotoCaptureIntent("replace");
+    setShowPhotoCapturePanel(true);
+  };
+
+  const handleAddAnotherPhoto = () => {
+    setPhotoCaptureIntent("append");
     setShowPhotoCapturePanel(true);
   };
 
@@ -953,10 +1091,10 @@ export function HomeView({
     }
   };
 
-  const handleQuickPhotoCapture = async (file?: File) => {
+  const handleOpenPhotoCapturePanel = () => {
     setShowAddMenu(false);
-    setSelectedInput("image");
-    await handleImageUpload(file);
+    setPhotoCaptureIntent("replace");
+    setShowPhotoCapturePanel(true);
   };
 
   // Reuses the exact same save-flow decision the existing primary/secondary
@@ -1046,11 +1184,11 @@ export function HomeView({
                 // inline image section - the panel itself is what lets the
                 // user choose between taking a new photo and uploading an
                 // existing one. The inline image-review section below still
-                // appears once a photo is actually produced, because
-                // handleQuickPhotoCapture (passed to the panel) sets
-                // selectedInput to "image" itself.
+                // appears once a photo is actually produced, because the
+                // panel hands its local photo files back into the same OCR
+                // review state below.
                 if (value === "image") {
-                  setShowPhotoCapturePanel(true);
+                  handleOpenPhotoCapturePanel();
                   return;
                 }
 
@@ -1283,19 +1421,14 @@ export function HomeView({
                       aria-label="Add photo or file"
                       className="absolute right-0 z-10 mt-2 w-48 space-y-1 rounded-lg border border-white/10 bg-slate-900 p-2 shadow-xl shadow-slate-950/40"
                     >
-                      <label
+                      <button
+                        type="button"
                         role="menuitem"
-                        className="flex cursor-pointer items-center rounded-md px-3 py-2 text-sm font-semibold text-slate-200 transition hover:bg-white/5 hover:text-white focus-within:ring-2 focus-within:ring-emerald-300/60"
+                        onClick={handleOpenPhotoCapturePanel}
+                        className="flex w-full cursor-pointer items-center rounded-md px-3 py-2 text-left text-sm font-semibold text-slate-200 transition hover:bg-white/5 hover:text-white focus:outline-none focus:ring-2 focus:ring-emerald-300/60"
                       >
                         Take photo
-                        <input
-                          type="file"
-                          accept={photoAcceptAttribute}
-                          capture="environment"
-                          onChange={(event) => void handleQuickPhotoCapture(event.target.files?.[0])}
-                          className="sr-only"
-                        />
-                      </label>
+                      </button>
                       <label
                         role="menuitem"
                         className="flex cursor-pointer items-center rounded-md px-3 py-2 text-sm font-semibold text-slate-200 transition hover:bg-white/5 hover:text-white focus-within:ring-2 focus-within:ring-emerald-300/60"
@@ -1397,7 +1530,9 @@ export function HomeView({
               ) : null}
               {selectedInput === "image" && ocrStatus === "success" ? (
                 <div className="mt-4 rounded-lg border border-emerald-300/20 bg-emerald-300/[0.07] p-4">
-                  <p className="text-sm font-bold text-emerald-50">{OCR_ON_DEVICE_MESSAGE}</p>
+                  <p className="text-sm font-bold text-emerald-50">
+                    {ocrSourceMode === "multi" ? OCR_BOTH_PHOTOS_ON_DEVICE_MESSAGE : OCR_ON_DEVICE_MESSAGE}
+                  </p>
                   <p className="mt-2 text-sm leading-6 text-emerald-50/80">{OCR_MISTAKES_MESSAGE}</p>
                   {isOcrReviewUnreliable ? (
                     <div className="mt-3 rounded-lg border border-amber-300/40 bg-amber-300/15 px-4 py-3">
@@ -1423,6 +1558,11 @@ export function HomeView({
                   ) : null}
                   {ocrWarnings.length > 0 ? (
                     <div className="mt-3 rounded-lg border border-amber-300/30 bg-amber-300/10 px-4 py-3">
+                      {ocrSectionWarnings.length > 0 ? (
+                        <p className="mb-2 text-sm font-bold text-amber-50">
+                          Some photo sections need extra review.
+                        </p>
+                      ) : null}
                       <ul className="space-y-1 text-sm leading-6 text-amber-100">
                         {ocrWarnings.map((warning) => (
                           <li key={warning}>{warning}</li>
@@ -1486,7 +1626,7 @@ export function HomeView({
                       {OCR_CHECK_TEXT_UNRELIABLE_WARNING}
                     </p>
                   ) : null}
-                  <div className="mt-4 grid gap-2 sm:grid-cols-3">
+                  <div className="mt-4 grid gap-2 sm:grid-cols-4">
                     <button
                       type="button"
                       onClick={() => void handleCheckOcrText()}
@@ -1494,6 +1634,14 @@ export function HomeView({
                       className="min-h-11 rounded-lg bg-emerald-400 px-4 py-3 text-sm font-bold text-slate-950 shadow-lg shadow-emerald-950/30 transition hover:bg-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:ring-offset-2 focus:ring-offset-slate-950 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400 disabled:shadow-none"
                     >
                       Check this text
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleAddAnotherPhoto}
+                      disabled={isChecking || isAiReading || isReadingPhoto}
+                      className="min-h-11 rounded-lg border border-cyan-300/25 bg-cyan-300/10 px-4 py-3 text-sm font-bold text-cyan-50 transition hover:border-cyan-200/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Add another photo
                     </button>
                     <button
                       type="button"
@@ -1649,8 +1797,9 @@ export function HomeView({
 
       {showPhotoCapturePanel ? (
         <PhotoCapturePanel
-          onUsePhoto={(file) => void handleQuickPhotoCapture(file)}
+          onUsePhotos={(photos) => void handleCapturedPhotos(photos)}
           onClose={() => setShowPhotoCapturePanel(false)}
+          defaultSection={photoCaptureIntent === "append" ? "additional" : undefined}
         />
       ) : null}
 

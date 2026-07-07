@@ -3,10 +3,15 @@ import {
   A4_PORTRAIT_RATIO,
   CAMERA_GUIDANCE_FRAME_CLASSNAME,
   CAMERA_GUIDANCE_FIT_MESSAGE,
+  CAMERA_GUIDANCE_BOTTOM_HALF_MESSAGE,
+  CAMERA_GUIDANCE_TOP_HALF_MESSAGE,
   CAMERA_GUIDANCE_TIPS,
   CAMERA_PREVIEW_ACTIONS_CLASSNAME,
   CAMERA_IDEAL_HEIGHT,
   CAMERA_IDEAL_WIDTH,
+  BEST_ACCURACY_RECOMMENDED_LABEL,
+  BEST_ACCURACY_SCAN_DESCRIPTION,
+  BEST_ACCURACY_SCAN_LABEL,
   CAMERA_PERMISSION_DENIED_MESSAGE,
   CAMERA_UNAVAILABLE_MESSAGE,
   CAPTURED_PHOTO_JPEG_QUALITY,
@@ -25,13 +30,20 @@ import {
   PHOTO_UNREADABLE_FALLBACK_MESSAGE,
   PHOTO_USE_ANYWAY_LABEL,
   PHOTO_USE_THIS_PHOTO_LABEL,
+  QUICK_SCAN_DESCRIPTION,
+  QUICK_SCAN_LABEL,
   capturePhotoFromVideoElement,
   cropImageBlobToRect,
   classifyCameraError,
   createCapturedPhotoFile,
   getA4GuideCropRect,
+  getBestAccuracySectionForIndex,
+  getCameraGuidanceFitMessage,
   getCropRectPixelAspectRatio,
   getCameraErrorMessage,
+  getPhotoCaptureSectionLabel,
+  getPhotoCaptureSectionTitle,
+  getPhotoReviewQualityScore,
   isCropRectSafe,
   isCameraCaptureSupported,
   mapDisplayedFrameToImageCrop,
@@ -476,8 +488,41 @@ describe("captured photo JPEG quality", () => {
 
 // ---- Document Capture Coach live guidance ----
 describe("document capture coach live guidance copy", () => {
+  it("offers Quick scan and Best accuracy scan modes with clear copy", () => {
+    expect(QUICK_SCAN_LABEL).toBe("Quick scan");
+    expect(QUICK_SCAN_DESCRIPTION).toBe(
+      "One photo of the whole page. Fastest, but less accurate for small text.",
+    );
+    expect(BEST_ACCURACY_SCAN_LABEL).toBe("Best accuracy");
+    expect(BEST_ACCURACY_SCAN_DESCRIPTION).toBe(
+      "Take 2 closer photos - top half and bottom half. Better for letters with small print.",
+    );
+    expect(BEST_ACCURACY_RECOMMENDED_LABEL).toBe("Recommended on mobile");
+  });
+
   it("shows the required frame guidance message", () => {
     expect(CAMERA_GUIDANCE_FIT_MESSAGE).toBe("Fill the frame with the letter");
+  });
+
+  it("prompts the top half first and the bottom half second for Best accuracy", () => {
+    expect(getBestAccuracySectionForIndex(0)).toBe("top_half");
+    expect(getBestAccuracySectionForIndex(1)).toBe("bottom_half");
+    expect(getPhotoCaptureSectionTitle("top_half")).toBe("Photo 1 of 2 - top half");
+    expect(getPhotoCaptureSectionTitle("bottom_half")).toBe("Photo 2 of 2 - bottom half");
+    expect(getCameraGuidanceFitMessage("top_half")).toBe(
+      "Fill the frame with the top half of the letter",
+    );
+    expect(getCameraGuidanceFitMessage("bottom_half")).toBe(
+      "Fill the frame with the bottom half of the letter",
+    );
+    expect(getPhotoCaptureSectionLabel("top_half")).toBe("Photo 1: top half");
+    expect(getPhotoCaptureSectionLabel("bottom_half")).toBe("Photo 2: bottom half");
+  });
+
+  it("keeps Quick scan as a full-page photo path", () => {
+    expect(getPhotoCaptureSectionTitle("full_page")).toBe("Full page photo");
+    expect(getCameraGuidanceFitMessage("full_page")).toBe("Fill the frame with the letter");
+    expect(getPhotoCaptureSectionLabel("full_page")).toBe("Photo 1: full page");
   });
 
   it("shows the required mobile capture tips", () => {
@@ -502,7 +547,12 @@ describe("document capture coach live guidance copy", () => {
       /\bignore this\b/i,
     ];
 
-    for (const message of [CAMERA_GUIDANCE_FIT_MESSAGE, ...CAMERA_GUIDANCE_TIPS]) {
+    for (const message of [
+      CAMERA_GUIDANCE_FIT_MESSAGE,
+      CAMERA_GUIDANCE_TOP_HALF_MESSAGE,
+      CAMERA_GUIDANCE_BOTTOM_HALF_MESSAGE,
+      ...CAMERA_GUIDANCE_TIPS,
+    ]) {
       for (const pattern of forbiddenPatterns) {
         expect(message).not.toMatch(pattern);
       }
@@ -545,6 +595,12 @@ describe("document capture coach live guidance copy", () => {
     expect(PHOTO_REVIEW_CONTENT_CLASSNAME).not.toContain("sticky");
     expect(PHOTO_REVIEW_WARNING_CLASSNAME).not.toContain("sticky");
     expect(PHOTO_REVIEW_ACTIONS_CLASSNAME).toContain("sticky");
+  });
+
+  it("does not keep a 'good' review score when crop fallback warning is present", () => {
+    expect(getPhotoReviewQualityScore("good", true)).toBe("okay");
+    expect(getPhotoReviewQualityScore("good", false)).toBe("good");
+    expect(getPhotoReviewQualityScore("poor", true)).toBe("poor");
   });
 });
 

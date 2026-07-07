@@ -111,6 +111,8 @@ export const OCR_KEY_DETAILS_NOT_RELIABLE_MESSAGE =
   "We could read some text, but not reliably enough to extract key details.";
 export const OCR_KEY_DETAILS_REVIEW_OPTIONS_MESSAGE =
   "Retake the photo closer, upload a clearer image, paste the text manually, or edit the text below.";
+export const OCR_BOTH_PHOTOS_ON_DEVICE_MESSAGE =
+  "We read both photos on your device. Please check the combined text before continuing.";
 
 // Pure - deliberately simple and conservative: mostly-non-letter text, or an
 // unusually high share of characters that would not appear in normal prose,
@@ -306,21 +308,34 @@ export const preprocessImageForOcr = (image: File | Blob): Promise<Blob> =>
     element.src = objectUrl;
   });
 
-// ---- Multi-photo support (planning structure, not a full feature yet) ----
-//
-// TODO(multi-photo): a future "Add another photo" action in the OCR review
-// UI (see src/views/HomeView.tsx) could call readTextFromImage again for
-// each extra photo and combine the results with combineOcrTexts before the
-// user reviews the combined text. Intentionally not wired into the UI yet -
-// a real multi-page flow needs its own design (e.g. how evidence/case
-// linking works across more than one photo per case) rather than being
-// bolted on here. This helper exists so that future work has a safe,
-// tested starting point.
-export const combineOcrTexts = (texts: string[]): string =>
-  texts
-    .map((text) => text.trim())
-    .filter((text) => text.length > 0)
-    .join("\n\n---\n\n");
+export type OcrTextPart = string | { label: string; text: string };
+
+const formatOcrTextPart = (part: OcrTextPart): string => {
+  if (typeof part === "string") {
+    return part.trim();
+  }
+
+  const text = part.text.trim();
+  const label = part.label.trim();
+
+  if (!text) {
+    return "";
+  }
+
+  return label ? `--- ${label} ---\n${text}` : text;
+};
+
+export const combineOcrTexts = (parts: OcrTextPart[]): string => {
+  const hasLabelledParts = parts.some((part) => typeof part !== "string");
+  const formattedParts = parts
+    .map(formatOcrTextPart)
+    .filter((text) => text.length > 0);
+
+  return formattedParts.join(hasLabelledParts ? "\n\n" : "\n\n---\n\n");
+};
+
+export const formatOcrSectionWarning = (label: string, warning: string): string =>
+  `${label}: ${warning}`;
 
 // Reads text from a photo entirely inside this browser tab via Tesseract.js.
 // Never blocks on low confidence or short text (see getOcrQualityWarnings) -

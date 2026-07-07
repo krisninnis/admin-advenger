@@ -70,7 +70,7 @@ export const PHOTO_CROPPED_TO_FRAME_MESSAGE =
   "The photo was cropped to the guide frame before reading.";
 
 export const PHOTO_READS_INSIDE_FRAME_MESSAGE =
-  "AdminAvenger will read the area inside the frame.";
+  "AdminAvenger will try to read the area inside the frame.";
 
 export const PHOTO_CROP_FAILED_MESSAGE =
   "We could not crop the photo automatically. You can still continue and edit the text manually.";
@@ -114,7 +114,7 @@ export const CAMERA_IDEAL_HEIGHT = 1080;
 // the result. Deliberately simple copy, no camera jargon, no page/contour
 // detection promised - see src/lib/documentImageQuality.ts for the actual
 // after-the-fact quality checks and its v2 TODOs for real page detection.
-export const CAMERA_GUIDANCE_FIT_MESSAGE = "Fill the frame with the letter";
+export const CAMERA_GUIDANCE_FIT_MESSAGE = "Place the letter inside the frame";
 export const CAMERA_GUIDANCE_CLOSE_UP_MESSAGE =
   "Fill the frame with the hard-to-read section";
 

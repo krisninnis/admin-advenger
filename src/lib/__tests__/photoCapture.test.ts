@@ -514,13 +514,13 @@ describe("document capture coach live guidance copy", () => {
   });
 
   it("shows the required frame guidance message", () => {
-    expect(CAMERA_GUIDANCE_FIT_MESSAGE).toBe("Fill the frame with the letter");
+    expect(CAMERA_GUIDANCE_FIT_MESSAGE).toBe("Place the letter inside the frame");
   });
 
   it("keeps the default flow as a single full-page photo with a simple label", () => {
     expect(getPhotoCaptureSectionTitle("full_page")).toBe(PHOTO_SECTION_FULL_PAGE_TITLE);
     expect(PHOTO_SECTION_FULL_PAGE_TITLE).toBe("Full page photo");
-    expect(getCameraGuidanceFitMessage("full_page")).toBe("Fill the frame with the letter");
+    expect(getCameraGuidanceFitMessage("full_page")).toBe("Place the letter inside the frame");
     expect(getPhotoCaptureSectionLabel("full_page")).toBe(PHOTO_SECTION_FULL_PAGE_LABEL);
     expect(PHOTO_SECTION_FULL_PAGE_LABEL).toBe("Main photo");
   });
@@ -789,6 +789,12 @@ describe("camera flow copy never implies a cloud upload, send, or contact", () =
 
   it("explicitly states the photo stays in this browser", () => {
     expect(PHOTO_STAYS_LOCAL_MESSAGE).toBe("Photo stays in this browser in this version.");
+  });
+
+  it("is honest that the frame is a guide, not a guaranteed crop", () => {
+    expect(PHOTO_READS_INSIDE_FRAME_MESSAGE).toBe(
+      "AdminAvenger will try to read the area inside the frame.",
+    );
   });
 
   it("is honest that photos may not always be readable, without promising OCR success", () => {

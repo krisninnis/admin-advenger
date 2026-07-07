@@ -57,6 +57,13 @@ import {
   shouldEmphasizeRetake,
   type DocumentImageQualityResult,
 } from "../lib/documentImageQuality";
+import {
+  LIVE_DOCUMENT_QUALITY_SAMPLE_INTERVAL_MS,
+  LIVE_QUALITY_PLACE_DOCUMENT_IN_FRAME,
+  LIVE_QUALITY_READY,
+  analyseLiveVideoFrame,
+  type LiveDocumentQualityResult,
+} from "../lib/liveDocumentQuality";
 
 type PhotoCapturePanelProps = {
   // Feeds a captured/uploaded photo straight into the existing photo intake
@@ -94,6 +101,7 @@ export function PhotoCapturePanel({ onUsePhotos, onClose, defaultSection }: Phot
   const [cropWarning, setCropWarning] = useState("");
   const [isCropping, setIsCropping] = useState(false);
   const [documentQuality, setDocumentQuality] = useState<DocumentImageQualityResult | undefined>();
+  const [liveQuality, setLiveQuality] = useState<LiveDocumentQualityResult | undefined>();
   const streamRef = useRef<MediaStream | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const frameRef = useRef<HTMLDivElement | null>(null);
@@ -101,6 +109,7 @@ export function PhotoCapturePanel({ onUsePhotos, onClose, defaultSection }: Phot
   const fileForOcrRef = useRef<File | undefined>(undefined);
   const capturedCropRectRef = useRef<CropRectRatio | null>(null);
   const cropPromiseRef = useRef<Promise<void> | undefined>(undefined);
+  const liveQualityRunningRef = useRef(false);
 
   // One photo per visit: the default flow captures a single full-page photo.
   // The panel only ever asks for a close-up when it was opened via the
@@ -136,6 +145,7 @@ export function PhotoCapturePanel({ onUsePhotos, onClose, defaultSection }: Phot
     capturedCropRectRef.current = null;
     cropPromiseRef.current = undefined;
     setDocumentQuality(undefined);
+    setLiveQuality(undefined);
   };
 
   const handleCancel = () => {
@@ -197,6 +207,49 @@ export function PhotoCapturePanel({ onUsePhotos, onClose, defaultSection }: Phot
     if (stage === "camera_preview" && videoRef.current && streamRef.current) {
       videoRef.current.srcObject = streamRef.current;
     }
+  }, [stage]);
+
+  // Live readability coach: samples a tiny downscaled video frame on a
+  // throttle while the camera preview is open. It never runs OCR, never
+  // uploads anything, and stops with the camera preview.
+  useEffect(() => {
+    if (stage !== "camera_preview") {
+      setLiveQuality(undefined);
+      return;
+    }
+
+    let cancelled = false;
+
+    const samplePreview = () => {
+      if (cancelled || liveQualityRunningRef.current) {
+        return;
+      }
+
+      const videoElement = videoRef.current;
+      if (!videoElement || videoElement.readyState < 2 || !videoElement.videoWidth) {
+        return;
+      }
+
+      liveQualityRunningRef.current = true;
+
+      try {
+        const result = analyseLiveVideoFrame(videoElement);
+        if (!cancelled && result) {
+          setLiveQuality(result);
+        }
+      } finally {
+        liveQualityRunningRef.current = false;
+      }
+    };
+
+    samplePreview();
+    const intervalId = window.setInterval(samplePreview, LIVE_DOCUMENT_QUALITY_SAMPLE_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+      liveQualityRunningRef.current = false;
+    };
   }, [stage]);
 
   // Document Capture Coach - capture review step. First crops the photo to
@@ -382,6 +435,15 @@ export function PhotoCapturePanel({ onUsePhotos, onClose, defaultSection }: Phot
   const reviewQualityScore =
     documentQuality ? getPhotoReviewQualityScore(documentQuality.score, Boolean(cropWarning)) : undefined;
   const retakeRecommended = reviewQualityScore ? shouldEmphasizeRetake(reviewQualityScore) : false;
+  const liveInstruction = liveQuality?.primaryInstruction ?? LIVE_QUALITY_PLACE_DOCUMENT_IN_FRAME;
+  const liveSecondaryInstruction =
+    liveQuality?.secondaryInstruction ?? "Move closer until the letter nearly fills the frame.";
+  const liveQualityCardClassName =
+    liveQuality?.status === "ready"
+      ? "border-emerald-300/35 bg-emerald-300/12 text-emerald-50"
+      : liveQuality?.status === "poor"
+        ? "border-amber-300/35 bg-amber-300/12 text-amber-50"
+        : "border-cyan-300/25 bg-cyan-300/10 text-cyan-50";
 
   return (
     <div
@@ -439,9 +501,10 @@ export function PhotoCapturePanel({ onUsePhotos, onClose, defaultSection }: Phot
 
         {stage === "camera_preview" ? (
           <div className="mt-4 flex min-h-0 flex-1 flex-col gap-2">
-            <div className="shrink-0 rounded-lg border border-emerald-300/20 bg-emerald-300/10 px-4 py-3">
-              <p className="text-sm font-black text-emerald-50">{currentSectionTitle}</p>
-              <p className="mt-1 text-sm leading-6 text-emerald-50/80">{currentGuidanceMessage}.</p>
+            <div className={`shrink-0 rounded-lg border px-4 py-3 ${liveQualityCardClassName}`}>
+              <p className="text-sm font-black text-current">{currentSectionTitle}</p>
+              <p className="mt-1 text-base font-black leading-6">{liveInstruction}</p>
+              <p className="mt-1 text-sm leading-6 opacity-85">{liveSecondaryInstruction}</p>
             </div>
             {/* Document Capture Coach - live guidance (see
                 src/lib/documentImageQuality.ts for the after-the-fact checks
@@ -462,7 +525,7 @@ export function PhotoCapturePanel({ onUsePhotos, onClose, defaultSection }: Phot
                 aria-hidden="true"
                 className="pointer-events-none absolute inset-x-0 top-2 text-center text-xs font-bold text-white [text-shadow:0_1px_3px_rgb(0_0_0_/_0.8)]"
               >
-                {currentGuidanceMessage}
+                {currentSection === "additional" ? currentGuidanceMessage : LIVE_QUALITY_PLACE_DOCUMENT_IN_FRAME}
               </p>
             </div>
             <ul className="grid shrink-0 grid-cols-2 gap-x-3 gap-y-1 text-xs leading-5 text-slate-400 sm:grid-cols-4">
@@ -471,6 +534,15 @@ export function PhotoCapturePanel({ onUsePhotos, onClose, defaultSection }: Phot
               ))}
             </ul>
             <div className={CAMERA_PREVIEW_ACTIONS_CLASSNAME}>
+              {liveQuality?.status === "poor" ? (
+                <p className="rounded-lg border border-amber-300/20 bg-amber-300/10 px-3 py-2 text-xs font-semibold leading-5 text-amber-100 sm:col-span-2">
+                  This may be hard to read.
+                </p>
+              ) : liveQuality?.primaryInstruction === LIVE_QUALITY_READY ? (
+                <p className="rounded-lg border border-emerald-300/20 bg-emerald-300/10 px-3 py-2 text-xs font-semibold leading-5 text-emerald-100 sm:col-span-2">
+                  The letter is clear enough to read.
+                </p>
+              ) : null}
               <button
                 type="button"
                 onClick={() => void handleTakePhotoClick()}

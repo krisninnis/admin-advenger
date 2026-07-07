@@ -27,3 +27,6 @@ dist-ssr
 .env
 .env.local
 .env.*.local
+
+# Local-only manual OCR fixtures. Do not commit real user documents/photos.
+manual-test-fixtures/

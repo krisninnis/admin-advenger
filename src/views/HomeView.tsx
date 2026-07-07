@@ -817,7 +817,7 @@ export function HomeView({
   };
 
   const readPhotoForOcr = async (
-    photo: { file: File; label?: string },
+    photo: { file: File; label?: string; warnings?: string[] },
     index: number,
     total: number,
   ): Promise<PhotoOcrReadResult> => {
@@ -843,7 +843,7 @@ export function HomeView({
       text: result.text,
       confidence: result.confidence,
       metadata,
-      warnings: Array.from(new Set([...imageQualityWarnings, ...result.warnings])),
+      warnings: Array.from(new Set([...(photo.warnings ?? []), ...imageQualityWarnings, ...result.warnings])),
     };
   };
 

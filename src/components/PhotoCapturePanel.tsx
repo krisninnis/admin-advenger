@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef, useState } from "react";
+import { useEffect, useReducer, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { photoCaptureAcceptAttribute } from "../lib/fileIntakeAccept";
 import {
   CAMERA_IDEAL_HEIGHT,
@@ -8,37 +8,32 @@ import {
   CAMERA_PREVIEW_ACTIONS_CLASSNAME,
   CAMERA_PERMISSION_DENIED_MESSAGE,
   CAMERA_UNAVAILABLE_MESSAGE,
+  PHOTO_ADJUST_AFTER_CAPTURE_MESSAGE,
+  PHOTO_ADJUST_INSTRUCTION,
+  PHOTO_ADJUST_TITLE,
   PHOTO_STAYS_LOCAL_MESSAGE,
   PHOTO_CANCEL_LABEL,
-  PHOTO_PRIMARY_RETAKE_BUTTON_CLASSNAME,
-  PHOTO_PRIMARY_USE_BUTTON_CLASSNAME,
   PHOTO_RETAKE_LABEL,
-  PHOTO_RETAKE_RECOMMENDED_LABEL,
   PHOTO_REVIEW_ACTIONS_CLASSNAME,
   PHOTO_REVIEW_CONTENT_CLASSNAME,
-  PHOTO_REVIEW_WARNING_CLASSNAME,
-  PHOTO_CROP_FAILED_MESSAGE,
-  PHOTO_CROPPED_TO_FRAME_MESSAGE,
-  PHOTO_CROP_UNSAFE_MESSAGE,
-  PHOTO_SECONDARY_RETAKE_BUTTON_CLASSNAME,
-  PHOTO_SECONDARY_USE_BUTTON_CLASSNAME,
-  PHOTO_READS_INSIDE_FRAME_MESSAGE,
+  PHOTO_CROP_FALLBACK_WARNING,
+  PHOTO_FULL_PHOTO_WARNING,
+  PHOTO_READ_SELECTED_AREA_LABEL,
   PHOTO_UNREADABLE_FALLBACK_MESSAGE,
   PHOTO_TAKE_PHOTO_LABEL,
   PHOTO_TAKE_NEW_PHOTO_DESCRIPTION,
   PHOTO_TAKE_NEW_PHOTO_LABEL,
   PHOTO_ADD_CLOSE_UP_DESCRIPTION,
   PHOTO_ADD_CLOSE_UP_LABEL,
-  PHOTO_USE_ANYWAY_LABEL,
-  PHOTO_USE_THIS_PHOTO_LABEL,
+  PHOTO_USE_FULL_PHOTO_LABEL,
   capturePhotoFromVideoElement,
   cropImageBlobToRect,
   createCapturedPhotoFile,
+  getDefaultManualCropRect,
   getCameraGuidanceFitMessage,
   getCapturedPhotoFileName,
   getPhotoCaptureSectionLabel,
   getPhotoCaptureSectionTitle,
-  getPhotoReviewQualityScore,
   mapDisplayedFrameToImageCrop,
   photoCaptureReducer,
   requestEnvironmentCameraStream,
@@ -47,23 +42,6 @@ import {
   type CropRectRatio,
   type PhotoCaptureSection,
 } from "../lib/photoCapture";
-import {
-  DOCUMENT_QUALITY_CONTINUE_MESSAGE,
-  DOCUMENT_QUALITY_GOOD_MESSAGE,
-  DOCUMENT_QUALITY_TIP_MESSAGE,
-  DOCUMENT_QUALITY_WARNING_MESSAGE,
-  assessDocumentImageQuality,
-  getVisibleDocumentQualityWarningMessages,
-  shouldEmphasizeRetake,
-  type DocumentImageQualityResult,
-} from "../lib/documentImageQuality";
-import {
-  LIVE_DOCUMENT_QUALITY_SAMPLE_INTERVAL_MS,
-  LIVE_QUALITY_PLACE_DOCUMENT_IN_FRAME,
-  LIVE_QUALITY_READY,
-  analyseLiveVideoFrame,
-  type LiveDocumentQualityResult,
-} from "../lib/liveDocumentQuality";
 
 type PhotoCapturePanelProps = {
   // Feeds a captured/uploaded photo straight into the existing photo intake
@@ -97,19 +75,20 @@ export function PhotoCapturePanel({ onUsePhotos, onClose, defaultSection }: Phot
   const [stage, dispatch] = useReducer(photoCaptureReducer, "choice");
   const [errorMessage, setErrorMessage] = useState("");
   const [capturedPreviewUrl, setCapturedPreviewUrl] = useState("");
-  const [croppedPreviewUrl, setCroppedPreviewUrl] = useState("");
-  const [cropWarning, setCropWarning] = useState("");
   const [isCropping, setIsCropping] = useState(false);
-  const [documentQuality, setDocumentQuality] = useState<DocumentImageQualityResult | undefined>();
-  const [liveQuality, setLiveQuality] = useState<LiveDocumentQualityResult | undefined>();
+  const [cropWarning, setCropWarning] = useState("");
+  const [cropRect, setCropRect] = useState<CropRectRatio>(() => getDefaultManualCropRect());
   const streamRef = useRef<MediaStream | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const frameRef = useRef<HTMLDivElement | null>(null);
+  const cropAreaRef = useRef<HTMLDivElement | null>(null);
   const capturedFileRef = useRef<File | undefined>(undefined);
-  const fileForOcrRef = useRef<File | undefined>(undefined);
-  const capturedCropRectRef = useRef<CropRectRatio | null>(null);
-  const cropPromiseRef = useRef<Promise<void> | undefined>(undefined);
-  const liveQualityRunningRef = useRef(false);
+  const activeCropDragRef = useRef<{
+    mode: "move" | "top_left" | "top_right" | "bottom_left" | "bottom_right";
+    startX: number;
+    startY: number;
+    startRect: CropRectRatio;
+  } | null>(null);
 
   // One photo per visit: the default flow captures a single full-page photo.
   // The panel only ever asks for a close-up when it was opened via the
@@ -132,20 +111,13 @@ export function PhotoCapturePanel({ onUsePhotos, onClose, defaultSection }: Phot
     if (capturedPreviewUrl) {
       URL.revokeObjectURL(capturedPreviewUrl);
     }
-    if (croppedPreviewUrl) {
-      URL.revokeObjectURL(croppedPreviewUrl);
-    }
 
     setCapturedPreviewUrl("");
-    setCroppedPreviewUrl("");
     setCropWarning("");
     setIsCropping(false);
+    setCropRect(getDefaultManualCropRect());
     capturedFileRef.current = undefined;
-    fileForOcrRef.current = undefined;
-    capturedCropRectRef.current = null;
-    cropPromiseRef.current = undefined;
-    setDocumentQuality(undefined);
-    setLiveQuality(undefined);
+    activeCropDragRef.current = null;
   };
 
   const handleCancel = () => {
@@ -209,137 +181,17 @@ export function PhotoCapturePanel({ onUsePhotos, onClose, defaultSection }: Phot
     }
   }, [stage]);
 
-  // Live readability coach: samples a tiny downscaled video frame on a
-  // throttle while the camera preview is open. It never runs OCR, never
-  // uploads anything, and stops with the camera preview.
-  useEffect(() => {
-    if (stage !== "camera_preview") {
-      setLiveQuality(undefined);
-      return;
-    }
-
-    let cancelled = false;
-
-    const samplePreview = () => {
-      if (cancelled || liveQualityRunningRef.current) {
-        return;
-      }
-
-      const videoElement = videoRef.current;
-      if (!videoElement || videoElement.readyState < 2 || !videoElement.videoWidth) {
-        return;
-      }
-
-      liveQualityRunningRef.current = true;
-
-      try {
-        const result = analyseLiveVideoFrame(videoElement);
-        if (!cancelled && result) {
-          setLiveQuality(result);
-        }
-      } finally {
-        liveQualityRunningRef.current = false;
-      }
-    };
-
-    samplePreview();
-    const intervalId = window.setInterval(samplePreview, LIVE_DOCUMENT_QUALITY_SAMPLE_INTERVAL_MS);
-
-    return () => {
-      cancelled = true;
-      window.clearInterval(intervalId);
-      liveQualityRunningRef.current = false;
-    };
-  }, [stage]);
-
-  // Document Capture Coach - capture review step. First crops the photo to
-  // the same approximate A4 guide frame the user saw in the camera preview,
-  // then runs quality checks on that cropped local Blob. If crop fails, the
-  // original photo is still used and the user gets a non-blocking warning.
-  useEffect(() => {
-    if (stage !== "captured" || !capturedFileRef.current) {
-      return;
-    }
-
-    let cancelled = false;
-    const sourceFile = capturedFileRef.current;
-    const cropRect = capturedCropRectRef.current;
-
-    setDocumentQuality(undefined);
-    setCropWarning("");
-    setIsCropping(true);
-
-    const preparePhotoForOcr = async () => {
-      if (!cropRect) {
-        const quality = await assessDocumentImageQuality(sourceFile);
-
-        if (!cancelled) {
-          fileForOcrRef.current = sourceFile;
-          setCropWarning(PHOTO_CROP_UNSAFE_MESSAGE);
-          setDocumentQuality(quality);
-          setIsCropping(false);
-        }
-        return;
-      }
-
-      try {
-        const croppedBlob = await cropImageBlobToRect(sourceFile, cropRect, {
-          type: sourceFile.type,
-        });
-        // Keeps the simple, human file name ("camera-photo.jpg" /
-        // "extra-photo.jpg") - cropping is an internal step, not something
-        // the file label needs to advertise.
-        const croppedFile = createCapturedPhotoFile(
-          croppedBlob,
-          getCapturedPhotoFileName(currentSection),
-        );
-        const croppedUrl = URL.createObjectURL(croppedFile);
-        const quality = await assessDocumentImageQuality(croppedFile);
-
-        if (cancelled) {
-          URL.revokeObjectURL(croppedUrl);
-          return;
-        }
-
-        fileForOcrRef.current = croppedFile;
-        setCroppedPreviewUrl((currentUrl) => {
-          if (currentUrl) {
-            URL.revokeObjectURL(currentUrl);
-          }
-          return croppedUrl;
-        });
-        setDocumentQuality(quality);
-      } catch {
-        const quality = await assessDocumentImageQuality(sourceFile);
-
-        if (!cancelled) {
-          fileForOcrRef.current = sourceFile;
-          setCropWarning(PHOTO_CROP_FAILED_MESSAGE);
-          setDocumentQuality(quality);
-        }
-      } finally {
-        if (!cancelled) {
-          setIsCropping(false);
-        }
-      }
-    };
-
-    const cropPromise = preparePhotoForOcr();
-    cropPromiseRef.current = cropPromise;
-    void cropPromise;
-
-    return () => {
-      cancelled = true;
-    };
-  }, [currentSection, stage]);
-
   // Belt-and-suspenders cleanup: stop the camera if the whole component
   // unmounts (modal closed some other way) while a stream is still live.
   useEffect(() => {
     return () => {
       stopMediaStreamTracks(streamRef.current);
       streamRef.current = null;
+      activeCropDragRef.current = null;
+      window.removeEventListener("pointermove", updateCropFromPointer);
+      window.removeEventListener("pointerup", stopCropDrag);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -359,10 +211,11 @@ export function PhotoCapturePanel({ onUsePhotos, onClose, defaultSection }: Phot
   };
 
   const handleUploadExisting = (file: File) => {
-    onUsePhotos([
-      { file, section: currentSection, label: getPhotoCaptureSectionLabel(currentSection) },
-    ]);
-    dispatch({ type: "use_photo" });
+    capturedFileRef.current = file;
+    setCropRect(getDefaultManualCropRect());
+    setCropWarning("");
+    setCapturedPreviewUrl(URL.createObjectURL(file));
+    dispatch({ type: "photo_captured" });
   };
 
   const handleTakePhotoClick = async () => {
@@ -395,8 +248,8 @@ export function PhotoCapturePanel({ onUsePhotos, onClose, defaultSection }: Phot
       // a frame has been captured.
       stopActiveStream();
       capturedFileRef.current = file;
-      fileForOcrRef.current = file;
-      capturedCropRectRef.current = mappedCropRect;
+      setCropRect(getDefaultManualCropRect(mappedCropRect));
+      setCropWarning("");
       setCapturedPreviewUrl(URL.createObjectURL(file));
       dispatch({ type: "photo_captured" });
     } catch {
@@ -409,41 +262,126 @@ export function PhotoCapturePanel({ onUsePhotos, onClose, defaultSection }: Phot
     dispatch({ type: "retake" });
   };
 
-  const handleUseThisPhoto = async () => {
-    if (cropPromiseRef.current) {
-      await cropPromiseRef.current;
-    }
+  const updateCropFromPointer = (event: PointerEvent | ReactPointerEvent<HTMLDivElement>) => {
+    const activeDrag = activeCropDragRef.current;
+    const cropArea = cropAreaRef.current;
 
-    const fileToUse = fileForOcrRef.current ?? capturedFileRef.current;
-
-    if (!fileToUse) {
+    if (!activeDrag || !cropArea) {
       return;
     }
 
+    const bounds = cropArea.getBoundingClientRect();
+    const deltaX = (event.clientX - activeDrag.startX) / bounds.width;
+    const deltaY = (event.clientY - activeDrag.startY) / bounds.height;
+    const start = activeDrag.startRect;
+
+    setCropRect(() => {
+      if (activeDrag.mode === "move") {
+        const x = Math.min(Math.max(0, start.x + deltaX), 1 - start.width);
+        const y = Math.min(Math.max(0, start.y + deltaY), 1 - start.height);
+        return { ...start, x, y };
+      }
+
+      let left = start.x;
+      let top = start.y;
+      let right = start.x + start.width;
+      let bottom = start.y + start.height;
+
+      if (activeDrag.mode.includes("left")) {
+        left = Math.min(Math.max(0, start.x + deltaX), right - 0.2);
+      }
+      if (activeDrag.mode.includes("right")) {
+        right = Math.max(Math.min(1, start.x + start.width + deltaX), left + 0.2);
+      }
+      if (activeDrag.mode.includes("top")) {
+        top = Math.min(Math.max(0, start.y + deltaY), bottom - 0.2);
+      }
+      if (activeDrag.mode.includes("bottom")) {
+        bottom = Math.max(Math.min(1, start.y + start.height + deltaY), top + 0.2);
+      }
+
+      return {
+        x: left,
+        y: top,
+        width: right - left,
+        height: bottom - top,
+      };
+    });
+  };
+
+  const stopCropDrag = () => {
+    activeCropDragRef.current = null;
+    window.removeEventListener("pointermove", updateCropFromPointer);
+    window.removeEventListener("pointerup", stopCropDrag);
+  };
+
+  const startCropDrag = (
+    mode: NonNullable<typeof activeCropDragRef.current>["mode"],
+    event: ReactPointerEvent<HTMLDivElement>,
+  ) => {
+    event.preventDefault();
+    activeCropDragRef.current = {
+      mode,
+      startX: event.clientX,
+      startY: event.clientY,
+      startRect: cropRect,
+    };
+    window.addEventListener("pointermove", updateCropFromPointer);
+    window.addEventListener("pointerup", stopCropDrag, { once: true });
+  };
+
+  const sendPhotoToOcr = (file: File, warnings: string[] = []) => {
     onUsePhotos([
       {
-        file: fileToUse,
+        file,
         section: currentSection,
         label: getPhotoCaptureSectionLabel(currentSection),
+        warnings,
       },
     ]);
     clearCapturedPreview();
     dispatch({ type: "use_photo" });
   };
 
+  const handleReadSelectedArea = async () => {
+    const sourceFile = capturedFileRef.current;
+
+    if (!sourceFile || isCropping) {
+      return;
+    }
+
+    setIsCropping(true);
+    setCropWarning("");
+
+    try {
+      const croppedBlob = await cropImageBlobToRect(sourceFile, cropRect, {
+        type: sourceFile.type,
+        safety: "manual",
+      });
+      const croppedFile = createCapturedPhotoFile(
+        croppedBlob,
+        getCapturedPhotoFileName(currentSection),
+      );
+      sendPhotoToOcr(croppedFile);
+    } catch {
+      setCropWarning(PHOTO_CROP_FALLBACK_WARNING);
+      sendPhotoToOcr(sourceFile, [PHOTO_CROP_FALLBACK_WARNING]);
+    } finally {
+      setIsCropping(false);
+    }
+  };
+
+  const handleUseFullPhoto = () => {
+    const sourceFile = capturedFileRef.current;
+
+    if (!sourceFile) {
+      return;
+    }
+
+    sendPhotoToOcr(sourceFile, [PHOTO_FULL_PHOTO_WARNING]);
+  };
+
   const isCameraWorkStage = stage === "camera_preview" || stage === "captured";
-  const reviewQualityScore =
-    documentQuality ? getPhotoReviewQualityScore(documentQuality.score, Boolean(cropWarning)) : undefined;
-  const retakeRecommended = reviewQualityScore ? shouldEmphasizeRetake(reviewQualityScore) : false;
-  const liveInstruction = liveQuality?.primaryInstruction ?? LIVE_QUALITY_PLACE_DOCUMENT_IN_FRAME;
-  const liveSecondaryInstruction =
-    liveQuality?.secondaryInstruction ?? "Move closer until the letter nearly fills the frame.";
-  const liveQualityCardClassName =
-    liveQuality?.status === "ready"
-      ? "border-emerald-300/35 bg-emerald-300/12 text-emerald-50"
-      : liveQuality?.status === "poor"
-        ? "border-amber-300/35 bg-amber-300/12 text-amber-50"
-        : "border-cyan-300/25 bg-cyan-300/10 text-cyan-50";
 
   return (
     <div
@@ -501,17 +439,16 @@ export function PhotoCapturePanel({ onUsePhotos, onClose, defaultSection }: Phot
 
         {stage === "camera_preview" ? (
           <div className="mt-4 flex min-h-0 flex-1 flex-col gap-2">
-            <div className={`shrink-0 rounded-lg border px-4 py-3 ${liveQualityCardClassName}`}>
-              <p className="text-sm font-black text-current">{currentSectionTitle}</p>
-              <p className="mt-1 text-base font-black leading-6">{liveInstruction}</p>
-              <p className="mt-1 text-sm leading-6 opacity-85">{liveSecondaryInstruction}</p>
+            <div className="shrink-0 rounded-lg border border-cyan-300/25 bg-cyan-300/10 px-4 py-3 text-cyan-50">
+              <p className="text-sm font-black">{currentSectionTitle}</p>
+              <p className="mt-1 text-base font-black leading-6">{currentGuidanceMessage}.</p>
+              <p className="mt-1 text-sm leading-6 text-cyan-50/85">
+                Try to fill most of the frame. {PHOTO_ADJUST_AFTER_CAPTURE_MESSAGE}
+              </p>
             </div>
-            {/* Document Capture Coach - live guidance (see
-                src/lib/documentImageQuality.ts for the after-the-fact checks
-                and its v2 TODOs for real page/contour detection). The
-                A4-shaped frame is a plain CSS overlay, not real edge
-                detection - it gives the user a strong page target without
-                promising automatic cropping. */}
+            {/* The A4-shaped frame is a plain CSS guide, not real edge
+                detection or the final crop. The user confirms the actual
+                OCR area in the adjust step after taking the photo. */}
             <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-lg border border-white/10 bg-black">
               <video
                 ref={videoRef}
@@ -525,7 +462,7 @@ export function PhotoCapturePanel({ onUsePhotos, onClose, defaultSection }: Phot
                 aria-hidden="true"
                 className="pointer-events-none absolute inset-x-0 top-2 text-center text-xs font-bold text-white [text-shadow:0_1px_3px_rgb(0_0_0_/_0.8)]"
               >
-                {currentSection === "additional" ? currentGuidanceMessage : LIVE_QUALITY_PLACE_DOCUMENT_IN_FRAME}
+                {currentGuidanceMessage}
               </p>
             </div>
             <ul className="grid shrink-0 grid-cols-2 gap-x-3 gap-y-1 text-xs leading-5 text-slate-400 sm:grid-cols-4">
@@ -534,15 +471,6 @@ export function PhotoCapturePanel({ onUsePhotos, onClose, defaultSection }: Phot
               ))}
             </ul>
             <div className={CAMERA_PREVIEW_ACTIONS_CLASSNAME}>
-              {liveQuality?.status === "poor" ? (
-                <p className="rounded-lg border border-amber-300/20 bg-amber-300/10 px-3 py-2 text-xs font-semibold leading-5 text-amber-100 sm:col-span-2">
-                  This may be hard to read.
-                </p>
-              ) : liveQuality?.primaryInstruction === LIVE_QUALITY_READY ? (
-                <p className="rounded-lg border border-emerald-300/20 bg-emerald-300/10 px-3 py-2 text-xs font-semibold leading-5 text-emerald-100 sm:col-span-2">
-                  The letter is clear enough to read.
-                </p>
-              ) : null}
               <button
                 type="button"
                 onClick={() => void handleTakePhotoClick()}
@@ -565,101 +493,90 @@ export function PhotoCapturePanel({ onUsePhotos, onClose, defaultSection }: Phot
           <div className="mt-4 flex min-h-0 flex-1 flex-col gap-3">
             <div className={PHOTO_REVIEW_CONTENT_CLASSNAME}>
               <div className="rounded-lg border border-emerald-300/20 bg-emerald-300/10 px-4 py-3">
-                <p className="text-sm font-black text-emerald-50">{currentSectionTitle}</p>
-                <p className="mt-1 text-sm leading-6 text-emerald-50/80">
-                  {currentGuidanceMessage}.
+                <p className="text-sm font-black text-emerald-50">{PHOTO_ADJUST_TITLE}</p>
+                <p className="mt-1 text-sm leading-6 text-emerald-50/85">
+                  {PHOTO_ADJUST_INSTRUCTION}
                 </p>
               </div>
-              {croppedPreviewUrl || capturedPreviewUrl ? (
-                <img
-                  src={croppedPreviewUrl || capturedPreviewUrl}
-                  alt={croppedPreviewUrl ? "Cropped photo preview" : "Captured photo preview"}
-                  className="max-h-[min(36dvh,16rem)] w-full rounded-lg border border-white/10 object-contain"
-                />
+              {capturedPreviewUrl ? (
+                <div
+                  ref={cropAreaRef}
+                  className="relative overflow-hidden rounded-lg border border-white/10 bg-black"
+                >
+                  <img
+                    src={capturedPreviewUrl}
+                    alt="Captured photo preview"
+                    className="max-h-[min(46dvh,22rem)] w-full select-none object-contain"
+                    draggable={false}
+                  />
+                  <div
+                    className="absolute border-2 border-emerald-300 bg-emerald-300/10 shadow-[0_0_0_9999px_rgb(15_23_42_/_0.45)]"
+                    style={{
+                      left: `${cropRect.x * 100}%`,
+                      top: `${cropRect.y * 100}%`,
+                      width: `${cropRect.width * 100}%`,
+                      height: `${cropRect.height * 100}%`,
+                    }}
+                    onPointerDown={(event) => startCropDrag("move", event)}
+                    role="presentation"
+                  >
+                    {[
+                      ["top_left", "left-0 top-0 -translate-x-1/2 -translate-y-1/2"],
+                      ["top_right", "right-0 top-0 translate-x-1/2 -translate-y-1/2"],
+                      ["bottom_left", "bottom-0 left-0 -translate-x-1/2 translate-y-1/2"],
+                      ["bottom_right", "bottom-0 right-0 translate-x-1/2 translate-y-1/2"],
+                    ].map(([mode, className]) => (
+                      <div
+                        key={mode}
+                        className={`absolute h-5 w-5 rounded-full border-2 border-slate-950 bg-emerald-300 ${className}`}
+                        onPointerDown={(event) => {
+                          event.stopPropagation();
+                          startCropDrag(
+                            mode as NonNullable<typeof activeCropDragRef.current>["mode"],
+                            event,
+                          );
+                        }}
+                      />
+                    ))}
+                  </div>
+                </div>
               ) : null}
               <div className="rounded-lg border border-cyan-300/20 bg-cyan-300/10 px-4 py-3 text-sm leading-6 text-cyan-50/90">
-                <p className="font-bold">
-                  {cropWarning
-                    ? cropWarning
-                    : croppedPreviewUrl
-                    ? PHOTO_CROPPED_TO_FRAME_MESSAGE
-                    : PHOTO_READS_INSIDE_FRAME_MESSAGE}
+                <p className="font-bold">OCR will use the selected area after you confirm.</p>
+                <p className="mt-1 text-cyan-50/80">
+                  Keep a small border around the text. Use the full photo if cropping feels wrong.
                 </p>
-                {isCropping ? <p className="mt-1 text-cyan-50/80">Cropping to the guide frame...</p> : null}
               </div>
-              {/* Document Capture Coach - capture review. Never blocks:
-                  "Use anyway" / "Use this photo" below always goes through
-                  the same handler; poor photos only change the warning and
-                  button hierarchy. */}
-              {documentQuality ? (
-                <div
-                  className={`${PHOTO_REVIEW_WARNING_CLASSNAME} ${
-                    reviewQualityScore === "good"
-                      ? "border-emerald-300/25 bg-emerald-300/10 text-emerald-50"
-                      : "border-amber-300/30 bg-amber-300/10 text-amber-50"
-                  }`}
-                >
-                  <p className="font-bold">
-                    {reviewQualityScore === "good"
-                      ? DOCUMENT_QUALITY_GOOD_MESSAGE
-                      : retakeRecommended
-                        ? PHOTO_RETAKE_RECOMMENDED_LABEL
-                        : DOCUMENT_QUALITY_WARNING_MESSAGE}
-                  </p>
-                  {reviewQualityScore !== "good" ? (
-                    <>
-                      <p className="mt-1">{DOCUMENT_QUALITY_WARNING_MESSAGE}</p>
-                      {getVisibleDocumentQualityWarningMessages(documentQuality).length > 0 ? (
-                        <ul className="mt-2 space-y-1">
-                          {getVisibleDocumentQualityWarningMessages(documentQuality).map((message) => (
-                            <li key={message}>{message}</li>
-                          ))}
-                        </ul>
-                      ) : null}
-                      <p className="mt-2">{DOCUMENT_QUALITY_TIP_MESSAGE}</p>
-                      <p className="mt-1">{DOCUMENT_QUALITY_CONTINUE_MESSAGE}</p>
-                    </>
-                  ) : null}
+              {cropWarning ? (
+                <div className="rounded-lg border border-amber-300/25 bg-amber-300/10 px-4 py-3 text-sm font-semibold leading-6 text-amber-100">
+                  {cropWarning}
                 </div>
               ) : null}
               <p className="text-sm leading-6 text-slate-400">{PHOTO_UNREADABLE_FALLBACK_MESSAGE}</p>
             </div>
             <div className={PHOTO_REVIEW_ACTIONS_CLASSNAME}>
-              {retakeRecommended ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={handleRetake}
-                    className={PHOTO_PRIMARY_RETAKE_BUTTON_CLASSNAME}
-                  >
-                    {PHOTO_RETAKE_RECOMMENDED_LABEL}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleUseThisPhoto()}
-                    className={PHOTO_SECONDARY_USE_BUTTON_CLASSNAME}
-                  >
-                    {PHOTO_USE_ANYWAY_LABEL}
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => void handleUseThisPhoto()}
-                    className={PHOTO_PRIMARY_USE_BUTTON_CLASSNAME}
-                  >
-                    {PHOTO_USE_THIS_PHOTO_LABEL}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleRetake}
-                    className={PHOTO_SECONDARY_RETAKE_BUTTON_CLASSNAME}
-                  >
-                    {PHOTO_RETAKE_LABEL}
-                  </button>
-                </>
-              )}
+              <button
+                type="button"
+                onClick={() => void handleReadSelectedArea()}
+                disabled={isCropping}
+                className="min-h-11 rounded-lg bg-emerald-400 px-4 py-3 text-sm font-bold text-slate-950 shadow-lg shadow-emerald-950/30 transition hover:bg-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-200 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400 disabled:shadow-none"
+              >
+                {isCropping ? "Preparing area..." : PHOTO_READ_SELECTED_AREA_LABEL}
+              </button>
+              <button
+                type="button"
+                onClick={handleUseFullPhoto}
+                className="min-h-11 rounded-lg border border-cyan-300/25 bg-cyan-300/10 px-4 py-3 text-sm font-bold text-cyan-50 transition hover:border-cyan-200/50 hover:text-white"
+              >
+                {PHOTO_USE_FULL_PHOTO_LABEL}
+              </button>
+              <button
+                type="button"
+                onClick={handleRetake}
+                className="min-h-11 rounded-lg border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-slate-200 transition hover:border-white/20 hover:text-white"
+              >
+                {PHOTO_RETAKE_LABEL}
+              </button>
               <button
                 type="button"
                 onClick={handleCancel}

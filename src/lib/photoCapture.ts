@@ -29,6 +29,7 @@ export type CapturedPhotoForOcr = {
   file: File;
   section: PhotoCaptureSection;
   label: string;
+  warnings?: string[];
 };
 
 export type DOMRectLike = {
@@ -66,17 +67,17 @@ export const PHOTO_STAYS_LOCAL_MESSAGE = "Photo stays in this browser in this ve
 export const PHOTO_UNREADABLE_FALLBACK_MESSAGE =
   "If the photo cannot be read clearly, upload a clearer image or paste the text manually.";
 
-export const PHOTO_CROPPED_TO_FRAME_MESSAGE =
-  "The photo was cropped to the guide frame before reading.";
-
-export const PHOTO_READS_INSIDE_FRAME_MESSAGE =
-  "AdminAvenger will try to read the area inside the frame.";
-
-export const PHOTO_CROP_FAILED_MESSAGE =
-  "We could not crop the photo automatically. You can still continue and edit the text manually.";
-
-export const PHOTO_CROP_UNSAFE_MESSAGE =
-  "AdminAvenger could not crop this photo safely, so it will read the full photo. You can still retake it.";
+export const PHOTO_ADJUST_TITLE = "Adjust document area";
+export const PHOTO_ADJUST_INSTRUCTION =
+  "Drag the box around the letter. Anything outside the box will be ignored.";
+export const PHOTO_ADJUST_AFTER_CAPTURE_MESSAGE =
+  "You can adjust the document area after taking the photo.";
+export const PHOTO_READ_SELECTED_AREA_LABEL = "Read this area";
+export const PHOTO_USE_FULL_PHOTO_LABEL = "Use full photo";
+export const PHOTO_FULL_PHOTO_WARNING =
+  "The full photo may include background. OCR may make more mistakes.";
+export const PHOTO_CROP_FALLBACK_WARNING =
+  "We could not crop this area safely, so AdminAvenger will read the full photo. You can still edit the text manually.";
 
 // One-photo default flow. No scan-mode choice, no numbered capture sequence -
 // the user takes a single photo and can optionally add a close-up afterwards.
@@ -104,16 +105,12 @@ export const PHOTO_SECTION_ADDITIONAL_TITLE = "Close-up photo";
 export const CAMERA_IDEAL_WIDTH = 1920;
 export const CAMERA_IDEAL_HEIGHT = 1080;
 
-// ---- Document Capture Coach: live camera guidance copy ----
+// ---- Document Capture Coach: camera framing guidance copy ----
 //
-// Shown over/alongside the live camera preview (see
-// src/components/PhotoCapturePanel.tsx) so the user lines up a good photo
-// *before* taking it, rather than only finding out afterwards - this is the
-// main lesson from modern document-scanner UX (Google ML Kit Document
-// Scanner, OpenCV-style scanners): guide the capture, don't just clean up
-// the result. Deliberately simple copy, no camera jargon, no page/contour
-// detection promised - see src/lib/documentImageQuality.ts for the actual
-// after-the-fact quality checks and its v2 TODOs for real page detection.
+// Shown around the camera preview (see src/components/PhotoCapturePanel.tsx)
+// as simple framing help only. The green frame is not treated as detected
+// page geometry; the user confirms the actual OCR area in the post-capture
+// adjust step.
 export const CAMERA_GUIDANCE_FIT_MESSAGE = "Place the letter inside the frame";
 export const CAMERA_GUIDANCE_CLOSE_UP_MESSAGE =
   "Fill the frame with the hard-to-read section";
@@ -134,31 +131,14 @@ export const CAMERA_PREVIEW_ACTIONS_CLASSNAME =
   "sticky bottom-0 z-10 mt-auto grid gap-2 rounded-xl border border-white/10 bg-slate-900/95 p-2 shadow-2xl shadow-slate-950/50 backdrop-blur sm:grid-cols-2";
 
 export const PHOTO_REVIEW_ACTIONS_CLASSNAME =
-  "sticky bottom-0 z-10 mt-auto grid gap-2 rounded-xl border border-white/10 bg-slate-900/95 p-2 shadow-2xl shadow-slate-950/50 backdrop-blur sm:grid-cols-3";
+  "sticky bottom-0 z-10 mt-auto grid gap-2 rounded-xl border border-white/10 bg-slate-900/95 p-2 shadow-2xl shadow-slate-950/50 backdrop-blur sm:grid-cols-4";
 
 export const PHOTO_REVIEW_CONTENT_CLASSNAME =
   "min-h-0 flex-1 space-y-3 overflow-y-auto pb-4 pr-1";
 
-export const PHOTO_REVIEW_WARNING_CLASSNAME = "rounded-lg border px-4 py-3 text-sm leading-6";
-
 export const PHOTO_TAKE_PHOTO_LABEL = "Take photo";
-export const PHOTO_USE_THIS_PHOTO_LABEL = "Use this photo";
-export const PHOTO_USE_ANYWAY_LABEL = "Use anyway";
 export const PHOTO_RETAKE_LABEL = "Retake";
-export const PHOTO_RETAKE_RECOMMENDED_LABEL = "Retake recommended";
 export const PHOTO_CANCEL_LABEL = "Cancel";
-
-export const PHOTO_PRIMARY_USE_BUTTON_CLASSNAME =
-  "min-h-11 rounded-lg bg-emerald-400 px-4 py-3 text-sm font-bold text-slate-950 shadow-lg shadow-emerald-950/30 transition hover:bg-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-200";
-
-export const PHOTO_SECONDARY_USE_BUTTON_CLASSNAME =
-  "min-h-11 rounded-lg border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-slate-200 transition hover:border-white/20 hover:text-white focus:outline-none focus:ring-2 focus:ring-emerald-300/40";
-
-export const PHOTO_PRIMARY_RETAKE_BUTTON_CLASSNAME =
-  "min-h-11 rounded-lg bg-amber-300 px-4 py-3 text-sm font-bold text-slate-950 shadow-lg shadow-amber-950/30 transition hover:bg-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-100";
-
-export const PHOTO_SECONDARY_RETAKE_BUTTON_CLASSNAME =
-  "min-h-11 rounded-lg border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-slate-200 transition hover:border-white/20 hover:text-white";
 
 export const getPhotoCaptureSectionLabel = (section: PhotoCaptureSection): string =>
   section === "additional" ? PHOTO_SECTION_ADDITIONAL_LABEL : PHOTO_SECTION_FULL_PAGE_LABEL;
@@ -168,11 +148,6 @@ export const getPhotoCaptureSectionTitle = (section: PhotoCaptureSection): strin
 
 export const getCameraGuidanceFitMessage = (section: PhotoCaptureSection): string =>
   section === "additional" ? CAMERA_GUIDANCE_CLOSE_UP_MESSAGE : CAMERA_GUIDANCE_FIT_MESSAGE;
-
-export const getPhotoReviewQualityScore = <Score extends string>(
-  score: Score,
-  hasCropWarning: boolean,
-): Score | "okay" => (hasCropWarning && score === "good" ? "okay" : score);
 
 const permissionDeniedErrorNames = new Set(["NotAllowedError", "PermissionDeniedError", "SecurityError"]);
 
@@ -270,6 +245,11 @@ const FALLBACK_CAPTURE_WIDTH = 1920;
 const FALLBACK_CAPTURE_HEIGHT = 1080;
 const GUIDE_FRAME_HEIGHT_RATIO = 0.82;
 const GUIDE_FRAME_MAX_WIDTH_RATIO = 0.92;
+export const DEFAULT_MANUAL_CROP_WIDTH_RATIO = 0.84;
+export const DEFAULT_MANUAL_CROP_HEIGHT_RATIO = 0.82;
+export const MIN_MANUAL_CROP_WIDTH_RATIO = 0.2;
+export const MIN_MANUAL_CROP_HEIGHT_RATIO = 0.2;
+export const MANUAL_CROP_MARGIN_RATIO = 0.02;
 
 const clampRatio = (value: number): number => Math.max(0, Math.min(1, value));
 
@@ -311,6 +291,54 @@ export const isCropRectSafe = (
     aspectRatio >= MIN_SAFE_A4_CROP_ASPECT_RATIO &&
     aspectRatio <= MAX_SAFE_A4_CROP_ASPECT_RATIO
   );
+};
+
+export const isManualCropRectSafe = (rect: CropRectRatio): boolean => {
+  if (rect.x < 0 || rect.y < 0 || rect.width <= 0 || rect.height <= 0) {
+    return false;
+  }
+
+  if (rect.x + rect.width > 1 || rect.y + rect.height > 1) {
+    return false;
+  }
+
+  if (rect.width < MIN_MANUAL_CROP_WIDTH_RATIO || rect.height < MIN_MANUAL_CROP_HEIGHT_RATIO) {
+    return false;
+  }
+
+  const aspectRatio = rect.width / rect.height;
+  return aspectRatio >= 0.25 && aspectRatio <= 4;
+};
+
+export const getCropRectWithMargin = (
+  rect: CropRectRatio,
+  marginRatio: number = MANUAL_CROP_MARGIN_RATIO,
+): CropRectRatio => {
+  const margin = Math.max(0, marginRatio);
+  const left = clampRatio(rect.x - margin);
+  const top = clampRatio(rect.y - margin);
+  const right = clampRatio(rect.x + rect.width + margin);
+  const bottom = clampRatio(rect.y + rect.height + margin);
+
+  return {
+    x: left,
+    y: top,
+    width: Math.max(0, right - left),
+    height: Math.max(0, bottom - top),
+  };
+};
+
+export const getDefaultManualCropRect = (suggestedRect?: CropRectRatio | null): CropRectRatio => {
+  if (suggestedRect && isManualCropRectSafe(suggestedRect)) {
+    return suggestedRect;
+  }
+
+  return {
+    x: (1 - DEFAULT_MANUAL_CROP_WIDTH_RATIO) / 2,
+    y: (1 - DEFAULT_MANUAL_CROP_HEIGHT_RATIO) / 2,
+    width: DEFAULT_MANUAL_CROP_WIDTH_RATIO,
+    height: DEFAULT_MANUAL_CROP_HEIGHT_RATIO,
+  };
 };
 
 export const mapDisplayedFrameToImageCrop = ({
@@ -404,7 +432,12 @@ export const createCapturedPhotoFile = (
 export const cropImageBlobToRect = (
   image: Blob,
   rect: CropRectRatio,
-  options: { type?: string; quality?: number } = {},
+  options: {
+    type?: string;
+    quality?: number;
+    safety?: "a4" | "manual";
+    marginRatio?: number;
+  } = {},
 ): Promise<Blob> =>
   new Promise((resolve, reject) => {
     const objectUrl = URL.createObjectURL(image);
@@ -413,16 +446,24 @@ export const cropImageBlobToRect = (
 
     element.onload = () => {
       try {
-        if (!isCropRectSafe(rect, element.naturalWidth, element.naturalHeight)) {
+        const cropRect = options.safety === "manual"
+          ? getCropRectWithMargin(rect, options.marginRatio)
+          : rect;
+        const isSafe =
+          options.safety === "manual"
+            ? isManualCropRectSafe(cropRect)
+            : isCropRectSafe(cropRect, element.naturalWidth, element.naturalHeight);
+
+        if (!isSafe) {
           cleanUp();
           reject(new Error("Could not crop this photo safely."));
           return;
         }
 
-        const sourceX = Math.round(clampRatio(rect.x) * element.naturalWidth);
-        const sourceY = Math.round(clampRatio(rect.y) * element.naturalHeight);
-        const requestedWidth = Math.round(clampRatio(rect.width) * element.naturalWidth);
-        const requestedHeight = Math.round(clampRatio(rect.height) * element.naturalHeight);
+        const sourceX = Math.round(clampRatio(cropRect.x) * element.naturalWidth);
+        const sourceY = Math.round(clampRatio(cropRect.y) * element.naturalHeight);
+        const requestedWidth = Math.round(clampRatio(cropRect.width) * element.naturalWidth);
+        const requestedHeight = Math.round(clampRatio(cropRect.height) * element.naturalHeight);
         const sourceWidth = Math.max(
           1,
           Math.min(requestedWidth, element.naturalWidth - sourceX),
@@ -546,12 +587,10 @@ export type PhotoCaptureAction =
   | { type: "use_photo" };
 
 // Drives the panel through: choice -> (requesting camera) -> camera_preview
-// -> captured -> closed (or back to requesting_camera on retake).
+// -> captured/adjust -> closed (or back to requesting_camera on retake).
 //
-// "Upload existing photo" does not go through this reducer at all - from the
-// "choice" stage it opens a plain file input directly and hands the file
-// straight to the existing intake path, so there is no separate state to
-// model for it here.
+// "Upload existing photo" enters the same captured/adjust stage, so uploaded
+// photos and camera photos share the same crop-confirm-before-OCR path.
 export const photoCaptureReducer = (
   stage: PhotoCaptureStage,
   action: PhotoCaptureAction,
@@ -566,7 +605,7 @@ export const photoCaptureReducer = (
     case "camera_error":
       return action.kind === "permission_denied" ? "permission_denied" : "camera_unavailable";
     case "photo_captured":
-      return stage === "camera_preview" ? "captured" : stage;
+      return stage === "camera_preview" || stage === "choice" ? "captured" : stage;
     case "retake":
       return "requesting_camera";
     case "cancel":

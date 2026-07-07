@@ -13,33 +13,35 @@ import {
   CAPTURED_PHOTO_FILE_NAME,
   CAPTURED_PHOTO_JPEG_QUALITY,
   CAPTURED_PHOTO_MIME_TYPE,
+  DEFAULT_MANUAL_CROP_HEIGHT_RATIO,
+  DEFAULT_MANUAL_CROP_WIDTH_RATIO,
   EXTRA_PHOTO_FILE_NAME,
+  MANUAL_CROP_MARGIN_RATIO,
+  MIN_MANUAL_CROP_HEIGHT_RATIO,
+  MIN_MANUAL_CROP_WIDTH_RATIO,
+  PHOTO_ADJUST_AFTER_CAPTURE_MESSAGE,
+  PHOTO_ADJUST_INSTRUCTION,
+  PHOTO_ADJUST_TITLE,
   PHOTO_ADD_CLOSE_UP_DESCRIPTION,
   PHOTO_ADD_CLOSE_UP_LABEL,
+  PHOTO_CROP_FALLBACK_WARNING,
+  PHOTO_FULL_PHOTO_WARNING,
   PHOTO_RETAKE_PHOTO_LABEL,
+  PHOTO_READ_SELECTED_AREA_LABEL,
   PHOTO_SECTION_ADDITIONAL_LABEL,
   PHOTO_SECTION_ADDITIONAL_TITLE,
   PHOTO_SECTION_FULL_PAGE_LABEL,
   PHOTO_SECTION_FULL_PAGE_TITLE,
   PHOTO_CANCEL_LABEL,
   PHOTO_RETAKE_LABEL,
+  PHOTO_USE_FULL_PHOTO_LABEL,
   PHOTO_STAYS_LOCAL_MESSAGE,
   PHOTO_TAKE_NEW_PHOTO_DESCRIPTION,
   PHOTO_TAKE_NEW_PHOTO_LABEL,
   PHOTO_TAKE_PHOTO_LABEL,
-  PHOTO_PRIMARY_RETAKE_BUTTON_CLASSNAME,
-  PHOTO_PRIMARY_USE_BUTTON_CLASSNAME,
-  PHOTO_RETAKE_RECOMMENDED_LABEL,
   PHOTO_REVIEW_ACTIONS_CLASSNAME,
   PHOTO_REVIEW_CONTENT_CLASSNAME,
-  PHOTO_REVIEW_WARNING_CLASSNAME,
-  PHOTO_CROP_FAILED_MESSAGE,
-  PHOTO_CROPPED_TO_FRAME_MESSAGE,
-  PHOTO_SECONDARY_USE_BUTTON_CLASSNAME,
-  PHOTO_READS_INSIDE_FRAME_MESSAGE,
   PHOTO_UNREADABLE_FALLBACK_MESSAGE,
-  PHOTO_USE_ANYWAY_LABEL,
-  PHOTO_USE_THIS_PHOTO_LABEL,
   capturePhotoFromVideoElement,
   cropImageBlobToRect,
   classifyCameraError,
@@ -47,12 +49,14 @@ import {
   getA4GuideCropRect,
   getCameraGuidanceFitMessage,
   getCapturedPhotoFileName,
+  getCropRectWithMargin,
   getCropRectPixelAspectRatio,
+  getDefaultManualCropRect,
   getCameraErrorMessage,
   getPhotoCaptureSectionLabel,
   getPhotoCaptureSectionTitle,
-  getPhotoReviewQualityScore,
   isCropRectSafe,
+  isManualCropRectSafe,
   isCameraCaptureSupported,
   mapDisplayedFrameToImageCrop,
   photoCaptureReducer,
@@ -103,6 +107,10 @@ describe("photo capture panel state model", () => {
 
   it("taking the photo moves from camera_preview to captured", () => {
     expect(photoCaptureReducer("camera_preview", { type: "photo_captured" })).toBe("captured");
+  });
+
+  it("uploading an existing photo can enter the same captured adjust step from choice", () => {
+    expect(photoCaptureReducer("choice", { type: "photo_captured" })).toBe("captured");
   });
 
   it("retaking from captured goes back to requesting_camera, allowing another capture", () => {
@@ -480,6 +488,139 @@ describe("A4 guide-frame crop", () => {
   });
 });
 
+// ---- Manual adjust crop ----
+describe("manual adjust document area crop", () => {
+  const withFakeManualImageCanvas = async (
+    run: (fakeCanvas: {
+      width: number;
+      height: number;
+      drawImage: ReturnType<typeof vi.fn>;
+    }) => Promise<void>,
+  ) => {
+    const drawImage = vi.fn();
+    const fakeCanvas = {
+      width: 0,
+      height: 0,
+      getContext: () => ({ drawImage }),
+      toBlob: (callback: (blob: Blob | null) => void, type: string) => {
+        callback(new Blob(["cropped"], { type }));
+      },
+    };
+
+    class FakeImage {
+      naturalWidth = 1200;
+      naturalHeight = 2000;
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      set src(_value: string) {
+        this.onload?.();
+      }
+    }
+
+    vi.stubGlobal("document", {
+      createElement: () => fakeCanvas,
+    });
+    vi.stubGlobal("Image", FakeImage);
+    vi.stubGlobal("URL", {
+      createObjectURL: vi.fn(() => "blob:fake-photo"),
+      revokeObjectURL: vi.fn(),
+    });
+
+    try {
+      await run({
+        get width() {
+          return fakeCanvas.width;
+        },
+        get height() {
+          return fakeCanvas.height;
+        },
+        drawImage,
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  };
+
+  it("starts with a large centred crop box when no safe guide-frame crop exists", () => {
+    const rect = getDefaultManualCropRect(null);
+
+    expect(rect.width).toBe(DEFAULT_MANUAL_CROP_WIDTH_RATIO);
+    expect(rect.height).toBe(DEFAULT_MANUAL_CROP_HEIGHT_RATIO);
+    expect(rect.x + rect.width / 2).toBeCloseTo(0.5, 5);
+    expect(rect.y + rect.height / 2).toBeCloseTo(0.5, 5);
+    expect(rect.width).toBeGreaterThan(0.8);
+    expect(rect.height).toBeGreaterThan(0.8);
+  });
+
+  it("uses a safe suggested guide-frame crop as the starting crop box", () => {
+    const suggested = { x: 0.1, y: 0.08, width: 0.8, height: 0.84 };
+
+    expect(getDefaultManualCropRect(suggested)).toEqual(suggested);
+  });
+
+  it("rejects tiny or out-of-bounds manual crop boxes", () => {
+    expect(isManualCropRectSafe({ x: 0.1, y: 0.1, width: 0.1, height: 0.8 })).toBe(false);
+    expect(isManualCropRectSafe({ x: 0.1, y: 0.1, width: 0.8, height: 0.1 })).toBe(false);
+    expect(isManualCropRectSafe({ x: -0.1, y: 0.1, width: 0.8, height: 0.8 })).toBe(false);
+    expect(isManualCropRectSafe({ x: 0.2, y: 0.2, width: 0.5, height: 0.5 })).toBe(true);
+    expect(MIN_MANUAL_CROP_WIDTH_RATIO).toBeGreaterThanOrEqual(0.2);
+    expect(MIN_MANUAL_CROP_HEIGHT_RATIO).toBeGreaterThanOrEqual(0.2);
+  });
+
+  it("adds only a small safe margin around the selected crop", () => {
+    const rect = getCropRectWithMargin({ x: 0.1, y: 0.2, width: 0.5, height: 0.4 });
+
+    expect(MANUAL_CROP_MARGIN_RATIO).toBe(0.02);
+    expect(rect.x).toBeCloseTo(0.08, 5);
+    expect(rect.y).toBeCloseTo(0.18, 5);
+    expect(rect.width).toBeCloseTo(0.54, 5);
+    expect(rect.height).toBeCloseTo(0.44, 5);
+  });
+
+  it("allows a free manual rectangle rather than forcing an A4 aspect ratio", async () => {
+    await withFakeManualImageCanvas(async (fakeCanvas) => {
+      const source = new Blob(["full photo"], { type: "image/jpeg" });
+      await cropImageBlobToRect(
+        source,
+        { x: 0.15, y: 0.2, width: 0.65, height: 0.35 },
+        { safety: "manual" },
+      );
+
+      expect(fakeCanvas.width / fakeCanvas.height).toBeGreaterThan(1);
+      expect(fakeCanvas.drawImage).toHaveBeenCalledOnce();
+    });
+  });
+
+  it("manual crop still rejects a thin strip before OCR", async () => {
+    await withFakeManualImageCanvas(async () => {
+      const source = new Blob(["full photo"], { type: "image/jpeg" });
+
+      await expect(
+        cropImageBlobToRect(
+          source,
+          { x: 0.45, y: 0.1, width: 0.08, height: 0.75 },
+          { safety: "manual" },
+        ),
+      ).rejects.toThrow("safely");
+    });
+  });
+
+  it("exposes the exact adjust-step copy and full-photo fallback warning", () => {
+    expect(PHOTO_ADJUST_TITLE).toBe("Adjust document area");
+    expect(PHOTO_ADJUST_INSTRUCTION).toBe(
+      "Drag the box around the letter. Anything outside the box will be ignored.",
+    );
+    expect(PHOTO_READ_SELECTED_AREA_LABEL).toBe("Read this area");
+    expect(PHOTO_USE_FULL_PHOTO_LABEL).toBe("Use full photo");
+    expect(PHOTO_FULL_PHOTO_WARNING).toBe(
+      "The full photo may include background. OCR may make more mistakes.",
+    );
+    expect(PHOTO_CROP_FALLBACK_WARNING).toBe(
+      "We could not crop this area safely, so AdminAvenger will read the full photo. You can still edit the text manually.",
+    );
+  });
+});
+
 // ---- Capture quality setting ----
 // capturePhotoFromVideoElement itself touches canvas/video (DOM-only, so it
 // is exercised manually per the comment in photoCapture.ts) - but the actual
@@ -494,8 +635,8 @@ describe("captured photo JPEG quality", () => {
   });
 });
 
-// ---- Document Capture Coach live guidance ----
-describe("document capture coach live guidance copy", () => {
+// ---- Document Capture Coach camera guidance ----
+describe("document capture coach camera guidance copy", () => {
   // Live mobile testing showed one full-page photo is usually good enough
   // (e.g. a ~78% read that found the amount, dates, reference, and issuer),
   // and users disliked being forced through a set photo sequence - so the
@@ -560,11 +701,12 @@ describe("document capture coach live guidance copy", () => {
       CAMERA_GUIDANCE_CLOSE_UP_MESSAGE,
       ...CAMERA_GUIDANCE_TIPS,
       PHOTO_TAKE_PHOTO_LABEL,
-      PHOTO_USE_THIS_PHOTO_LABEL,
-      PHOTO_USE_ANYWAY_LABEL,
+      PHOTO_READ_SELECTED_AREA_LABEL,
+      PHOTO_USE_FULL_PHOTO_LABEL,
       PHOTO_RETAKE_LABEL,
-      PHOTO_RETAKE_RECOMMENDED_LABEL,
       PHOTO_CANCEL_LABEL,
+      PHOTO_ADJUST_TITLE,
+      PHOTO_ADJUST_INSTRUCTION,
     ];
 
     const forbiddenPatterns = [
@@ -631,35 +773,17 @@ describe("document capture coach live guidance copy", () => {
     expect(PHOTO_REVIEW_ACTIONS_CLASSNAME).toContain("bottom-0");
   });
 
-  it("has explicit labels for retake recommendation while keeping use-photo available", () => {
-    expect(PHOTO_RETAKE_RECOMMENDED_LABEL).toBe("Retake recommended");
-    expect(PHOTO_USE_THIS_PHOTO_LABEL).toBe("Use this photo");
-    expect(PHOTO_USE_ANYWAY_LABEL).toBe("Use anyway");
-  });
-
-  it("makes Retake recommended the primary action for poor photos", () => {
-    expect(PHOTO_PRIMARY_RETAKE_BUTTON_CLASSNAME).toContain("bg-amber-300");
-    expect(PHOTO_PRIMARY_RETAKE_BUTTON_CLASSNAME).not.toContain("border border-white/10");
-    expect(PHOTO_SECONDARY_USE_BUTTON_CLASSNAME).toContain("border border-white/10");
-    expect(PHOTO_SECONDARY_USE_BUTTON_CLASSNAME).not.toContain("bg-emerald-400");
-  });
-
-  it("keeps Use this photo primary for good or okay photos", () => {
-    expect(PHOTO_PRIMARY_USE_BUTTON_CLASSNAME).toContain("bg-emerald-400");
-    expect(PHOTO_PRIMARY_USE_BUTTON_CLASSNAME).not.toContain("border border-white/10");
-  });
-
-  it("keeps the warning panel in scrollable content before the sticky action row", () => {
+  it("keeps the adjust step actions represented as sticky mobile controls", () => {
     expect(PHOTO_REVIEW_CONTENT_CLASSNAME).toContain("overflow-y-auto");
     expect(PHOTO_REVIEW_CONTENT_CLASSNAME).not.toContain("sticky");
-    expect(PHOTO_REVIEW_WARNING_CLASSNAME).not.toContain("sticky");
     expect(PHOTO_REVIEW_ACTIONS_CLASSNAME).toContain("sticky");
+    expect(PHOTO_REVIEW_ACTIONS_CLASSNAME).toContain("sm:grid-cols-4");
   });
 
-  it("does not keep a 'good' review score when crop fallback warning is present", () => {
-    expect(getPhotoReviewQualityScore("good", true)).toBe("okay");
-    expect(getPhotoReviewQualityScore("good", false)).toBe("good");
-    expect(getPhotoReviewQualityScore("poor", true)).toBe("poor");
+  it("states that the user can adjust the area after capture instead of relying on live certainty", () => {
+    expect(PHOTO_ADJUST_AFTER_CAPTURE_MESSAGE).toBe(
+      "You can adjust the document area after taking the photo.",
+    );
   });
 });
 
@@ -762,9 +886,10 @@ describe("camera flow copy never implies a cloud upload, send, or contact", () =
   const allMessages = [
     PHOTO_STAYS_LOCAL_MESSAGE,
     PHOTO_UNREADABLE_FALLBACK_MESSAGE,
-    PHOTO_CROPPED_TO_FRAME_MESSAGE,
-    PHOTO_READS_INSIDE_FRAME_MESSAGE,
-    PHOTO_CROP_FAILED_MESSAGE,
+    PHOTO_ADJUST_INSTRUCTION,
+    PHOTO_ADJUST_AFTER_CAPTURE_MESSAGE,
+    PHOTO_FULL_PHOTO_WARNING,
+    PHOTO_CROP_FALLBACK_WARNING,
     CAMERA_PERMISSION_DENIED_MESSAGE,
     CAMERA_UNAVAILABLE_MESSAGE,
   ];
@@ -789,12 +914,6 @@ describe("camera flow copy never implies a cloud upload, send, or contact", () =
 
   it("explicitly states the photo stays in this browser", () => {
     expect(PHOTO_STAYS_LOCAL_MESSAGE).toBe("Photo stays in this browser in this version.");
-  });
-
-  it("is honest that the frame is a guide, not a guaranteed crop", () => {
-    expect(PHOTO_READS_INSIDE_FRAME_MESSAGE).toBe(
-      "AdminAvenger will try to read the area inside the frame.",
-    );
   });
 
   it("is honest that photos may not always be readable, without promising OCR success", () => {

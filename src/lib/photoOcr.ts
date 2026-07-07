@@ -59,10 +59,56 @@ const MIN_USEFUL_TEXT_LENGTH = 8;
 // getOcrQualityWarnings.
 const LOW_CONFIDENCE_THRESHOLD = 40;
 
+// Between LOW_CONFIDENCE_THRESHOLD and this value, OCR ran and found text,
+// but real-world testing on mobile (full-page letters coming back around
+// ~54% confidence with several wrong words) showed this band still needs its
+// own, gentler warning - severe enough to flag, not severe enough for the
+// "hard to read clearly" wording below.
+const MODERATE_CONFIDENCE_THRESHOLD = 70;
+
 // A single, calm, low-confidence warning - never a percentage or model-speak,
 // per AdminAvenger's confidence/uncertainty writing standard.
 export const OCR_LOW_CONFIDENCE_WARNING =
   "This photo may be hard to read clearly, so the extracted text could have more mistakes than usual.";
+
+// Shown above the review textarea for the moderate-confidence band
+// (LOW_CONFIDENCE_THRESHOLD <= confidence < MODERATE_CONFIDENCE_THRESHOLD).
+// "Check this text" stays available either way - the user can always edit
+// the text manually, this is just an honest heads-up.
+export const OCR_MODERATE_CONFIDENCE_WARNING =
+  "We could read some text, but this result may contain mistakes. A clearer photo may work better.";
+
+// A simple, deterministic heuristic (not a language model) for OCR output
+// that does not look like real text - e.g. a blurry photo turned into mostly
+// symbols/noise. Checked only once there is already "enough" text to judge
+// (see getOcrQualityWarnings), so it never fires alongside, or instead of,
+// the short-text warning above.
+const GARBLED_LETTER_RATIO_THRESHOLD = 0.4;
+const GARBLED_NOISE_RATIO_THRESHOLD = 0.3;
+
+export const OCR_GARBLED_TEXT_WARNING =
+  "This text doesn't look right - the photo may be unclear. Try a clearer photo or edit the text manually.";
+
+// Pure - deliberately simple and conservative: mostly-non-letter text, or an
+// unusually high share of characters that would not appear in normal prose,
+// is treated as likely garbled. Ordinary short sentences, numbers, and
+// punctuation found in real letters (£, dates, reference numbers) are not
+// flagged.
+export const isLikelyGarbledText = (text: string): boolean => {
+  const trimmed = text.trim();
+
+  if (trimmed.length === 0) {
+    return false;
+  }
+
+  const letterCount = (trimmed.match(/[a-zA-Z]/g) ?? []).length;
+  const letterRatio = letterCount / trimmed.length;
+
+  const noiseCount = trimmed.replace(/[a-zA-Z0-9\s.,'"!?;:()£$%&/-]/g, "").length;
+  const noiseRatio = noiseCount / trimmed.length;
+
+  return letterRatio < GARBLED_LETTER_RATIO_THRESHOLD || noiseRatio > GARBLED_NOISE_RATIO_THRESHOLD;
+};
 
 // Thrown (not returned) when Tesseract itself fails to run, so callers can
 // tell "ran but found little/nothing" (an OcrResult with warnings) apart from
@@ -83,14 +129,149 @@ export const getOcrQualityWarnings = (text: string, confidence?: number): string
 
   if (text.trim().length < MIN_USEFUL_TEXT_LENGTH) {
     warnings.push(OCR_LOW_TEXT_MESSAGE);
+  } else if (isLikelyGarbledText(text)) {
+    warnings.push(OCR_GARBLED_TEXT_WARNING);
   }
 
   if (typeof confidence === "number" && confidence < LOW_CONFIDENCE_THRESHOLD) {
     warnings.push(OCR_LOW_CONFIDENCE_WARNING);
+  } else if (typeof confidence === "number" && confidence < MODERATE_CONFIDENCE_THRESHOLD) {
+    warnings.push(OCR_MODERATE_CONFIDENCE_WARNING);
   }
 
   return warnings;
 };
+
+// ---- OCR preprocessing (upscale small images, grayscale, light contrast) ----
+//
+// A simple, deterministic pass that runs before Tesseract sees the image -
+// never adaptive/auto-thresholding, so it cannot make an already-clear photo
+// worse in some unpredictable way. Only ever used as the input to OCR; the
+// original captured/uploaded file is untouched and is what everything else
+// (preview, evidence, "try another photo") continues to use.
+
+// Aim for at least this many pixels on the image's longer edge before
+// running OCR - below this, individual letters in normal print become too
+// few pixels wide for Tesseract to resolve reliably.
+export const OCR_PREPROCESS_TARGET_MIN_DIMENSION = 1600;
+
+// Never upscale by more than this factor. A very small or very blurry photo
+// stretched much further than this just turns into larger blur, not more
+// readable text - so past this factor we leave the image as-is rather than
+// pretend to improve it.
+export const OCR_PREPROCESS_MAX_UPSCALE_FACTOR = 2;
+
+// Pure - decides the scale factor to apply before OCR, given the image's
+// natural pixel dimensions. Never downscales (Tesseract already handles
+// large photos fine, and downscaling a genuinely large photo would only lose
+// detail) and never upscales past OCR_PREPROCESS_MAX_UPSCALE_FACTOR.
+export const getOcrPreprocessScale = (width: number, height: number): number => {
+  if (!(width > 0) || !(height > 0)) {
+    return 1;
+  }
+
+  const longEdge = Math.max(width, height);
+
+  if (longEdge >= OCR_PREPROCESS_TARGET_MIN_DIMENSION) {
+    return 1;
+  }
+
+  const neededScale = OCR_PREPROCESS_TARGET_MIN_DIMENSION / longEdge;
+  return Math.min(neededScale, OCR_PREPROCESS_MAX_UPSCALE_FACTOR);
+};
+
+// A light, fixed contrast boost - safe enough to help faint print without
+// blowing out highlights or crushing shadows on a well-lit photo.
+const CONTRAST_FACTOR = 1.15;
+
+// Pure - mutates RGBA pixel data in place: converts each pixel to grayscale,
+// then applies the fixed contrast boost above. No adaptive thresholding by
+// design (see the module comment) - deterministic and simple, so the same
+// photo always preprocesses the same way.
+export const applyGrayscaleContrast = (pixels: Uint8ClampedArray): void => {
+  for (let i = 0; i < pixels.length; i += 4) {
+    const gray = pixels[i] * 0.299 + pixels[i + 1] * 0.587 + pixels[i + 2] * 0.114;
+    const contrasted = Math.min(255, Math.max(0, (gray - 128) * CONTRAST_FACTOR + 128));
+    pixels[i] = contrasted;
+    pixels[i + 1] = contrasted;
+    pixels[i + 2] = contrasted;
+  }
+};
+
+// Draws the image to a canvas (upscaling small images per
+// getOcrPreprocessScale), converts it to grayscale, and applies the contrast
+// boost above, resolving a new (lossless PNG) Blob for Tesseract to read.
+// Touches the DOM (Image/canvas), so - like capturePhotoFromVideoElement in
+// photoCapture.ts - this is exercised manually in the browser rather than
+// unit tested directly; getOcrPreprocessScale and applyGrayscaleContrast (the
+// pure math it uses) are unit tested. Preprocessing is a best-effort quality
+// improvement, not a requirement: readTextFromImage below falls back to the
+// original image if this fails for any reason (unsupported format, no canvas
+// support, decode failure), so it can never turn a working OCR read into a
+// broken one.
+export const preprocessImageForOcr = (image: File | Blob): Promise<Blob> =>
+  new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(image);
+    const element = new Image();
+
+    const cleanUp = () => URL.revokeObjectURL(objectUrl);
+
+    element.onload = () => {
+      try {
+        const scale = getOcrPreprocessScale(element.naturalWidth, element.naturalHeight);
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(element.naturalWidth * scale));
+        canvas.height = Math.max(1, Math.round(element.naturalHeight * scale));
+        const context = canvas.getContext("2d");
+
+        if (!context) {
+          cleanUp();
+          reject(new Error("Could not prepare this photo for reading."));
+          return;
+        }
+
+        context.drawImage(element, 0, 0, canvas.width, canvas.height);
+        const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+        applyGrayscaleContrast(imageData.data);
+        context.putImageData(imageData, 0, 0);
+
+        canvas.toBlob((blob) => {
+          cleanUp();
+          if (!blob) {
+            reject(new Error("Could not prepare this photo for reading."));
+            return;
+          }
+          resolve(blob);
+        }, "image/png");
+      } catch (error) {
+        cleanUp();
+        reject(error instanceof Error ? error : new Error("Could not prepare this photo for reading."));
+      }
+    };
+
+    element.onerror = () => {
+      cleanUp();
+      reject(new Error("Could not prepare this photo for reading."));
+    };
+
+    element.src = objectUrl;
+  });
+
+// ---- Multi-photo support (planning structure, not a full feature yet) ----
+//
+// TODO(multi-photo): a future "Add another photo" action in the OCR review
+// UI (see src/views/HomeView.tsx) could call readTextFromImage again for
+// each extra photo and combine the results with combineOcrTexts before the
+// user reviews the combined text. Intentionally not wired into the UI yet -
+// a real multi-page flow needs its own design (e.g. how evidence/case
+// linking works across more than one photo per case) rather than being
+// bolted on here. This helper exists so that future work has a safe,
+// tested starting point.
+export const combineOcrTexts = (texts: string[]): string =>
+  texts
+    .map((text) => text.trim())
+    .filter((text) => text.length > 0)
+    .join("\n\n---\n\n");
 
 // Reads text from a photo entirely inside this browser tab via Tesseract.js.
 // Never blocks on low confidence or short text (see getOcrQualityWarnings) -
@@ -101,8 +282,21 @@ export const readTextFromImage = async (
   image: File | Blob,
   onProgress?: (progress: OcrProgress) => void,
 ): Promise<OcrResult> => {
+  // Best-effort preprocessing (upscale/grayscale/contrast) - never lets a
+  // preprocessing failure (unsupported environment/format, no canvas
+  // support) block OCR. In this project's non-jsdom test environment,
+  // preprocessImageForOcr always rejects (no document/Image/URL.createObjectURL),
+  // so tests exercise this same fallback path and OCR still runs on the
+  // original image, exactly as before this change.
+  let sourceForOcr: File | Blob = image;
   try {
-    const result = await Tesseract.recognize(image, "eng", {
+    sourceForOcr = await preprocessImageForOcr(image);
+  } catch {
+    sourceForOcr = image;
+  }
+
+  try {
+    const result = await Tesseract.recognize(sourceForOcr, "eng", {
       logger: (message) => {
         onProgress?.({
           status: message.status,

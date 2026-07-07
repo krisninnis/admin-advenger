@@ -1,10 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  CAMERA_IDEAL_HEIGHT,
+  CAMERA_IDEAL_WIDTH,
   CAMERA_PERMISSION_DENIED_MESSAGE,
   CAMERA_UNAVAILABLE_MESSAGE,
+  CAPTURED_PHOTO_JPEG_QUALITY,
   CAPTURED_PHOTO_MIME_TYPE,
   PHOTO_STAYS_LOCAL_MESSAGE,
   PHOTO_UNREADABLE_FALLBACK_MESSAGE,
+  capturePhotoFromVideoElement,
   classifyCameraError,
   createCapturedPhotoFile,
   getCameraErrorMessage,
@@ -160,7 +164,29 @@ describe("requestEnvironmentCameraStream", () => {
 
     await requestEnvironmentCameraStream({ getUserMedia });
 
-    expect(getUserMedia).toHaveBeenCalledWith({ video: { facingMode: "environment" } });
+    expect(getUserMedia).toHaveBeenCalledWith({
+      video: {
+        facingMode: "environment",
+        width: { ideal: CAMERA_IDEAL_WIDTH },
+        height: { ideal: CAMERA_IDEAL_HEIGHT },
+      },
+    });
+  });
+
+  // Intentional change from v1 (previously asserted `{ video: { facingMode:
+  // "environment" } }` with no resolution hint at all). Full-page letters
+  // were coming out too small/compressed to OCR reliably on mobile, so the
+  // stream request now also asks for an ideal 1920x1080 - these are "ideal"
+  // constraints, so a device that cannot do 1080p still gets a stream at its
+  // best available resolution rather than failing.
+  it("asks for a high-resolution stream (ideal, not exact) so full-page letters stay legible", async () => {
+    const getUserMedia = vi.fn().mockResolvedValue({ getTracks: () => [] } as unknown as MediaStream);
+
+    await requestEnvironmentCameraStream({ getUserMedia });
+
+    const call = getUserMedia.mock.calls[0][0];
+    expect(call.video.width).toEqual({ ideal: 1920 });
+    expect(call.video.height).toEqual({ ideal: 1080 });
   });
 
   it("returns a success result with the stream when getUserMedia resolves", async () => {
@@ -234,6 +260,114 @@ describe("createCapturedPhotoFile", () => {
 
     expect(file.type).toMatch(/^image\//);
     expect(file.type).toBe(CAPTURED_PHOTO_MIME_TYPE);
+  });
+});
+
+// ---- Capture quality setting ----
+// capturePhotoFromVideoElement itself touches canvas/video (DOM-only, so it
+// is exercised manually per the comment in photoCapture.ts) - but the actual
+// quality number it passes to canvas.toBlob is exported as a plain constant
+// specifically so a regression back to a low/default JPEG quality (the root
+// cause of the too-compressed, hard-to-OCR captures reported on mobile) is
+// caught here without needing a DOM.
+describe("captured photo JPEG quality", () => {
+  it("is high enough that a full-page letter is not destroyed by compression", () => {
+    expect(CAPTURED_PHOTO_JPEG_QUALITY).toBeGreaterThanOrEqual(0.92);
+    expect(CAPTURED_PHOTO_JPEG_QUALITY).toBeLessThanOrEqual(0.95);
+  });
+});
+
+// ---- Capture resolution: intrinsic video size, not the CSS preview size ----
+// This project's tests run without jsdom, so capturePhotoFromVideoElement is
+// normally only exercised manually in the browser (it touches canvas/video).
+// For this one regression - "captures came out smaller than the real camera
+// frame" - a minimal fake `document`/canvas is stubbed in just for this test,
+// which is enough to prove the canvas is sized from the video's own
+// videoWidth/videoHeight (the real camera frame) and not some other,
+// potentially-smaller, CSS-driven size.
+describe("capturePhotoFromVideoElement uses the video's intrinsic resolution", () => {
+  const withFakeDocument = async (
+    run: (fakeCanvas: {
+      width: number;
+      height: number;
+      drawImage: ReturnType<typeof vi.fn>;
+      toBlobArgs: unknown[];
+    }) => Promise<void>,
+  ) => {
+    const drawImage = vi.fn();
+    let toBlobArgs: unknown[] = [];
+
+    const fakeCanvas = {
+      width: 0,
+      height: 0,
+      getContext: () => ({ drawImage }),
+      toBlob: (callback: (blob: Blob | null) => void, type: string, quality: number) => {
+        toBlobArgs = [type, quality];
+        callback(new Blob(["fake jpeg bytes"], { type }));
+      },
+    };
+
+    vi.stubGlobal("document", {
+      createElement: () => fakeCanvas,
+    });
+
+    try {
+      await run({
+        get width() {
+          return fakeCanvas.width;
+        },
+        get height() {
+          return fakeCanvas.height;
+        },
+        drawImage,
+        get toBlobArgs() {
+          return toBlobArgs;
+        },
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  };
+
+  it("sizes the capture from video.videoWidth/videoHeight, not a smaller CSS preview size", async () => {
+    await withFakeDocument(async (fakeCanvas) => {
+      // A video whose real camera frame (videoWidth/videoHeight) is much
+      // larger than however small the <video> preview element happens to be
+      // rendered on screen - capture must follow the former, not the latter.
+      const fakeVideo = {
+        videoWidth: 3024,
+        videoHeight: 4032,
+        clientWidth: 320,
+        clientHeight: 427,
+      } as unknown as HTMLVideoElement;
+
+      await capturePhotoFromVideoElement(fakeVideo);
+
+      expect(fakeCanvas.width).toBe(3024);
+      expect(fakeCanvas.height).toBe(4032);
+      expect(fakeCanvas.drawImage).toHaveBeenCalledWith(fakeVideo, 0, 0, 3024, 4032);
+    });
+  });
+
+  it("captures at the required JPEG mime type and quality", async () => {
+    await withFakeDocument(async (fakeCanvas) => {
+      const fakeVideo = { videoWidth: 1920, videoHeight: 1080 } as unknown as HTMLVideoElement;
+
+      await capturePhotoFromVideoElement(fakeVideo);
+
+      expect(fakeCanvas.toBlobArgs).toEqual([CAPTURED_PHOTO_MIME_TYPE, CAPTURED_PHOTO_JPEG_QUALITY]);
+    });
+  });
+
+  it("falls back to a high-resolution default only when videoWidth/videoHeight are unavailable", async () => {
+    await withFakeDocument(async (fakeCanvas) => {
+      const fakeVideo = { videoWidth: 0, videoHeight: 0 } as unknown as HTMLVideoElement;
+
+      await capturePhotoFromVideoElement(fakeVideo);
+
+      expect(fakeCanvas.width).toBe(1920);
+      expect(fakeCanvas.height).toBe(1080);
+    });
   });
 });
 

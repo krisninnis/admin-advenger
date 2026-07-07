@@ -27,6 +27,13 @@ export const PHOTO_STAYS_LOCAL_MESSAGE = "Photo stays in this browser in this ve
 export const PHOTO_UNREADABLE_FALLBACK_MESSAGE =
   "If the photo cannot be read clearly, upload a clearer image or paste the text manually.";
 
+// Requested camera resolution for the "Take a new photo" flow. A full page
+// of letter text needs enough pixels for Tesseract to resolve individual
+// characters - 1920x1080 (or the closest the device actually offers) is a
+// reasonable floor for that without asking for anything exotic.
+export const CAMERA_IDEAL_WIDTH = 1920;
+export const CAMERA_IDEAL_HEIGHT = 1080;
+
 const permissionDeniedErrorNames = new Set(["NotAllowedError", "PermissionDeniedError", "SecurityError"]);
 
 const cameraUnavailableErrorNames = new Set([
@@ -73,7 +80,18 @@ export const requestEnvironmentCameraStream = async (
   }
 
   try {
-    const stream = await mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+    // Ask for a high enough resolution stream that a full-page letter is
+    // still legible after capture. These are "ideal" constraints, not
+    // "exact" - the browser/camera will pick the closest resolution it
+    // actually supports rather than failing if 1920x1080 is unavailable, so
+    // this never turns into a new way for camera access to fail.
+    const stream = await mediaDevices.getUserMedia({
+      video: {
+        facingMode: "environment",
+        width: { ideal: CAMERA_IDEAL_WIDTH },
+        height: { ideal: CAMERA_IDEAL_HEIGHT },
+      },
+    });
     return { status: "success", stream };
   } catch (error) {
     const kind = classifyCameraError(error);
@@ -91,6 +109,21 @@ export const stopMediaStreamTracks = (stream?: MediaStream | null): void => {
 export const CAPTURED_PHOTO_MIME_TYPE = "image/jpeg";
 export const CAPTURED_PHOTO_FILE_NAME = "camera-photo.jpg";
 
+// JPEG quality used when saving the captured frame. Kept high (top of the
+// 0.92-0.95 range a full-page letter needs) so compression artefacts don't
+// destroy small print - a fixed, exported constant so this can be checked by
+// a unit test without needing a DOM/canvas.
+export const CAPTURED_PHOTO_JPEG_QUALITY = 0.95;
+
+// Fallback canvas size used only if a video element somehow reports zero for
+// videoWidth/videoHeight (e.g. captured before metadata has loaded). The
+// real capture always prefers the video's own intrinsic dimensions below -
+// this is a safety net, not the expected path, and is deliberately a fairly
+// high resolution rather than a low default so a fallback capture is still
+// legible.
+const FALLBACK_CAPTURE_WIDTH = 1920;
+const FALLBACK_CAPTURE_HEIGHT = 1080;
+
 // Pure Blob -> File conversion, kept separate from the canvas/video capture
 // step below so it can be unit tested without a DOM (this project's tests
 // run without jsdom).
@@ -103,14 +136,20 @@ export const createCapturedPhotoFile = (
 // touches the DOM (canvas/video elements), so it is exercised manually in the
 // browser rather than by a unit test - createCapturedPhotoFile above is the
 // part of this that is unit tested.
+//
+// Always captures at the video's own intrinsic resolution (videoWidth /
+// videoHeight - the actual camera frame size) rather than whatever size the
+// <video> preview happens to be rendered at on screen. The CSS preview size
+// is a layout detail and is often smaller than the real camera frame on
+// mobile, which is what was producing small, low-quality captures.
 export const capturePhotoFromVideoElement = (
   video: HTMLVideoElement,
   fileName: string = CAPTURED_PHOTO_FILE_NAME,
 ): Promise<File> =>
   new Promise((resolve, reject) => {
     const canvas = document.createElement("canvas");
-    canvas.width = video.videoWidth || 1280;
-    canvas.height = video.videoHeight || 720;
+    canvas.width = video.videoWidth || FALLBACK_CAPTURE_WIDTH;
+    canvas.height = video.videoHeight || FALLBACK_CAPTURE_HEIGHT;
     const context = canvas.getContext("2d");
 
     if (!context) {
@@ -130,7 +169,7 @@ export const capturePhotoFromVideoElement = (
         resolve(createCapturedPhotoFile(blob, fileName));
       },
       CAPTURED_PHOTO_MIME_TYPE,
-      0.92,
+      CAPTURED_PHOTO_JPEG_QUALITY,
     );
   });
 

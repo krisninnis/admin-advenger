@@ -8,15 +8,23 @@ vi.mock("tesseract.js", () => ({
 
 import {
   OCR_FAILED_MESSAGE,
+  OCR_GARBLED_TEXT_WARNING,
   OCR_LOW_CONFIDENCE_WARNING,
   OCR_LOW_TEXT_MESSAGE,
   OCR_MISTAKES_MESSAGE,
+  OCR_MODERATE_CONFIDENCE_WARNING,
   OCR_ON_DEVICE_MESSAGE,
+  OCR_PREPROCESS_MAX_UPSCALE_FACTOR,
+  OCR_PREPROCESS_TARGET_MIN_DIMENSION,
   OCR_READING_STATUS_MESSAGE,
   OCR_REVIEW_BEFORE_CHECKING_MESSAGE,
   OCR_RUNS_ON_DEVICE_MESSAGE,
   OcrReadError,
+  applyGrayscaleContrast,
+  combineOcrTexts,
+  getOcrPreprocessScale,
   getOcrQualityWarnings,
+  isLikelyGarbledText,
   readTextFromImage,
 } from "../photoOcr";
 
@@ -170,6 +178,141 @@ describe("getOcrQualityWarnings", () => {
   });
 });
 
+// ---- Moderate-confidence warning (the ~54% real-world case) ----
+describe("moderate OCR confidence warning", () => {
+  it("warns with the required copy when confidence is in the moderate band (e.g. the reported ~54%)", () => {
+    const result = getOcrQualityWarnings("A reasonably long sentence of extracted text.", 54);
+    expect(result).toEqual([OCR_MODERATE_CONFIDENCE_WARNING]);
+  });
+
+  it("uses the severe warning, not the moderate one, below the low-confidence threshold", () => {
+    const result = getOcrQualityWarnings("A reasonably long sentence of extracted text.", 30);
+    expect(result).toEqual([OCR_LOW_CONFIDENCE_WARNING]);
+  });
+
+  it("warns via readTextFromImage end-to-end for a moderate-confidence result", async () => {
+    recognizeMock.mockResolvedValue({
+      data: { text: "This is a normal length sentence of extracted letter text.", confidence: 54 },
+    });
+
+    const result = await readTextFromImage(fakeImage);
+
+    expect(result.warnings).toContain(OCR_MODERATE_CONFIDENCE_WARNING);
+  });
+});
+
+// ---- Garbled-text warning ----
+describe("isLikelyGarbledText / garbled-text warning", () => {
+  it("does not flag ordinary prose, even with numbers, dates, and currency", () => {
+    expect(isLikelyGarbledText("Your payment of £58.20 was due on 12 August 2026.")).toBe(false);
+  });
+
+  it("flags text that is mostly symbols/noise rather than letters", () => {
+    expect(isLikelyGarbledText("]{-_~^%#@!*()[[}}}~~^^%%##]]")).toBe(true);
+  });
+
+  it("getOcrQualityWarnings returns the garbled-text warning for noisy but non-trivial-length text", () => {
+    const warnings = getOcrQualityWarnings("]{-_~^%#@!*()[[}}}~~^^%%##]] more noise here too!!", 95);
+    expect(warnings).toContain(OCR_GARBLED_TEXT_WARNING);
+  });
+
+  it("prefers the short-text warning over the garbled warning for very short text", () => {
+    const warnings = getOcrQualityWarnings("]#@!", 95);
+    expect(warnings).toEqual([OCR_LOW_TEXT_MESSAGE]);
+  });
+});
+
+// ---- OCR preprocessing (pure helpers) ----
+describe("getOcrPreprocessScale", () => {
+  it("does not upscale an image already at or above the target dimension", () => {
+    expect(getOcrPreprocessScale(2000, 3000)).toBe(1);
+    expect(getOcrPreprocessScale(OCR_PREPROCESS_TARGET_MIN_DIMENSION, 500)).toBe(1);
+  });
+
+  it("upscales a small image up to the target long edge", () => {
+    const scale = getOcrPreprocessScale(800, 600);
+    expect(scale).toBeCloseTo(OCR_PREPROCESS_TARGET_MIN_DIMENSION / 800);
+  });
+
+  it("never upscales past the max upscale factor, even for a tiny image", () => {
+    const scale = getOcrPreprocessScale(100, 50);
+    expect(scale).toBe(OCR_PREPROCESS_MAX_UPSCALE_FACTOR);
+  });
+
+  it("treats zero/negative/missing dimensions as 'do not scale' rather than dividing by zero", () => {
+    expect(getOcrPreprocessScale(0, 0)).toBe(1);
+    expect(getOcrPreprocessScale(-10, 500)).toBe(1);
+  });
+});
+
+describe("applyGrayscaleContrast", () => {
+  it("converts a colour pixel to an equal-channel (grayscale) pixel", () => {
+    const pixels = new Uint8ClampedArray([200, 50, 10, 255]);
+    applyGrayscaleContrast(pixels);
+
+    expect(pixels[0]).toBe(pixels[1]);
+    expect(pixels[1]).toBe(pixels[2]);
+    expect(pixels[3]).toBe(255); // alpha untouched
+  });
+
+  it("pushes mid-tones apart from each other (contrast boost), not just averaging to grey", () => {
+    const lightPixels = new Uint8ClampedArray([220, 220, 220, 255]);
+    const darkPixels = new Uint8ClampedArray([40, 40, 40, 255]);
+    applyGrayscaleContrast(lightPixels);
+    applyGrayscaleContrast(darkPixels);
+
+    // A light pixel should get lighter (or stay clamped at 255) and a dark
+    // pixel should get darker (or stay clamped at 0) relative to the
+    // original mid-grey (128) - i.e. contrast increases, it does not flatten.
+    expect(lightPixels[0]).toBeGreaterThanOrEqual(220);
+    expect(darkPixels[0]).toBeLessThanOrEqual(40);
+  });
+
+  it("stays within valid 0-255 pixel bounds (Uint8ClampedArray also enforces this)", () => {
+    const pixels = new Uint8ClampedArray([255, 255, 255, 255]);
+    applyGrayscaleContrast(pixels);
+    expect(pixels[0]).toBeLessThanOrEqual(255);
+    expect(pixels[0]).toBeGreaterThanOrEqual(0);
+  });
+});
+
+// ---- Preprocessing fallback (no DOM in this test environment) ----
+describe("readTextFromImage falls back gracefully when preprocessing cannot run", () => {
+  it("still passes the original image through to Tesseract when preprocessing is unavailable", async () => {
+    // This project's tests run without jsdom, so preprocessImageForOcr always
+    // rejects here (no document/Image/URL.createObjectURL) - this pins down
+    // that readTextFromImage falls back to the original image rather than
+    // failing the whole OCR read.
+    recognizeMock.mockResolvedValue({ data: { text: "Some text here", confidence: 80 } });
+
+    await readTextFromImage(fakeImage);
+
+    const [image] = recognizeMock.mock.calls[0];
+    expect(image).toBe(fakeImage);
+  });
+});
+
+// ---- Multi-photo planning helper ----
+describe("combineOcrTexts", () => {
+  it("joins multiple photos' extracted text with a clear separator", () => {
+    expect(combineOcrTexts(["First photo text.", "Second photo text."])).toBe(
+      "First photo text.\n\n---\n\nSecond photo text.",
+    );
+  });
+
+  it("trims each piece of text and drops empty entries", () => {
+    expect(combineOcrTexts(["  First.  ", "", "   ", "Second."])).toBe("First.\n\n---\n\nSecond.");
+  });
+
+  it("returns an empty string for no usable text", () => {
+    expect(combineOcrTexts(["", "   "])).toBe("");
+  });
+
+  it("returns the single text unchanged when there is only one photo", () => {
+    expect(combineOcrTexts(["Only photo text."])).toBe("Only photo text.");
+  });
+});
+
 // ---- Safety / local-first / plain-English copy ----
 describe("OCR copy never implies cloud upload, sending, storage, or a guaranteed read", () => {
   const allMessages = [
@@ -181,6 +324,8 @@ describe("OCR copy never implies cloud upload, sending, storage, or a guaranteed
     OCR_RUNS_ON_DEVICE_MESSAGE,
     OCR_REVIEW_BEFORE_CHECKING_MESSAGE,
     OCR_LOW_CONFIDENCE_WARNING,
+    OCR_MODERATE_CONFIDENCE_WARNING,
+    OCR_GARBLED_TEXT_WARNING,
   ];
 
   const forbiddenPatterns = [

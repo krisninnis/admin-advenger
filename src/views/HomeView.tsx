@@ -19,6 +19,8 @@ import { buildAdminTextFromAiExtraction } from "../lib/aiExtractionAdapter";
 import { deriveOpportunityCard, describeConfidence } from "../lib/opportunityCards";
 import {
   createPhotoIntakeMetadata,
+  getImageDimensions,
+  getImageQualityWarnings,
   isSupportedPhotoFile,
   type PhotoIntakeMetadata,
 } from "../lib/photoIntake";
@@ -770,14 +772,21 @@ export function HomeView({
       return;
     }
 
-    setPhotoMetadata(createPhotoIntakeMetadata(file));
     setImagePreviewUrl(URL.createObjectURL(file));
     setUploadNote(
       "Photo stays in this browser in this version. The full photo is not stored in this prototype - keep the original photo somewhere safe.",
     );
 
+    // Best-effort pixel dimensions (never blocks - see getImageDimensions),
+    // combined with the file size to flag a photo that is likely too small
+    // or too compressed for a full-page letter before OCR even runs.
+    const dimensions = await getImageDimensions(file);
+    const baseMetadata = createPhotoIntakeMetadata(file);
+    setPhotoMetadata(dimensions ? { ...baseMetadata, ...dimensions } : baseMetadata);
+    const imageQualityWarnings = getImageQualityWarnings({ fileSize: file.size, ...dimensions });
+
     setOcrStatus("reading");
-    setOcrWarnings([]);
+    setOcrWarnings(imageQualityWarnings);
 
     try {
       const result = await readTextFromImage(file, (progress) => {
@@ -785,7 +794,10 @@ export function HomeView({
       });
 
       setOcrConfidence(result.confidence);
-      setOcrWarnings(result.warnings);
+      // Combine the photo's own quality warnings with OCR's text/confidence
+      // warnings, de-duplicated (e.g. a very small, low-confidence photo
+      // should not somehow show the same warning twice).
+      setOcrWarnings(Array.from(new Set([...imageQualityWarnings, ...result.warnings])));
       setOcrProgress(1);
       setOcrText(result.text);
       setOcrStatus("success");
@@ -833,6 +845,13 @@ export function HomeView({
   // "Try another photo" - resets the current photo/OCR state and reopens the
   // same "Take or upload a photo" panel used to get here, rather than
   // introducing a second way to pick a photo.
+  //
+  // TODO(multi-photo): this always replaces the current photo/text. A future
+  // "Add another photo" action could instead keep the current ocrText and
+  // append the next photo's extracted text via combineOcrTexts (see
+  // src/lib/photoOcr.ts) so a letter split across more than one photo can be
+  // reviewed as one combined block of text. Not built yet - see the TODO in
+  // photoOcr.ts for why this needs its own small design pass first.
   const handleTryAnotherPhoto = () => {
     void handleImageUpload(undefined);
     setShowPhotoCapturePanel(true);
@@ -1316,11 +1335,13 @@ export function HomeView({
                   <p className="text-sm font-bold text-emerald-50">{OCR_ON_DEVICE_MESSAGE}</p>
                   <p className="mt-2 text-sm leading-6 text-emerald-50/80">{OCR_MISTAKES_MESSAGE}</p>
                   {ocrWarnings.length > 0 ? (
-                    <ul className="mt-3 space-y-1 text-sm leading-6 text-amber-100">
-                      {ocrWarnings.map((warning) => (
-                        <li key={warning}>{warning}</li>
-                      ))}
-                    </ul>
+                    <div className="mt-3 rounded-lg border border-amber-300/30 bg-amber-300/10 px-4 py-3">
+                      <ul className="space-y-1 text-sm leading-6 text-amber-100">
+                        {ocrWarnings.map((warning) => (
+                          <li key={warning}>{warning}</li>
+                        ))}
+                      </ul>
+                    </div>
                   ) : null}
                   <label className="mt-3 block text-sm font-bold text-emerald-50">
                     Edit the text if needed

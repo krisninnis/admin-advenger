@@ -1,12 +1,20 @@
 import { useEffect, useReducer, useRef, useState } from "react";
 import { photoCaptureAcceptAttribute } from "../lib/fileIntakeAccept";
 import {
+  CAMERA_GUIDANCE_FRAME_CLASSNAME,
   CAMERA_GUIDANCE_FIT_MESSAGE,
   CAMERA_GUIDANCE_TIPS,
+  CAMERA_PREVIEW_ACTIONS_CLASSNAME,
   CAMERA_PERMISSION_DENIED_MESSAGE,
   CAMERA_UNAVAILABLE_MESSAGE,
   PHOTO_STAYS_LOCAL_MESSAGE,
+  PHOTO_CANCEL_LABEL,
+  PHOTO_RETAKE_LABEL,
+  PHOTO_RETAKE_RECOMMENDED_LABEL,
+  PHOTO_REVIEW_ACTIONS_CLASSNAME,
   PHOTO_UNREADABLE_FALLBACK_MESSAGE,
+  PHOTO_TAKE_PHOTO_LABEL,
+  PHOTO_USE_THIS_PHOTO_LABEL,
   capturePhotoFromVideoElement,
   photoCaptureReducer,
   requestEnvironmentCameraStream,
@@ -229,14 +237,23 @@ export function PhotoCapturePanel({ onUsePhoto, onClose }: PhotoCapturePanelProp
     dispatch({ type: "use_photo" });
   };
 
+  const isCameraWorkStage = stage === "camera_preview" || stage === "captured";
+  const retakeRecommended = documentQuality ? shouldEmphasizeRetake(documentQuality.score) : false;
+
   return (
     <div
-      className="fixed inset-0 z-[90] flex items-start justify-center overflow-y-auto bg-slate-950/85 px-3 py-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] backdrop-blur-sm sm:items-center sm:px-4 sm:py-6"
+      className={`fixed inset-0 z-[90] flex justify-center bg-slate-950/85 px-3 py-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] backdrop-blur-sm sm:px-4 sm:py-6 ${
+        isCameraWorkStage ? "items-stretch overflow-hidden" : "items-start overflow-y-auto sm:items-center"
+      }`}
       role="dialog"
       aria-modal="true"
       aria-labelledby="photo-capture-panel-title"
     >
-      <div className="w-full max-w-lg rounded-xl border border-white/10 bg-slate-900 p-4 shadow-2xl shadow-slate-950/50 sm:p-6">
+      <div
+        className={`w-full max-w-lg rounded-xl border border-white/10 bg-slate-900 p-4 shadow-2xl shadow-slate-950/50 sm:p-6 ${
+          isCameraWorkStage ? "flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden" : ""
+        }`}
+      >
         <div className="flex flex-wrap items-start justify-between gap-4">
           <h2 id="photo-capture-panel-title" className="text-xl font-bold text-white sm:text-2xl">
             Take or upload a photo
@@ -271,19 +288,22 @@ export function PhotoCapturePanel({ onUsePhoto, onClose }: PhotoCapturePanelProp
         ) : null}
 
         {stage === "camera_preview" ? (
-          <div className="mt-5 grid gap-3">
+          <div className="mt-4 flex min-h-0 flex-1 flex-col gap-2">
             {/* Document Capture Coach - live guidance (see
                 src/lib/documentImageQuality.ts for the after-the-fact checks
                 and its v2 TODOs for real page/contour detection). The
-                dashed frame is a plain CSS overlay, not real edge detection
-                - it just gives the user something to line the letter up
-                against, the same idea modern document-scanner apps use. */}
-            <div className="relative overflow-hidden rounded-lg border border-white/10 bg-black">
-              <video ref={videoRef} autoPlay playsInline muted className="w-full" />
-              <div
-                aria-hidden="true"
-                className="pointer-events-none absolute inset-6 rounded-lg border-2 border-dashed border-emerald-300/80 sm:inset-10"
+                A4-shaped frame is a plain CSS overlay, not real edge
+                detection - it gives the user a strong page target without
+                promising automatic cropping. */}
+            <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-lg border border-white/10 bg-black">
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className="max-h-[calc(100dvh-15rem)] min-h-0 w-full object-contain"
               />
+              <div aria-hidden="true" className={CAMERA_GUIDANCE_FRAME_CLASSNAME} />
               <p
                 aria-hidden="true"
                 className="pointer-events-none absolute inset-x-0 top-2 text-center text-xs font-bold text-white [text-shadow:0_1px_3px_rgb(0_0_0_/_0.8)]"
@@ -291,37 +311,37 @@ export function PhotoCapturePanel({ onUsePhoto, onClose }: PhotoCapturePanelProp
                 {CAMERA_GUIDANCE_FIT_MESSAGE}
               </p>
             </div>
-            <ul className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs leading-5 text-slate-400 sm:grid-cols-4">
+            <ul className="grid shrink-0 grid-cols-2 gap-x-3 gap-y-1 text-xs leading-5 text-slate-400 sm:grid-cols-4">
               {CAMERA_GUIDANCE_TIPS.map((tip) => (
                 <li key={tip}>{tip}</li>
               ))}
             </ul>
-            <div className="grid gap-2 sm:grid-cols-2">
+            <div className={CAMERA_PREVIEW_ACTIONS_CLASSNAME}>
               <button
                 type="button"
                 onClick={() => void handleTakePhotoClick()}
                 className="min-h-11 rounded-lg bg-emerald-400 px-4 py-3 text-sm font-bold text-slate-950 shadow-lg shadow-emerald-950/30 transition hover:bg-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-200"
               >
-                Take photo
+                {PHOTO_TAKE_PHOTO_LABEL}
               </button>
               <button
                 type="button"
                 onClick={handleCancel}
                 className="min-h-11 rounded-lg border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-slate-200 transition hover:border-white/20 hover:text-white"
               >
-                Cancel
+                {PHOTO_CANCEL_LABEL}
               </button>
             </div>
           </div>
         ) : null}
 
         {stage === "captured" ? (
-          <div className="mt-5 grid gap-3">
+          <div className="mt-4 flex min-h-0 flex-1 flex-col gap-3">
             {capturedPreviewUrl ? (
               <img
                 src={capturedPreviewUrl}
                 alt="Captured photo preview"
-                className="max-h-72 w-full rounded-lg border border-white/10 object-contain"
+                className="max-h-[min(42dvh,18rem)] w-full shrink-0 rounded-lg border border-white/10 object-contain"
               />
             ) : null}
             {/* Document Capture Coach - capture review. Never blocks: "Use
@@ -330,7 +350,7 @@ export function PhotoCapturePanel({ onUsePhoto, onClose }: PhotoCapturePanelProp
                 Retake is visually emphasised (see shouldEmphasizeRetake). */}
             {documentQuality ? (
               <div
-                className={`rounded-lg border px-4 py-3 text-sm leading-6 ${
+                className={`max-h-[28dvh] overflow-y-auto rounded-lg border px-4 py-3 text-sm leading-6 ${
                   documentQuality.score === "good"
                     ? "border-emerald-300/25 bg-emerald-300/10 text-emerald-50"
                     : "border-amber-300/30 bg-amber-300/10 text-amber-50"
@@ -354,34 +374,40 @@ export function PhotoCapturePanel({ onUsePhoto, onClose }: PhotoCapturePanelProp
                 ) : null}
               </div>
             ) : null}
-            <div className="grid gap-2 sm:grid-cols-3">
+            <div className={PHOTO_REVIEW_ACTIONS_CLASSNAME}>
               <button
                 type="button"
                 onClick={handleUseThisPhoto}
-                className="min-h-11 rounded-lg bg-emerald-400 px-4 py-3 text-sm font-bold text-slate-950 shadow-lg shadow-emerald-950/30 transition hover:bg-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-200"
+                className={
+                  retakeRecommended
+                    ? "min-h-11 rounded-lg border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-slate-200 transition hover:border-white/20 hover:text-white focus:outline-none focus:ring-2 focus:ring-emerald-300/40"
+                    : "min-h-11 rounded-lg bg-emerald-400 px-4 py-3 text-sm font-bold text-slate-950 shadow-lg shadow-emerald-950/30 transition hover:bg-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-200"
+                }
               >
-                Use this photo
+                {PHOTO_USE_THIS_PHOTO_LABEL}
               </button>
               <button
                 type="button"
                 onClick={handleRetake}
                 className={
-                  documentQuality && shouldEmphasizeRetake(documentQuality.score)
-                    ? "min-h-11 rounded-lg border border-amber-300/50 bg-amber-300/10 px-4 py-3 text-sm font-bold text-amber-50 transition hover:border-amber-200 hover:bg-amber-300/20"
+                  retakeRecommended
+                    ? "min-h-11 rounded-lg bg-amber-300 px-4 py-3 text-sm font-bold text-slate-950 shadow-lg shadow-amber-950/30 transition hover:bg-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-100"
                     : "min-h-11 rounded-lg border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-slate-200 transition hover:border-white/20 hover:text-white"
                 }
               >
-                Retake
+                {retakeRecommended ? PHOTO_RETAKE_RECOMMENDED_LABEL : PHOTO_RETAKE_LABEL}
               </button>
               <button
                 type="button"
                 onClick={handleCancel}
                 className="min-h-11 rounded-lg border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-slate-200 transition hover:border-white/20 hover:text-white"
               >
-                Cancel
+                {PHOTO_CANCEL_LABEL}
               </button>
             </div>
-            <p className="text-sm leading-6 text-slate-400">{PHOTO_UNREADABLE_FALLBACK_MESSAGE}</p>
+            <p className="shrink-0 text-sm leading-6 text-slate-400">
+              {PHOTO_UNREADABLE_FALLBACK_MESSAGE}
+            </p>
           </div>
         ) : null}
 

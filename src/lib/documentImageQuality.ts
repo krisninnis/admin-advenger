@@ -82,7 +82,7 @@ const MIN_DOCUMENT_FILE_SIZE_BYTES = 150 * 1024; // 150KB
 const DARK_BRIGHTNESS_THRESHOLD = 70; // 0-255 average luminance
 const LOW_CONTRAST_STD_DEV_THRESHOLD = 30; // 0-255 luminance std deviation
 const BLUR_VARIANCE_THRESHOLD = 60; // Laplacian-variance-style sharpness score
-const MIN_DOCUMENT_OCCUPANCY_RATIO = 0.35; // document bounding box / frame area
+const MIN_DOCUMENT_OCCUPANCY_RATIO = 0.55; // likely page bounding box / frame area
 const MAX_BACKGROUND_CLUTTER_RATIO = 0.35; // share of highly-saturated pixels
 const MAX_TILT_SKEW_RATIO = 0.08; // normalised left/right content-edge difference
 
@@ -368,7 +368,7 @@ export const getOccupancyWarning = (
   occupancyRatio: number,
 ): DocumentImageQualityWarning | undefined =>
   occupancyRatio < MIN_DOCUMENT_OCCUPANCY_RATIO
-    ? { code: "document_too_small", message: DOCUMENT_TOO_SMALL_MESSAGE, severity: "warning" }
+    ? { code: "document_too_small", message: DOCUMENT_TOO_SMALL_MESSAGE, severity: "strong_warning" }
     : undefined;
 
 export const getClutterWarning = (
@@ -438,18 +438,21 @@ export type DocumentImageQualityMetrics = {
 export const evaluateDocumentImageQuality = (
   metrics: DocumentImageQualityMetrics,
 ): DocumentImageQualityResult => {
+  // Order matters for the review UI: if the page is too far away, "move
+  // closer" is the most useful instruction and should appear before tilt or
+  // background warnings from the same poor capture.
   const warnings = [
+    getOccupancyWarning(metrics.occupancyRatio),
+    getBlurWarning(metrics.blurVariance),
+    getBrightnessWarning(metrics.averageBrightness),
+    getContrastWarning(metrics.contrastStdDev),
+    getTiltWarning(metrics.tiltSkewEstimate),
+    getClutterWarning(metrics.clutterRatio),
     getLowResolutionWarning({
       width: metrics.width,
       height: metrics.height,
       fileSize: metrics.fileSize,
     }),
-    getBlurWarning(metrics.blurVariance),
-    getBrightnessWarning(metrics.averageBrightness),
-    getContrastWarning(metrics.contrastStdDev),
-    getOccupancyWarning(metrics.occupancyRatio),
-    getTiltWarning(metrics.tiltSkewEstimate),
-    getClutterWarning(metrics.clutterRatio),
   ].filter((warning): warning is DocumentImageQualityWarning => Boolean(warning));
 
   return { score: computeQualityScore(warnings), warnings };

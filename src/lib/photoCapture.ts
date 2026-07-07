@@ -44,7 +44,7 @@ export const CAMERA_IDEAL_HEIGHT = 1080;
 // the result. Deliberately simple copy, no camera jargon, no page/contour
 // detection promised - see src/lib/documentImageQuality.ts for the actual
 // after-the-fact quality checks and its v2 TODOs for real page detection.
-export const CAMERA_GUIDANCE_FIT_MESSAGE = "Fit the letter inside the box";
+export const CAMERA_GUIDANCE_FIT_MESSAGE = "Fill this frame with the letter";
 
 export const CAMERA_GUIDANCE_TIPS = [
   "Move closer if the text is small",
@@ -52,6 +52,21 @@ export const CAMERA_GUIDANCE_TIPS = [
   "Keep the page flat",
   "Avoid shadows",
 ];
+
+export const CAMERA_GUIDANCE_FRAME_CLASSNAME =
+  "pointer-events-none absolute left-1/2 top-1/2 h-[82%] max-h-[88%] aspect-[1/1.414] -translate-x-1/2 -translate-y-1/2 rounded-sm border-[3px] border-emerald-300 shadow-[0_0_0_9999px_rgb(15_23_42_/_0.28)] ring-1 ring-white/70";
+
+export const CAMERA_PREVIEW_ACTIONS_CLASSNAME =
+  "sticky bottom-0 z-10 mt-auto grid gap-2 rounded-xl border border-white/10 bg-slate-900/95 p-2 shadow-2xl shadow-slate-950/50 backdrop-blur sm:grid-cols-2";
+
+export const PHOTO_REVIEW_ACTIONS_CLASSNAME =
+  "sticky bottom-0 z-10 mt-auto grid gap-2 rounded-xl border border-white/10 bg-slate-900/95 p-2 shadow-2xl shadow-slate-950/50 backdrop-blur sm:grid-cols-3";
+
+export const PHOTO_TAKE_PHOTO_LABEL = "Take photo";
+export const PHOTO_USE_THIS_PHOTO_LABEL = "Use this photo";
+export const PHOTO_RETAKE_LABEL = "Retake";
+export const PHOTO_RETAKE_RECOMMENDED_LABEL = "Retake recommended";
+export const PHOTO_CANCEL_LABEL = "Cancel";
 
 const permissionDeniedErrorNames = new Set(["NotAllowedError", "PermissionDeniedError", "SecurityError"]);
 

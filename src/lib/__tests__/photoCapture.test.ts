@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  CAMERA_GUIDANCE_FRAME_CLASSNAME,
   CAMERA_GUIDANCE_FIT_MESSAGE,
   CAMERA_GUIDANCE_TIPS,
+  CAMERA_PREVIEW_ACTIONS_CLASSNAME,
   CAMERA_IDEAL_HEIGHT,
   CAMERA_IDEAL_WIDTH,
   CAMERA_PERMISSION_DENIED_MESSAGE,
@@ -9,7 +11,10 @@ import {
   CAPTURED_PHOTO_JPEG_QUALITY,
   CAPTURED_PHOTO_MIME_TYPE,
   PHOTO_STAYS_LOCAL_MESSAGE,
+  PHOTO_RETAKE_RECOMMENDED_LABEL,
+  PHOTO_REVIEW_ACTIONS_CLASSNAME,
   PHOTO_UNREADABLE_FALLBACK_MESSAGE,
+  PHOTO_USE_THIS_PHOTO_LABEL,
   capturePhotoFromVideoElement,
   classifyCameraError,
   createCapturedPhotoFile,
@@ -282,7 +287,7 @@ describe("captured photo JPEG quality", () => {
 // ---- Document Capture Coach live guidance ----
 describe("document capture coach live guidance copy", () => {
   it("shows the required frame guidance message", () => {
-    expect(CAMERA_GUIDANCE_FIT_MESSAGE).toBe("Fit the letter inside the box");
+    expect(CAMERA_GUIDANCE_FIT_MESSAGE).toBe("Fill this frame with the letter");
   });
 
   it("shows the required mobile capture tips", () => {
@@ -310,6 +315,24 @@ describe("document capture coach live guidance copy", () => {
         expect(message).not.toMatch(pattern);
       }
     }
+  });
+
+  it("represents the guide frame as a portrait A4-style target", () => {
+    expect(CAMERA_GUIDANCE_FRAME_CLASSNAME).toContain("aspect-[1/1.414]");
+    expect(CAMERA_GUIDANCE_FRAME_CLASSNAME).toContain("left-1/2");
+    expect(CAMERA_GUIDANCE_FRAME_CLASSNAME).toContain("top-1/2");
+  });
+
+  it("keeps capture and review actions represented as sticky mobile controls", () => {
+    expect(CAMERA_PREVIEW_ACTIONS_CLASSNAME).toContain("sticky");
+    expect(CAMERA_PREVIEW_ACTIONS_CLASSNAME).toContain("bottom-0");
+    expect(PHOTO_REVIEW_ACTIONS_CLASSNAME).toContain("sticky");
+    expect(PHOTO_REVIEW_ACTIONS_CLASSNAME).toContain("bottom-0");
+  });
+
+  it("has explicit labels for retake recommendation while keeping use-photo available", () => {
+    expect(PHOTO_RETAKE_RECOMMENDED_LABEL).toBe("Retake recommended");
+    expect(PHOTO_USE_THIS_PHOTO_LABEL).toBe("Use this photo");
   });
 });
 

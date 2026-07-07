@@ -218,6 +218,7 @@ describe("getOccupancyWarning", () => {
     const warning = getOccupancyWarning(0.1);
     expect(warning?.code).toBe("document_too_small");
     expect(warning?.message).toBe(DOCUMENT_TOO_SMALL_MESSAGE);
+    expect(warning?.severity).toBe("strong_warning");
   });
 
   it("does not warn when the document fills most of the frame", () => {
@@ -323,6 +324,39 @@ describe("evaluateDocumentImageQuality", () => {
 
     expect(result.warnings.some((warning) => warning.code === "image_too_blurry")).toBe(true);
     expect(result.score).toBe("poor");
+  });
+
+  it("a synthetic image with a small bright page area produces the move-closer warning", () => {
+    const image = buildImage(80, 100, (row, col) =>
+      row >= 30 && row < 70 && col >= 25 && col < 55 ? [230, 230, 230] : [45, 40, 35],
+    );
+    const occupancyRatio = computeDocumentOccupancyRatio(image, 80, 100);
+    const result = evaluateDocumentImageQuality({
+      ...GOOD_METRICS,
+      occupancyRatio,
+      tiltSkewEstimate: 0.25,
+      clutterRatio: 0.6,
+    });
+
+    expect(result.warnings[0]?.code).toBe("document_too_small");
+    expect(result.warnings[0]?.message).toBe(DOCUMENT_TOO_SMALL_MESSAGE);
+    expect(result.score).toBe("poor");
+  });
+
+  it("shows document-too-small before tilt and background warnings", () => {
+    const result = evaluateDocumentImageQuality({
+      ...GOOD_METRICS,
+      occupancyRatio: 0.2,
+      tiltSkewEstimate: 0.25,
+      clutterRatio: 0.6,
+    });
+    const warningCodes = result.warnings.map((warning) => warning.code);
+
+    expect(warningCodes).toEqual([
+      "document_too_small",
+      "possibly_tilted",
+      "background_clutter",
+    ]);
   });
 
   it("a good photo's metrics return a good or okay score, never poor", () => {

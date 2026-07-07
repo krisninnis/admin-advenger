@@ -33,7 +33,16 @@ import {
   textFileAcceptAttribute,
 } from "../lib/fileIntakeAccept";
 import type { ServiceStatus } from "../services/analysisService";
-import { readTextFromPhoto } from "../services/localOcrService";
+import {
+  OCR_FAILED_MESSAGE,
+  OCR_MISTAKES_MESSAGE,
+  OCR_ON_DEVICE_MESSAGE,
+  OCR_READING_STATUS_MESSAGE,
+  OCR_REVIEW_BEFORE_CHECKING_MESSAGE,
+  OCR_RUNS_ON_DEVICE_MESSAGE,
+  OcrReadError,
+  readTextFromImage,
+} from "../lib/photoOcr";
 import {
   extractAdminFactsWithOllama,
   OllamaExtractionError,
@@ -426,6 +435,7 @@ export function HomeView({
   const [ocrProgress, setOcrProgress] = useState(0);
   const [ocrError, setOcrError] = useState("");
   const [ocrConfidence, setOcrConfidence] = useState<number | undefined>();
+  const [ocrWarnings, setOcrWarnings] = useState<string[]>([]);
   const [inputResetKey, setInputResetKey] = useState(0);
   const [aiSettings, setAiSettings] = useState(loadAiProviderSettings);
   const [aiStatus, setAiStatus] = useState<ServiceStatus>("idle");
@@ -600,6 +610,7 @@ export function HomeView({
     setOcrProgress(0);
     setOcrError("");
     setOcrConfidence(undefined);
+    setOcrWarnings([]);
     setAiStatus("idle");
     setAiError("");
     setAiFallbackHint("");
@@ -622,6 +633,7 @@ export function HomeView({
     setOcrProgress(0);
     setOcrError("");
     setOcrConfidence(undefined);
+    setOcrWarnings([]);
     setAiError("");
     setAiFallbackHint("");
     setAiExtraction(undefined);
@@ -635,7 +647,8 @@ export function HomeView({
     setInputMessage("");
   };
 
-  const runOllamaExtraction = async () => {
+  const runOllamaExtraction = async (textOverride?: string) => {
+    const textToExtract = textOverride ?? rawText.trim();
     setAiStatus("loading");
     setAiError("");
     setAiFallbackHint("");
@@ -644,11 +657,11 @@ export function HomeView({
 
     try {
       const extraction = await extractAdminFactsWithOllama({
-        text: rawText.trim(),
+        text: textToExtract,
         ollamaUrl: aiSettings.ollamaUrl,
         model: aiSettings.ollamaModel,
       });
-      const reconstructedText = buildAdminTextFromAiExtraction(extraction, rawText.trim());
+      const reconstructedText = buildAdminTextFromAiExtraction(extraction, textToExtract);
 
       setAiExtraction(extraction);
       setAiStatus("success");
@@ -679,7 +692,7 @@ export function HomeView({
       setShowDetailed(false);
       setShowEmailSafety(false);
 
-      await onCheck("Pasted admin text", "email", rawText.trim());
+      await onCheck("Pasted admin text", "email", textToExtract);
     }
   };
 
@@ -741,6 +754,7 @@ export function HomeView({
     setOcrProgress(0);
     setOcrError("");
     setOcrConfidence(undefined);
+    setOcrWarnings([]);
 
     if (!file) {
       setUploadNote("");
@@ -759,53 +773,75 @@ export function HomeView({
     setPhotoMetadata(createPhotoIntakeMetadata(file));
     setImagePreviewUrl(URL.createObjectURL(file));
     setUploadNote(
-      "Photo text is processed in this browser. The full photo is not stored in this prototype. Keep the original photo somewhere safe.",
+      "Photo stays in this browser in this version. The full photo is not stored in this prototype - keep the original photo somewhere safe.",
     );
 
     setOcrStatus("reading");
+    setOcrWarnings([]);
 
     try {
-      const result = await readTextFromPhoto(file, (progress) => {
+      const result = await readTextFromImage(file, (progress) => {
         setOcrProgress(progress.progress);
       });
 
       setOcrConfidence(result.confidence);
+      setOcrWarnings(result.warnings);
       setOcrProgress(1);
-
-      if (result.text.length < 8) {
-        setOcrStatus("error");
-        setOcrError(
-          "AdminAvenger could not read enough text from this photo. Try a clearer photo, better lighting, or paste the text manually.",
-        );
-        return;
-      }
-
       setOcrText(result.text);
       setOcrStatus("success");
-      setInputMessage("Photo text found. Check it before AdminAvenger uses it.");
-    } catch {
+      setInputMessage("");
+    } catch (error) {
       setOcrStatus("error");
-      setOcrError(
-        "AdminAvenger could not read enough text from this photo. Try a clearer photo, better lighting, or paste the text manually.",
-      );
+      setOcrError(error instanceof OcrReadError ? error.message : OCR_FAILED_MESSAGE);
     }
   };
 
-  const useOcrText = () => {
+  // "Check this text" - uses the reviewed/edited OCR text (never the raw
+  // untouched OCR output) and feeds it straight into the same Check a
+  // message flow every other input path uses. Never auto-saves or uploads
+  // the photo, and never contacts anyone or counts money automatically -
+  // it only runs the existing local decision-engine check.
+  const handleCheckOcrText = async () => {
     const cleanedText = ocrText.trim();
 
-    if (!cleanedText) {
-      setInputMessage(
-        "AdminAvenger could not read enough text from this photo. Try a clearer photo, better lighting, or paste the text manually.",
-      );
+    if (!cleanedText || isChecking || isAiReading || isReadingPhoto) {
       return;
     }
 
     setRawText(cleanedText);
     setSelectedInput("paste");
-    setInputMessage("Text from photo is ready. Review it or press What does this mean?");
-    setUploadNote("Text from photo loaded. You can review or edit before checking.");
+    setAiExtraction(undefined);
+    setShowDetailed(false);
+    setShowEmailSafety(false);
+    setInputMessage("");
+    setAiError("");
+    setAiFallbackHint("");
     onClearResult();
+
+    if (isLocalOllamaMode) {
+      await runOllamaExtraction(cleanedText);
+      return;
+    }
+
+    const checked = await onCheck("Photo text (reviewed before checking)", "email", cleanedText);
+
+    if (!checked) {
+      setAiExtraction(undefined);
+    }
+  };
+
+  // "Try another photo" - resets the current photo/OCR state and reopens the
+  // same "Take or upload a photo" panel used to get here, rather than
+  // introducing a second way to pick a photo.
+  const handleTryAnotherPhoto = () => {
+    void handleImageUpload(undefined);
+    setShowPhotoCapturePanel(true);
+  };
+
+  // "Cancel" - backs out of the photo/OCR review without picking a new
+  // photo. Reuses the same reset path as clearing/removing a photo.
+  const handleCancelOcrReview = () => {
+    void handleImageUpload(undefined);
   };
 
   const handleFileUpload = async (file?: File) => {
@@ -1265,7 +1301,7 @@ export function HomeView({
               {selectedInput === "image" && ocrStatus === "reading" ? (
                 <div className="mt-4 rounded-lg border border-cyan-300/20 bg-cyan-300/10 p-4">
                   <p className="text-sm font-bold text-cyan-50">
-                    Reading text from photo... {Math.round(ocrProgress * 100)}%
+                    {OCR_READING_STATUS_MESSAGE} {Math.round(ocrProgress * 100)}%
                   </p>
                   <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-950">
                     <div
@@ -1277,8 +1313,17 @@ export function HomeView({
               ) : null}
               {selectedInput === "image" && ocrStatus === "success" ? (
                 <div className="mt-4 rounded-lg border border-emerald-300/20 bg-emerald-300/[0.07] p-4">
-                  <label className="block text-sm font-bold text-emerald-50">
-                    Check the text before AdminAvenger uses it
+                  <p className="text-sm font-bold text-emerald-50">{OCR_ON_DEVICE_MESSAGE}</p>
+                  <p className="mt-2 text-sm leading-6 text-emerald-50/80">{OCR_MISTAKES_MESSAGE}</p>
+                  {ocrWarnings.length > 0 ? (
+                    <ul className="mt-3 space-y-1 text-sm leading-6 text-amber-100">
+                      {ocrWarnings.map((warning) => (
+                        <li key={warning}>{warning}</li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  <label className="mt-3 block text-sm font-bold text-emerald-50">
+                    Edit the text if needed
                     <textarea
                       value={ocrText}
                       onChange={(event) => setOcrText(event.target.value)}
@@ -1286,25 +1331,56 @@ export function HomeView({
                       className="mt-2 w-full resize-y rounded-lg border border-white/10 bg-slate-950 px-4 py-4 text-base leading-7 text-white outline-none transition placeholder:text-slate-600 focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20"
                     />
                   </label>
-                  <div className="mt-3 grid gap-2 sm:flex sm:items-center sm:justify-between">
-                    <p className="text-xs leading-5 text-emerald-50/75">
-                      OCR confidence:{" "}
-                      {ocrConfidence === undefined ? "unknown" : `${Math.round(ocrConfidence)}%`}
-                    </p>
+                  <p className="mt-2 text-xs leading-5 text-emerald-50/70">
+                    {OCR_REVIEW_BEFORE_CHECKING_MESSAGE} {OCR_RUNS_ON_DEVICE_MESSAGE}
+                    {ocrConfidence === undefined ? "" : ` OCR confidence: ${Math.round(ocrConfidence)}%.`}
+                  </p>
+                  <div className="mt-4 grid gap-2 sm:grid-cols-3">
                     <button
                       type="button"
-                      onClick={useOcrText}
-                      className="min-h-11 rounded-lg bg-emerald-400 px-4 py-3 text-sm font-bold text-slate-950 shadow-lg shadow-emerald-950/30 transition hover:bg-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:ring-offset-2 focus:ring-offset-slate-950"
+                      onClick={() => void handleCheckOcrText()}
+                      disabled={!ocrText.trim() || isChecking || isAiReading || isReadingPhoto}
+                      className="min-h-11 rounded-lg bg-emerald-400 px-4 py-3 text-sm font-bold text-slate-950 shadow-lg shadow-emerald-950/30 transition hover:bg-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:ring-offset-2 focus:ring-offset-slate-950 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400 disabled:shadow-none"
                     >
-                      Use this text
+                      Check this text
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleTryAnotherPhoto}
+                      className="min-h-11 rounded-lg border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-slate-200 transition hover:border-white/20 hover:text-white"
+                    >
+                      Try another photo
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCancelOcrReview}
+                      className="min-h-11 rounded-lg border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-slate-200 transition hover:border-white/20 hover:text-white"
+                    >
+                      Cancel
                     </button>
                   </div>
                 </div>
               ) : null}
-              {selectedInput === "image" && ocrStatus === "error" && ocrError ? (
-                <p className="mt-4 rounded-lg border border-amber-300/25 bg-amber-300/10 px-4 py-3 text-sm leading-6 text-amber-50">
-                  {ocrError}
-                </p>
+              {selectedInput === "image" && ocrStatus === "error" ? (
+                <div className="mt-4 rounded-lg border border-amber-300/25 bg-amber-300/10 p-4">
+                  <p className="text-sm leading-6 text-amber-50">{ocrError || OCR_FAILED_MESSAGE}</p>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      onClick={handleTryAnotherPhoto}
+                      className="min-h-11 rounded-lg border border-amber-200/40 bg-slate-950/60 px-4 py-3 text-sm font-bold text-amber-50 transition hover:border-amber-100 hover:text-white"
+                    >
+                      Try another photo
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCancelOcrReview}
+                      className="min-h-11 rounded-lg border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-slate-200 transition hover:border-white/20 hover:text-white"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
               ) : null}
               {selectedInput === "file" && rawText ? (
                 <label className="mt-4 block text-sm font-semibold text-slate-300">
@@ -1321,30 +1397,42 @@ export function HomeView({
           )}
         </div>
 
-        <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_auto]">
-          <button
-            type="button"
-            onClick={handleCheck}
-            disabled={isChecking || isAiReading || isReadingPhoto}
-            aria-busy={isChecking || isAiReading || isReadingPhoto}
-            className="w-full rounded-lg bg-emerald-400 px-5 py-4 text-lg font-bold text-slate-950 shadow-lg shadow-emerald-950/30 transition hover:bg-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:ring-offset-2 focus:ring-offset-slate-950 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400 disabled:shadow-none"
-          >
-            {isReadingPhoto
-              ? "Reading photo..."
-              : isAiReading
-              ? "Reading this with local AI..."
-              : isChecking
-                ? "Checking..."
-                : "What does this mean?"}
-          </button>
-          <button
-            type="button"
-            onClick={clearInput}
-            className="rounded-lg border border-white/10 bg-slate-950 px-5 py-4 text-sm font-bold text-slate-200 transition hover:border-white/20 hover:text-white focus:outline-none focus:ring-2 focus:ring-emerald-300/40"
-          >
-            Clear input
-          </button>
-        </div>
+        {selectedInput !== "image" ? (
+          <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_auto]">
+            <button
+              type="button"
+              onClick={handleCheck}
+              disabled={isChecking || isAiReading || isReadingPhoto}
+              aria-busy={isChecking || isAiReading || isReadingPhoto}
+              className="w-full rounded-lg bg-emerald-400 px-5 py-4 text-lg font-bold text-slate-950 shadow-lg shadow-emerald-950/30 transition hover:bg-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:ring-offset-2 focus:ring-offset-slate-950 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400 disabled:shadow-none"
+            >
+              {isAiReading
+                ? "Reading this with local AI..."
+                : isChecking
+                  ? "Checking..."
+                  : "What does this mean?"}
+            </button>
+            <button
+              type="button"
+              onClick={clearInput}
+              className="rounded-lg border border-white/10 bg-slate-950 px-5 py-4 text-sm font-bold text-slate-200 transition hover:border-white/20 hover:text-white focus:outline-none focus:ring-2 focus:ring-emerald-300/40"
+            >
+              Clear input
+            </button>
+          </div>
+        ) : null}
+
+        {selectedInput === "image" ? (
+          <div className="mt-5">
+            <button
+              type="button"
+              onClick={clearInput}
+              className="rounded-lg border border-white/10 bg-slate-950 px-5 py-4 text-sm font-bold text-slate-200 transition hover:border-white/20 hover:text-white focus:outline-none focus:ring-2 focus:ring-emerald-300/40"
+            >
+              Clear input
+            </button>
+          </div>
+        ) : null}
 
         <p className="mt-3 rounded-lg border border-cyan-300/20 bg-cyan-300/10 px-4 py-3 text-sm leading-6 text-cyan-50/90">
           What you paste stays in this browser in this version. Nothing is uploaded.

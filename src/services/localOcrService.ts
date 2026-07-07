@@ -1,3 +1,7 @@
+// Superseded by src/lib/photoOcr.ts (readTextFromImage), which HomeView.tsx
+// now uses directly. Kept here only so this file isn't silently deleted
+// without the user's say-so - safe to remove in a follow-up cleanup once
+// nothing else references it.
 import { normalizeOcrText } from "../lib/photoIntake";
 import * as Tesseract from "tesseract.js";
 

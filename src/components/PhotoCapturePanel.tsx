@@ -5,9 +5,6 @@ import {
   CAMERA_IDEAL_WIDTH,
   CAMERA_GUIDANCE_FRAME_CLASSNAME,
   CAMERA_GUIDANCE_TIPS,
-  BEST_ACCURACY_RECOMMENDED_LABEL,
-  BEST_ACCURACY_SCAN_DESCRIPTION,
-  BEST_ACCURACY_SCAN_LABEL,
   CAMERA_PREVIEW_ACTIONS_CLASSNAME,
   CAMERA_PERMISSION_DENIED_MESSAGE,
   CAMERA_UNAVAILABLE_MESSAGE,
@@ -28,15 +25,17 @@ import {
   PHOTO_READS_INSIDE_FRAME_MESSAGE,
   PHOTO_UNREADABLE_FALLBACK_MESSAGE,
   PHOTO_TAKE_PHOTO_LABEL,
+  PHOTO_TAKE_NEW_PHOTO_DESCRIPTION,
+  PHOTO_TAKE_NEW_PHOTO_LABEL,
+  PHOTO_ADD_CLOSE_UP_DESCRIPTION,
+  PHOTO_ADD_CLOSE_UP_LABEL,
   PHOTO_USE_ANYWAY_LABEL,
   PHOTO_USE_THIS_PHOTO_LABEL,
-  QUICK_SCAN_DESCRIPTION,
-  QUICK_SCAN_LABEL,
   capturePhotoFromVideoElement,
   cropImageBlobToRect,
   createCapturedPhotoFile,
-  getBestAccuracySectionForIndex,
   getCameraGuidanceFitMessage,
+  getCapturedPhotoFileName,
   getPhotoCaptureSectionLabel,
   getPhotoCaptureSectionTitle,
   getPhotoReviewQualityScore,
@@ -46,7 +45,6 @@ import {
   stopMediaStreamTracks,
   type CapturedPhotoForOcr,
   type CropRectRatio,
-  type PhotoCaptureScanMode,
   type PhotoCaptureSection,
 } from "../lib/photoCapture";
 import {
@@ -90,10 +88,6 @@ function UploadExistingPhotoInput({ onSelect }: { onSelect: (file: File) => void
 
 export function PhotoCapturePanel({ onUsePhotos, onClose, defaultSection }: PhotoCapturePanelProps) {
   const [stage, dispatch] = useReducer(photoCaptureReducer, "choice");
-  const [scanMode, setScanMode] = useState<PhotoCaptureScanMode>(
-    defaultSection === "additional" ? "quick" : "best_accuracy",
-  );
-  const [capturedPhotos, setCapturedPhotos] = useState<CapturedPhotoForOcr[]>([]);
   const [errorMessage, setErrorMessage] = useState("");
   const [capturedPreviewUrl, setCapturedPreviewUrl] = useState("");
   const [croppedPreviewUrl, setCroppedPreviewUrl] = useState("");
@@ -108,12 +102,11 @@ export function PhotoCapturePanel({ onUsePhotos, onClose, defaultSection }: Phot
   const capturedCropRectRef = useRef<CropRectRatio | null>(null);
   const cropPromiseRef = useRef<Promise<void> | undefined>(undefined);
 
+  // One photo per visit: the default flow captures a single full-page photo.
+  // The panel only ever asks for a close-up when it was opened via the
+  // optional "Add close-up photo" follow-up (defaultSection === "additional").
   const currentSection: PhotoCaptureSection =
-    defaultSection === "additional"
-      ? "additional"
-      : scanMode === "best_accuracy"
-      ? getBestAccuracySectionForIndex(capturedPhotos.length)
-      : "full_page";
+    defaultSection === "additional" ? "additional" : "full_page";
   const currentSectionTitle = getPhotoCaptureSectionTitle(currentSection);
   const currentGuidanceMessage = getCameraGuidanceFitMessage(currentSection);
 
@@ -148,7 +141,6 @@ export function PhotoCapturePanel({ onUsePhotos, onClose, defaultSection }: Phot
   const handleCancel = () => {
     stopActiveStream();
     clearCapturedPreview();
-    setCapturedPhotos([]);
     dispatch({ type: "cancel" });
   };
 
@@ -241,7 +233,13 @@ export function PhotoCapturePanel({ onUsePhotos, onClose, defaultSection }: Phot
         const croppedBlob = await cropImageBlobToRect(sourceFile, cropRect, {
           type: sourceFile.type,
         });
-        const croppedFile = createCapturedPhotoFile(croppedBlob, "camera-photo-cropped.jpg");
+        // Keeps the simple, human file name ("camera-photo.jpg" /
+        // "extra-photo.jpg") - cropping is an internal step, not something
+        // the file label needs to advertise.
+        const croppedFile = createCapturedPhotoFile(
+          croppedBlob,
+          getCapturedPhotoFileName(currentSection),
+        );
         const croppedUrl = URL.createObjectURL(croppedFile);
         const quality = await assessDocumentImageQuality(croppedFile);
 
@@ -280,7 +278,7 @@ export function PhotoCapturePanel({ onUsePhotos, onClose, defaultSection }: Phot
     return () => {
       cancelled = true;
     };
-  }, [stage]);
+  }, [currentSection, stage]);
 
   // Belt-and-suspenders cleanup: stop the camera if the whole component
   // unmounts (modal closed some other way) while a stream is still live.
@@ -303,22 +301,14 @@ export function PhotoCapturePanel({ onUsePhotos, onClose, defaultSection }: Phot
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleChooseTakePhoto = (mode: PhotoCaptureScanMode) => {
-    setScanMode(mode);
-    setCapturedPhotos([]);
+  const handleChooseTakePhoto = () => {
     dispatch({ type: "choose_take_photo" });
   };
 
   const handleUploadExisting = (file: File) => {
-    const section =
-      defaultSection === "additional"
-        ? "additional"
-        : scanMode === "best_accuracy" && capturedPhotos.length > 0
-          ? currentSection
-          : "full_page";
-    const photo = { file, section, label: getPhotoCaptureSectionLabel(section) };
-
-    onUsePhotos(scanMode === "best_accuracy" && capturedPhotos.length > 0 ? [...capturedPhotos, photo] : [photo]);
+    onUsePhotos([
+      { file, section: currentSection, label: getPhotoCaptureSectionLabel(currentSection) },
+    ]);
     dispatch({ type: "use_photo" });
   };
 
@@ -330,7 +320,10 @@ export function PhotoCapturePanel({ onUsePhotos, onClose, defaultSection }: Phot
     }
 
     try {
-      const file = await capturePhotoFromVideoElement(videoElement);
+      const file = await capturePhotoFromVideoElement(
+        videoElement,
+        getCapturedPhotoFileName(currentSection),
+      );
       const dimensions = {
         width: videoElement.videoWidth || CAMERA_IDEAL_WIDTH,
         height: videoElement.videoHeight || CAMERA_IDEAL_HEIGHT,
@@ -374,21 +367,13 @@ export function PhotoCapturePanel({ onUsePhotos, onClose, defaultSection }: Phot
       return;
     }
 
-    const nextPhoto = {
-      file: fileToUse,
-      section: currentSection,
-      label: getPhotoCaptureSectionLabel(currentSection),
-    };
-
-    if (scanMode === "best_accuracy" && capturedPhotos.length === 0) {
-      setCapturedPhotos([nextPhoto]);
-      clearCapturedPreview();
-      dispatch({ type: "retake" });
-      return;
-    }
-
-    onUsePhotos(scanMode === "best_accuracy" ? [...capturedPhotos, nextPhoto] : [nextPhoto]);
-    setCapturedPhotos([]);
+    onUsePhotos([
+      {
+        file: fileToUse,
+        section: currentSection,
+        label: getPhotoCaptureSectionLabel(currentSection),
+      },
+    ]);
     clearCapturedPreview();
     dispatch({ type: "use_photo" });
   };
@@ -428,44 +413,20 @@ export function PhotoCapturePanel({ onUsePhotos, onClose, defaultSection }: Phot
 
         {stage === "choice" ? (
           <div className="mt-5 grid gap-3">
-            {defaultSection === "additional" ? (
-              <button
-                type="button"
-                onClick={() => handleChooseTakePhoto("quick")}
-                className="rounded-lg border border-emerald-300/50 bg-emerald-400 px-4 py-4 text-left text-slate-950 shadow-lg shadow-emerald-950/30 transition hover:bg-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-200"
-              >
-                <span className="block text-base font-black">Add another photo</span>
-                <span className="mt-2 block text-sm font-semibold leading-6">
-                  Take one more close-up section, page 2, or the back of the letter.
-                </span>
-              </button>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  onClick={() => handleChooseTakePhoto("best_accuracy")}
-                  className="rounded-lg border border-emerald-300/50 bg-emerald-400 px-4 py-4 text-left text-slate-950 shadow-lg shadow-emerald-950/30 transition hover:bg-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-200"
-                >
-                  <span className="block text-base font-black">{BEST_ACCURACY_SCAN_LABEL}</span>
-                  <span className="mt-1 inline-flex rounded-full bg-slate-950/15 px-2 py-0.5 text-xs font-black uppercase tracking-wide">
-                    {BEST_ACCURACY_RECOMMENDED_LABEL}
-                  </span>
-                  <span className="mt-2 block text-sm font-semibold leading-6">
-                    {BEST_ACCURACY_SCAN_DESCRIPTION}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleChooseTakePhoto("quick")}
-                  className="rounded-lg border border-white/10 bg-slate-950 px-4 py-4 text-left text-slate-200 transition hover:border-white/20 hover:text-white focus:outline-none focus:ring-2 focus:ring-emerald-300/40"
-                >
-                  <span className="block text-base font-bold">{QUICK_SCAN_LABEL}</span>
-                  <span className="mt-2 block text-sm leading-6 text-slate-400">
-                    {QUICK_SCAN_DESCRIPTION}
-                  </span>
-                </button>
-              </>
-            )}
+            <button
+              type="button"
+              onClick={handleChooseTakePhoto}
+              className="rounded-lg border border-emerald-300/50 bg-emerald-400 px-4 py-4 text-left text-slate-950 shadow-lg shadow-emerald-950/30 transition hover:bg-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-200"
+            >
+              <span className="block text-base font-black">
+                {currentSection === "additional" ? PHOTO_ADD_CLOSE_UP_LABEL : PHOTO_TAKE_NEW_PHOTO_LABEL}
+              </span>
+              <span className="mt-2 block text-sm font-semibold leading-6">
+                {currentSection === "additional"
+                  ? PHOTO_ADD_CLOSE_UP_DESCRIPTION
+                  : PHOTO_TAKE_NEW_PHOTO_DESCRIPTION}
+              </span>
+            </button>
             <UploadExistingPhotoInput onSelect={handleUploadExisting} />
           </div>
         ) : null}

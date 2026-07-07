@@ -38,24 +38,31 @@ import {
   quickUploadAcceptAttribute,
   textFileAcceptAttribute,
 } from "../lib/fileIntakeAccept";
-import type { CapturedPhotoForOcr } from "../lib/photoCapture";
+import {
+  PHOTO_ADD_CLOSE_UP_DESCRIPTION,
+  PHOTO_ADD_CLOSE_UP_LABEL,
+  PHOTO_RETAKE_PHOTO_LABEL,
+  type CapturedPhotoForOcr,
+} from "../lib/photoCapture";
 import type { ServiceStatus } from "../services/analysisService";
 import {
   OCR_FAILED_MESSAGE,
-  OCR_BOTH_PHOTOS_ON_DEVICE_MESSAGE,
+  OCR_ADD_CLOSE_UP_SUGGESTION,
+  OCR_COMBINED_PHOTOS_ON_DEVICE_MESSAGE,
   OCR_MISTAKES_MESSAGE,
   OCR_ON_DEVICE_MESSAGE,
   OCR_READING_STATUS_MESSAGE,
   OCR_REVIEW_BEFORE_CHECKING_MESSAGE,
   OCR_RUNS_ON_DEVICE_MESSAGE,
   OCR_CHECK_TEXT_UNRELIABLE_WARNING,
+  OCR_EXTRA_PHOTO_LABEL,
   OCR_KEY_DETAILS_NOT_RELIABLE_MESSAGE,
   OCR_KEY_DETAILS_REVIEW_OPTIONS_MESSAGE,
   OcrReadError,
   OCR_UNRELIABLE_EDIT_MESSAGE,
   OCR_UNRELIABLE_MESSAGE,
   OCR_UNRELIABLE_RETAKE_MESSAGE,
-  combineOcrTexts,
+  appendExtraPhotoText,
   formatOcrSectionWarning,
   isOcrKeyDetailsReliable,
   isOcrResultUnreliable,
@@ -941,8 +948,12 @@ export function HomeView({
       return;
     }
 
-    const labelSummary = usablePhotos.map((photo) => photo.label).join(", ");
-    setUploadedFileName(labelSummary);
+    // Simple file names ("camera-photo.jpg", "extra-photo.jpg", or an
+    // upload's own name) - never numbered "Photo 1: ..." style labels.
+    const fileNameSummary = usablePhotos.map((photo) => photo.file.name).join(", ");
+    setUploadedFileName(
+      isAppend && uploadedFileName ? `${uploadedFileName}, ${fileNameSummary}` : fileNameSummary,
+    );
     setImagePreviewUrl(URL.createObjectURL(usablePhotos[0].file));
     setUploadNote(
       usablePhotos.length > 1
@@ -957,25 +968,29 @@ export function HomeView({
 
       for (let index = 0; index < usablePhotos.length; index += 1) {
         const photo = usablePhotos[index];
-        // Sequential OCR keeps the combined text in the same order the user
-        // captured the sections: top half, then bottom half, then extras.
+        // Sequential OCR keeps the combined text in the order the photos
+        // were added: main photo first, then any optional extra photos.
         // eslint-disable-next-line no-await-in-loop
         const result = await readPhotoForOcr(photo, index, usablePhotos.length);
         results.push(result);
       }
 
-      const shouldLabelText = results.length > 1 || isAppend;
-      const newTextParts = shouldLabelText
-        ? results.map((result) => ({ label: result.label ?? "Photo", text: result.text }))
-        : results.map((result) => result.text);
-      const combinedText = isAppend
-        ? combineOcrTexts([ocrText, ...newTextParts])
-        : combineOcrTexts(newTextParts);
+      // Default one-photo flow: the text is used as-is, unlabelled. Only
+      // when an optional close-up photo is appended does the combined text
+      // gain the simple "--- Main photo ---" / "--- Close-up photo ---"
+      // sections.
+      const combinedText = results.reduce(
+        (textSoFar, result) =>
+          textSoFar.trim().length > 0
+            ? appendExtraPhotoText(textSoFar, result.text)
+            : result.text,
+        isAppend ? ocrText : "",
+      );
       const labelledWarnings =
         results.length > 1 || isAppend
           ? results.flatMap((result) =>
               result.warnings.map((warning) =>
-                formatOcrSectionWarning(result.label ?? "Photo", warning),
+                formatOcrSectionWarning(result.label ?? OCR_EXTRA_PHOTO_LABEL, warning),
               ),
             )
           : [];
@@ -1039,23 +1054,19 @@ export function HomeView({
     }
   };
 
-  // "Try another photo" - resets the current photo/OCR state and reopens the
+  // "Retake photo" - resets the current photo/OCR state and reopens the
   // same "Take or upload a photo" panel used to get here, rather than
   // introducing a second way to pick a photo.
-  //
-  // TODO(multi-photo): this always replaces the current photo/text. A future
-  // "Add another photo" action could instead keep the current ocrText and
-  // append the next photo's extracted text via combineOcrTexts (see
-  // src/lib/photoOcr.ts) so a letter split across more than one photo can be
-  // reviewed as one combined block of text. Not built yet - see the TODO in
-  // photoOcr.ts for why this needs its own small design pass first.
-  const handleTryAnotherPhoto = () => {
+  const handleRetakePhoto = () => {
     void handleImageUpload(undefined);
     setPhotoCaptureIntent("replace");
     setShowPhotoCapturePanel(true);
   };
 
-  const handleAddAnotherPhoto = () => {
+  // "Add close-up photo" - the optional follow-up after OCR review. Keeps
+  // the current text and appends the extra photo's text as a
+  // "--- Close-up photo ---" section (see appendExtraPhotoText in photoOcr.ts).
+  const handleAddCloseUpPhoto = () => {
     setPhotoCaptureIntent("append");
     setShowPhotoCapturePanel(true);
   };
@@ -1531,13 +1542,16 @@ export function HomeView({
               {selectedInput === "image" && ocrStatus === "success" ? (
                 <div className="mt-4 rounded-lg border border-emerald-300/20 bg-emerald-300/[0.07] p-4">
                   <p className="text-sm font-bold text-emerald-50">
-                    {ocrSourceMode === "multi" ? OCR_BOTH_PHOTOS_ON_DEVICE_MESSAGE : OCR_ON_DEVICE_MESSAGE}
+                    {ocrSourceMode === "multi" ? OCR_COMBINED_PHOTOS_ON_DEVICE_MESSAGE : OCR_ON_DEVICE_MESSAGE}
                   </p>
                   <p className="mt-2 text-sm leading-6 text-emerald-50/80">{OCR_MISTAKES_MESSAGE}</p>
                   {isOcrReviewUnreliable ? (
                     <div className="mt-3 rounded-lg border border-amber-300/40 bg-amber-300/15 px-4 py-3">
                       <p className="text-sm font-bold text-amber-50">Retake recommended</p>
                       <p className="mt-1 text-sm font-bold text-amber-50">{OCR_UNRELIABLE_MESSAGE}</p>
+                      <p className="mt-1 text-sm leading-6 text-amber-100/90">
+                        {OCR_ADD_CLOSE_UP_SUGGESTION}
+                      </p>
                       <p className="mt-1 text-sm leading-6 text-amber-100/90">
                         {OCR_UNRELIABLE_RETAKE_MESSAGE}
                       </p>
@@ -1550,6 +1564,9 @@ export function HomeView({
                     <div className="mt-3 rounded-lg border border-amber-300/35 bg-amber-300/10 px-4 py-3">
                       <p className="text-sm font-bold text-amber-50">
                         {OCR_KEY_DETAILS_NOT_RELIABLE_MESSAGE}
+                      </p>
+                      <p className="mt-1 text-sm leading-6 text-amber-100/90">
+                        {OCR_ADD_CLOSE_UP_SUGGESTION}
                       </p>
                       <p className="mt-1 text-sm leading-6 text-amber-100/90">
                         {OCR_KEY_DETAILS_REVIEW_OPTIONS_MESSAGE}
@@ -1637,22 +1654,22 @@ export function HomeView({
                     </button>
                     <button
                       type="button"
-                      onClick={handleAddAnotherPhoto}
+                      onClick={handleAddCloseUpPhoto}
                       disabled={isChecking || isAiReading || isReadingPhoto}
                       className="min-h-11 rounded-lg border border-cyan-300/25 bg-cyan-300/10 px-4 py-3 text-sm font-bold text-cyan-50 transition hover:border-cyan-200/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      Add another photo
+                      {PHOTO_ADD_CLOSE_UP_LABEL}
                     </button>
                     <button
                       type="button"
-                      onClick={handleTryAnotherPhoto}
+                      onClick={handleRetakePhoto}
                       className={
                         isOcrReviewUnreliable
                           ? "min-h-11 rounded-lg bg-amber-300 px-4 py-3 text-sm font-bold text-slate-950 shadow-lg shadow-amber-950/30 transition hover:bg-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-100 focus:ring-offset-2 focus:ring-offset-slate-950"
                           : "min-h-11 rounded-lg border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-slate-200 transition hover:border-white/20 hover:text-white"
                       }
                     >
-                      Try another photo
+                      {PHOTO_RETAKE_PHOTO_LABEL}
                     </button>
                     <button
                       type="button"
@@ -1662,6 +1679,9 @@ export function HomeView({
                       Cancel
                     </button>
                   </div>
+                  <p className="mt-2 text-xs leading-5 text-slate-400">
+                    {PHOTO_ADD_CLOSE_UP_DESCRIPTION}
+                  </p>
                 </div>
               ) : null}
               {selectedInput === "image" && ocrStatus === "error" ? (
@@ -1670,10 +1690,10 @@ export function HomeView({
                   <div className="mt-3 grid gap-2 sm:grid-cols-2">
                     <button
                       type="button"
-                      onClick={handleTryAnotherPhoto}
+                      onClick={handleRetakePhoto}
                       className="min-h-11 rounded-lg border border-amber-200/40 bg-slate-950/60 px-4 py-3 text-sm font-bold text-amber-50 transition hover:border-amber-100 hover:text-white"
                     >
-                      Try another photo
+                      {PHOTO_RETAKE_PHOTO_LABEL}
                     </button>
                     <button
                       type="button"

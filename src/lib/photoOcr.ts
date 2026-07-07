@@ -111,8 +111,14 @@ export const OCR_KEY_DETAILS_NOT_RELIABLE_MESSAGE =
   "We could read some text, but not reliably enough to extract key details.";
 export const OCR_KEY_DETAILS_REVIEW_OPTIONS_MESSAGE =
   "Retake the photo closer, upload a clearer image, paste the text manually, or edit the text below.";
-export const OCR_BOTH_PHOTOS_ON_DEVICE_MESSAGE =
-  "We read both photos on your device. Please check the combined text before continuing.";
+export const OCR_COMBINED_PHOTOS_ON_DEVICE_MESSAGE =
+  "We read your photos on your device. Please check the combined text before continuing.";
+
+// Shown only when the read was weak (see shouldSuggestCloseUpPhoto below).
+// A good single photo never pushes the user towards more photos - the
+// close-up stays a quiet, secondary option.
+export const OCR_ADD_CLOSE_UP_SUGGESTION =
+  "Retake the photo or add a close-up of the hard-to-read section.";
 
 // Pure - deliberately simple and conservative: mostly-non-letter text, or an
 // unusually high share of characters that would not appear in normal prose,
@@ -160,6 +166,14 @@ export const isOcrKeyDetailsReliable = (text: string, confidence?: number): bool
 
   return true;
 };
+
+// Pure - decides when the OCR review should actively suggest a close-up or
+// retake. Only when the read was moderate/poor (below the key-details
+// threshold) or the text itself looks unreliable. A decent single-photo read
+// (e.g. ~78% on a full-page letter in live testing) returns false, so the
+// user is never pushed into a second photo they don't need.
+export const shouldSuggestCloseUpPhoto = (text: string, confidence?: number): boolean =>
+  !isOcrKeyDetailsReliable(text, confidence);
 
 // Thrown (not returned) when Tesseract itself fails to run, so callers can
 // tell "ran but found little/nothing" (an OcrResult with warnings) apart from
@@ -332,6 +346,40 @@ export const combineOcrTexts = (parts: OcrTextPart[]): string => {
     .filter((text) => text.length > 0);
 
   return formattedParts.join(hasLabelledParts ? "\n\n" : "\n\n---\n\n");
+};
+
+// Simple labels for combined OCR text - plain words, no forced photo
+// sequence or top-half/bottom-half naming.
+export const OCR_MAIN_PHOTO_LABEL = "Main photo";
+export const OCR_EXTRA_PHOTO_LABEL = "Close-up photo";
+
+const CLOSE_UP_SECTION_HEADING_PATTERN = /^--- Close-up photo(?: \d+)? ---$/gim;
+
+export const getNextCloseUpPhotoLabel = (existingText: string): string => {
+  const existingCloseUps = existingText.match(CLOSE_UP_SECTION_HEADING_PATTERN) ?? [];
+  return existingCloseUps.length === 0
+    ? OCR_EXTRA_PHOTO_LABEL
+    : `${OCR_EXTRA_PHOTO_LABEL} ${existingCloseUps.length + 1}`;
+};
+
+// Appends one extra photo's text after the text already under review:
+//
+//   --- Main photo ---
+//   [existing text]
+//
+//   --- Close-up photo ---
+//   [extra text]
+//
+// The existing text is only wrapped in the "Main photo" label the first time
+// - appending a second or third close-up just adds a new close-up section
+// rather than re-labelling anything the user may have edited.
+export const appendExtraPhotoText = (existingText: string, extraText: string): string => {
+  const existing = existingText.trim();
+  const existingPart: OcrTextPart = existing.startsWith(`--- ${OCR_MAIN_PHOTO_LABEL} ---`)
+    ? existing
+    : { label: OCR_MAIN_PHOTO_LABEL, text: existing };
+
+  return combineOcrTexts([existingPart, { label: getNextCloseUpPhotoLabel(existing), text: extraText }]);
 };
 
 export const formatOcrSectionWarning = (label: string, warning: string): string =>

@@ -3,20 +3,30 @@ import {
   A4_PORTRAIT_RATIO,
   CAMERA_GUIDANCE_FRAME_CLASSNAME,
   CAMERA_GUIDANCE_FIT_MESSAGE,
-  CAMERA_GUIDANCE_BOTTOM_HALF_MESSAGE,
-  CAMERA_GUIDANCE_TOP_HALF_MESSAGE,
+  CAMERA_GUIDANCE_CLOSE_UP_MESSAGE,
   CAMERA_GUIDANCE_TIPS,
   CAMERA_PREVIEW_ACTIONS_CLASSNAME,
   CAMERA_IDEAL_HEIGHT,
   CAMERA_IDEAL_WIDTH,
-  BEST_ACCURACY_RECOMMENDED_LABEL,
-  BEST_ACCURACY_SCAN_DESCRIPTION,
-  BEST_ACCURACY_SCAN_LABEL,
   CAMERA_PERMISSION_DENIED_MESSAGE,
   CAMERA_UNAVAILABLE_MESSAGE,
+  CAPTURED_PHOTO_FILE_NAME,
   CAPTURED_PHOTO_JPEG_QUALITY,
   CAPTURED_PHOTO_MIME_TYPE,
+  EXTRA_PHOTO_FILE_NAME,
+  PHOTO_ADD_CLOSE_UP_DESCRIPTION,
+  PHOTO_ADD_CLOSE_UP_LABEL,
+  PHOTO_RETAKE_PHOTO_LABEL,
+  PHOTO_SECTION_ADDITIONAL_LABEL,
+  PHOTO_SECTION_ADDITIONAL_TITLE,
+  PHOTO_SECTION_FULL_PAGE_LABEL,
+  PHOTO_SECTION_FULL_PAGE_TITLE,
+  PHOTO_CANCEL_LABEL,
+  PHOTO_RETAKE_LABEL,
   PHOTO_STAYS_LOCAL_MESSAGE,
+  PHOTO_TAKE_NEW_PHOTO_DESCRIPTION,
+  PHOTO_TAKE_NEW_PHOTO_LABEL,
+  PHOTO_TAKE_PHOTO_LABEL,
   PHOTO_PRIMARY_RETAKE_BUTTON_CLASSNAME,
   PHOTO_PRIMARY_USE_BUTTON_CLASSNAME,
   PHOTO_RETAKE_RECOMMENDED_LABEL,
@@ -30,15 +40,13 @@ import {
   PHOTO_UNREADABLE_FALLBACK_MESSAGE,
   PHOTO_USE_ANYWAY_LABEL,
   PHOTO_USE_THIS_PHOTO_LABEL,
-  QUICK_SCAN_DESCRIPTION,
-  QUICK_SCAN_LABEL,
   capturePhotoFromVideoElement,
   cropImageBlobToRect,
   classifyCameraError,
   createCapturedPhotoFile,
   getA4GuideCropRect,
-  getBestAccuracySectionForIndex,
   getCameraGuidanceFitMessage,
+  getCapturedPhotoFileName,
   getCropRectPixelAspectRatio,
   getCameraErrorMessage,
   getPhotoCaptureSectionLabel,
@@ -488,41 +496,93 @@ describe("captured photo JPEG quality", () => {
 
 // ---- Document Capture Coach live guidance ----
 describe("document capture coach live guidance copy", () => {
-  it("offers Quick scan and Best accuracy scan modes with clear copy", () => {
-    expect(QUICK_SCAN_LABEL).toBe("Quick scan");
-    expect(QUICK_SCAN_DESCRIPTION).toBe(
-      "One photo of the whole page. Fastest, but less accurate for small text.",
+  // Live mobile testing showed one full-page photo is usually good enough
+  // (e.g. a ~78% read that found the amount, dates, reference, and issuer),
+  // and users disliked being forced through a set photo sequence - so the
+  // upfront scan-mode choice was removed entirely.
+  it("defaults to a simple one-photo flow with no upfront scan-mode choice", () => {
+    expect(PHOTO_TAKE_NEW_PHOTO_LABEL).toBe("Take a photo");
+    expect(PHOTO_TAKE_NEW_PHOTO_DESCRIPTION).toBe("Take one photo of the whole letter or message.");
+  });
+
+  it("keeps multi-photo only as an optional close-up follow-up, in plain language", () => {
+    expect(PHOTO_ADD_CLOSE_UP_LABEL).toBe("Add close-up photo");
+    expect(PHOTO_ADD_CLOSE_UP_DESCRIPTION).toBe(
+      "If some text is missing or blurry, add a closer photo of that section.",
     );
-    expect(BEST_ACCURACY_SCAN_LABEL).toBe("Best accuracy");
-    expect(BEST_ACCURACY_SCAN_DESCRIPTION).toBe(
-      "Take 2 closer photos - top half and bottom half. Better for letters with small print.",
-    );
-    expect(BEST_ACCURACY_RECOMMENDED_LABEL).toBe("Recommended on mobile");
+    expect(PHOTO_RETAKE_PHOTO_LABEL).toBe("Retake photo");
   });
 
   it("shows the required frame guidance message", () => {
     expect(CAMERA_GUIDANCE_FIT_MESSAGE).toBe("Fill the frame with the letter");
   });
 
-  it("prompts the top half first and the bottom half second for Best accuracy", () => {
-    expect(getBestAccuracySectionForIndex(0)).toBe("top_half");
-    expect(getBestAccuracySectionForIndex(1)).toBe("bottom_half");
-    expect(getPhotoCaptureSectionTitle("top_half")).toBe("Photo 1 of 2 - top half");
-    expect(getPhotoCaptureSectionTitle("bottom_half")).toBe("Photo 2 of 2 - bottom half");
-    expect(getCameraGuidanceFitMessage("top_half")).toBe(
-      "Fill the frame with the top half of the letter",
-    );
-    expect(getCameraGuidanceFitMessage("bottom_half")).toBe(
-      "Fill the frame with the bottom half of the letter",
-    );
-    expect(getPhotoCaptureSectionLabel("top_half")).toBe("Photo 1: top half");
-    expect(getPhotoCaptureSectionLabel("bottom_half")).toBe("Photo 2: bottom half");
+  it("keeps the default flow as a single full-page photo with a simple label", () => {
+    expect(getPhotoCaptureSectionTitle("full_page")).toBe(PHOTO_SECTION_FULL_PAGE_TITLE);
+    expect(PHOTO_SECTION_FULL_PAGE_TITLE).toBe("Full page photo");
+    expect(getCameraGuidanceFitMessage("full_page")).toBe("Fill the frame with the letter");
+    expect(getPhotoCaptureSectionLabel("full_page")).toBe(PHOTO_SECTION_FULL_PAGE_LABEL);
+    expect(PHOTO_SECTION_FULL_PAGE_LABEL).toBe("Main photo");
   });
 
-  it("keeps Quick scan as a full-page photo path", () => {
-    expect(getPhotoCaptureSectionTitle("full_page")).toBe("Full page photo");
-    expect(getCameraGuidanceFitMessage("full_page")).toBe("Fill the frame with the letter");
-    expect(getPhotoCaptureSectionLabel("full_page")).toBe("Photo 1: full page");
+  it("guides the optional close-up photo without top/bottom-half naming", () => {
+    expect(getPhotoCaptureSectionTitle("additional")).toBe(PHOTO_SECTION_ADDITIONAL_TITLE);
+    expect(PHOTO_SECTION_ADDITIONAL_TITLE).toBe("Close-up photo");
+    expect(getCameraGuidanceFitMessage("additional")).toBe(CAMERA_GUIDANCE_CLOSE_UP_MESSAGE);
+    expect(CAMERA_GUIDANCE_CLOSE_UP_MESSAGE).toBe("Fill the frame with the hard-to-read section");
+    expect(getPhotoCaptureSectionLabel("additional")).toBe(PHOTO_SECTION_ADDITIONAL_LABEL);
+    expect(PHOTO_SECTION_ADDITIONAL_LABEL).toBe("Close-up photo");
+  });
+
+  it("uses simple file names for captured photos, not numbered photo labels", () => {
+    expect(getCapturedPhotoFileName("full_page")).toBe(CAPTURED_PHOTO_FILE_NAME);
+    expect(CAPTURED_PHOTO_FILE_NAME).toBe("camera-photo.jpg");
+    expect(getCapturedPhotoFileName("additional")).toBe(EXTRA_PHOTO_FILE_NAME);
+    expect(EXTRA_PHOTO_FILE_NAME).toBe("extra-photo.jpg");
+  });
+
+  // The forced two-photo UX was removed after live mobile testing. This pins
+  // the removal: no camera-flow copy may reintroduce numbered photo
+  // sequences, page-half naming, or an instruction to take a set number of
+  // photos.
+  it("never shows forced two-photo wording anywhere in the camera-flow copy", () => {
+    const allCopy = [
+      PHOTO_TAKE_NEW_PHOTO_LABEL,
+      PHOTO_TAKE_NEW_PHOTO_DESCRIPTION,
+      PHOTO_ADD_CLOSE_UP_LABEL,
+      PHOTO_ADD_CLOSE_UP_DESCRIPTION,
+      PHOTO_RETAKE_PHOTO_LABEL,
+      PHOTO_SECTION_FULL_PAGE_LABEL,
+      PHOTO_SECTION_FULL_PAGE_TITLE,
+      PHOTO_SECTION_ADDITIONAL_LABEL,
+      PHOTO_SECTION_ADDITIONAL_TITLE,
+      CAMERA_GUIDANCE_FIT_MESSAGE,
+      CAMERA_GUIDANCE_CLOSE_UP_MESSAGE,
+      ...CAMERA_GUIDANCE_TIPS,
+      PHOTO_TAKE_PHOTO_LABEL,
+      PHOTO_USE_THIS_PHOTO_LABEL,
+      PHOTO_USE_ANYWAY_LABEL,
+      PHOTO_RETAKE_LABEL,
+      PHOTO_RETAKE_RECOMMENDED_LABEL,
+      PHOTO_CANCEL_LABEL,
+    ];
+
+    const forbiddenPatterns = [
+      new RegExp("Photo \\d+ of \\d+", "i"),
+      new RegExp("Photo \\d+:", "i"),
+      new RegExp("\\btop\\s+half\\b", "i"),
+      new RegExp("\\bbottom\\s+half\\b", "i"),
+      /\btake 2\b/i,
+      /\btwo photos\b/i,
+      new RegExp(`\\bBest ${"accuracy"}\\b`, "i"),
+      new RegExp(`\\bQuick ${"scan"}\\b`, "i"),
+    ];
+
+    for (const message of allCopy) {
+      for (const pattern of forbiddenPatterns) {
+        expect(message).not.toMatch(pattern);
+      }
+    }
   });
 
   it("shows the required mobile capture tips", () => {
@@ -549,8 +609,7 @@ describe("document capture coach live guidance copy", () => {
 
     for (const message of [
       CAMERA_GUIDANCE_FIT_MESSAGE,
-      CAMERA_GUIDANCE_TOP_HALF_MESSAGE,
-      CAMERA_GUIDANCE_BOTTOM_HALF_MESSAGE,
+      CAMERA_GUIDANCE_CLOSE_UP_MESSAGE,
       ...CAMERA_GUIDANCE_TIPS,
     ]) {
       for (const pattern of forbiddenPatterns) {

@@ -576,11 +576,11 @@ export async function assessDocumentImageQuality(
 // rather than just warning about tilt (computeTiltSkewEstimate above only
 // detects tilt, it does not correct it).
 //
-// TODO(v2 - multi-photo top/bottom mode): for a letter too long to fit
-// legibly in one frame, support taking a "top half" and "bottom half" photo
-// and combining the OCR text (see combineOcrTexts in photoOcr.ts, which
-// already exists for this) with capture guidance telling the user which
-// half they are on.
+// DONE (then simplified after live mobile testing): multi-photo support
+// exists as the optional "Add close-up photo" follow-up after OCR review
+// (see appendExtraPhotoText in photoOcr.ts). A forced page-section mode was
+// tried and removed - one full-page photo proved good enough by default, and
+// users disliked being told to take a set number of photos.
 //
 // TODO(v2 - optional OpenCV.js contour detection): if the above heuristics
 // prove insufficient in practice, a small, lazily-loaded OpenCV.js build

@@ -51,8 +51,8 @@ const matchFirst = (text: string, pattern: RegExp) => text.match(pattern)?.[0];
 const getEvidenceValue = (text: string, pattern: RegExp, fallback: string) =>
   matchFirst(text, pattern) ?? fallback;
 
-const moneyPattern = /(?:\u00a3|Â£|GBP\s*|\?\s*)\d+(?:,\d{3})*(?:\.\d{1,2})?/i;
-const monthlyMoneyPattern = /(?:\u00a3|Â£|GBP\s*|\?\s*)\d+(?:,\d{3})*(?:\.\d{1,2})?\s*(?:\/month|per month|monthly)?/i;
+const moneyPattern = /(?:£|Â£|GBP\s*|\?\s*)\d+(?:,\d{3})*(?:\.\d{1,2})?/i;
+const monthlyMoneyPattern = /(?:£|Â£|GBP\s*|\?\s*)\d+(?:,\d{3})*(?:\.\d{1,2})?\s*(?:\/month|per month|monthly)?/i;
 const refundWindowPattern =
   /(?:within\s+)?\d+\s*(?:to|-)\s*\d+\s+working days|within\s+\d+\s+working days/i;
 const refundReferencePattern = /(?:reference|ref)\s*:?\s*([A-Z]{1,5}\d{3,}[A-Z0-9-]*)/i;

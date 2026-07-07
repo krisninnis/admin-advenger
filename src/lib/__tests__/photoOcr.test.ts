@@ -8,7 +8,10 @@ vi.mock("tesseract.js", () => ({
 
 import {
   OCR_FAILED_MESSAGE,
-  OCR_BOTH_PHOTOS_ON_DEVICE_MESSAGE,
+  OCR_ADD_CLOSE_UP_SUGGESTION,
+  OCR_COMBINED_PHOTOS_ON_DEVICE_MESSAGE,
+  OCR_EXTRA_PHOTO_LABEL,
+  OCR_MAIN_PHOTO_LABEL,
   OCR_GARBLED_TEXT_WARNING,
   OCR_LOW_CONFIDENCE_WARNING,
   OCR_LOW_TEXT_MESSAGE,
@@ -29,14 +32,17 @@ import {
   OCR_UNRELIABLE_MESSAGE,
   OCR_UNRELIABLE_RETAKE_MESSAGE,
   OcrReadError,
+  appendExtraPhotoText,
   applyGrayscaleContrast,
   combineOcrTexts,
   formatOcrSectionWarning,
+  getNextCloseUpPhotoLabel,
   getOcrPreprocessScale,
   getOcrQualityWarnings,
   isLikelyGarbledText,
   isOcrKeyDetailsReliable,
   isOcrResultUnreliable,
+  shouldSuggestCloseUpPhoto,
   readTextFromImage,
 } from "../photoOcr";
 
@@ -363,27 +369,27 @@ describe("combineOcrTexts", () => {
     );
   });
 
-  it("combines labelled photo sections in capture order", () => {
+  it("combines labelled photo sections in the order they were added", () => {
     expect(
       combineOcrTexts([
-        { label: "Photo 1: top half", text: "Top text." },
-        { label: "Photo 2: bottom half", text: "Bottom text." },
+        { label: OCR_MAIN_PHOTO_LABEL, text: "Main text." },
+        { label: OCR_EXTRA_PHOTO_LABEL, text: "Close-up text." },
       ]),
-    ).toBe("--- Photo 1: top half ---\nTop text.\n\n--- Photo 2: bottom half ---\nBottom text.");
+    ).toBe("--- Main photo ---\nMain text.\n\n--- Close-up photo ---\nClose-up text.");
   });
 
   it("can append another labelled photo after already-reviewed text", () => {
     expect(
       combineOcrTexts([
         "Already reviewed text.",
-        { label: "Additional photo", text: "Extra page text." },
+        { label: OCR_EXTRA_PHOTO_LABEL, text: "Extra page text." },
       ]),
-    ).toBe("Already reviewed text.\n\n--- Additional photo ---\nExtra page text.");
+    ).toBe("Already reviewed text.\n\n--- Close-up photo ---\nExtra page text.");
   });
 
-  it("formats low-confidence section warnings with the photo label", () => {
-    expect(formatOcrSectionWarning("Photo 2: bottom half", OCR_LOW_CONFIDENCE_WARNING)).toBe(
-      `Photo 2: bottom half: ${OCR_LOW_CONFIDENCE_WARNING}`,
+  it("formats low-confidence section warnings with the simple photo label", () => {
+    expect(formatOcrSectionWarning(OCR_EXTRA_PHOTO_LABEL, OCR_LOW_CONFIDENCE_WARNING)).toBe(
+      `Close-up photo: ${OCR_LOW_CONFIDENCE_WARNING}`,
     );
   });
 
@@ -400,8 +406,78 @@ describe("combineOcrTexts", () => {
   });
 
   it("states the exact combined-photo local OCR copy", () => {
-    expect(OCR_BOTH_PHOTOS_ON_DEVICE_MESSAGE).toBe(
-      "We read both photos on your device. Please check the combined text before continuing.",
+    expect(OCR_COMBINED_PHOTOS_ON_DEVICE_MESSAGE).toBe(
+      "We read your photos on your device. Please check the combined text before continuing.",
+    );
+  });
+});
+
+// ---- Optional "Add close-up photo" append flow ----
+describe("appendExtraPhotoText", () => {
+  it("labels the existing text as Main photo and the new text as Close-up photo", () => {
+    expect(appendExtraPhotoText("Existing letter text.", "Close-up text.")).toBe(
+      "--- Main photo ---\nExisting letter text.\n\n--- Close-up photo ---\nClose-up text.",
+    );
+  });
+
+  it("uses only simple labels - never forced photo sequence or top/bottom-half wording", () => {
+    const combined = appendExtraPhotoText("Existing letter text.", "Close-up text.");
+
+    expect(combined).not.toMatch(/Photo \d+:/);
+    expect(combined).not.toMatch(new RegExp("top\\s+half", "i"));
+    expect(combined).not.toMatch(new RegExp("bottom\\s+half", "i"));
+  });
+
+  it("does not re-wrap the main text when appending a second close-up photo", () => {
+    const afterFirst = appendExtraPhotoText("Existing letter text.", "First close-up.");
+    const afterSecond = appendExtraPhotoText(afterFirst, "Second close-up.");
+
+    expect(afterSecond).toBe(
+      "--- Main photo ---\nExisting letter text.\n\n--- Close-up photo ---\nFirst close-up.\n\n--- Close-up photo 2 ---\nSecond close-up.",
+    );
+    expect(afterSecond.match(/--- Main photo ---/g)).toHaveLength(1);
+  });
+
+  it("returns just the extra section when there is no existing text", () => {
+    expect(appendExtraPhotoText("", "Close-up text.")).toBe(
+      "--- Close-up photo ---\nClose-up text.",
+    );
+  });
+
+  it("uses the first close-up label first, then numbers later optional close-ups", () => {
+    expect(getNextCloseUpPhotoLabel("Existing letter text.")).toBe("Close-up photo");
+    expect(
+      getNextCloseUpPhotoLabel(
+        "--- Main photo ---\nExisting letter text.\n\n--- Close-up photo ---\nFirst close-up.",
+      ),
+    ).toBe("Close-up photo 2");
+  });
+});
+
+// ---- Smart close-up suggestion: only pushed when the read was weak ----
+describe("shouldSuggestCloseUpPhoto", () => {
+  const goodText =
+    "Parking Charge Notice. Amount due £255.00. Reference VCS23217813. Reply by 19/03/2026.";
+
+  it("does not push a close-up for a good single-photo read (like the live 78% test)", () => {
+    expect(shouldSuggestCloseUpPhoto(goodText, 78)).toBe(false);
+    expect(shouldSuggestCloseUpPhoto(goodText, 70)).toBe(false);
+  });
+
+  it("suggests a close-up or retake for moderate/poor confidence reads", () => {
+    expect(shouldSuggestCloseUpPhoto(goodText, 59)).toBe(true);
+    expect(shouldSuggestCloseUpPhoto(goodText, 45)).toBe(true);
+    expect(shouldSuggestCloseUpPhoto(goodText, 20)).toBe(true);
+  });
+
+  it("suggests a close-up when the text itself looks unreliable, whatever the confidence", () => {
+    expect(shouldSuggestCloseUpPhoto("~~ %% @@ ## ~~ %% @@ ##", 90)).toBe(true);
+    expect(shouldSuggestCloseUpPhoto("ab", 90)).toBe(true);
+  });
+
+  it("states the exact suggestion copy in plain language", () => {
+    expect(OCR_ADD_CLOSE_UP_SUGGESTION).toBe(
+      "Retake the photo or add a close-up of the hard-to-read section.",
     );
   });
 });
@@ -416,7 +492,8 @@ describe("OCR copy never implies cloud upload, sending, storage, or a guaranteed
     OCR_READING_STATUS_MESSAGE,
     OCR_RUNS_ON_DEVICE_MESSAGE,
     OCR_REVIEW_BEFORE_CHECKING_MESSAGE,
-    OCR_BOTH_PHOTOS_ON_DEVICE_MESSAGE,
+    OCR_COMBINED_PHOTOS_ON_DEVICE_MESSAGE,
+    OCR_ADD_CLOSE_UP_SUGGESTION,
     OCR_LOW_CONFIDENCE_WARNING,
     OCR_MODERATE_CONFIDENCE_WARNING,
     OCR_GARBLED_TEXT_WARNING,

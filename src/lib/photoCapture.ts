@@ -20,7 +20,26 @@ export type CropRectRatio = {
   height: number;
 };
 
+export type DOMRectLike = {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+};
+
+export type DisplayFrameMappingInput = {
+  mediaRect: DOMRectLike;
+  frameRect: DOMRectLike;
+  naturalWidth: number;
+  naturalHeight: number;
+  objectFit: "contain";
+};
+
 export const A4_PORTRAIT_RATIO = 1 / 1.414;
+export const MIN_SAFE_CROP_WIDTH_RATIO = 0.45;
+export const MIN_SAFE_CROP_HEIGHT_RATIO = 0.55;
+export const MIN_SAFE_A4_CROP_ASPECT_RATIO = 0.65;
+export const MAX_SAFE_A4_CROP_ASPECT_RATIO = 0.8;
 
 export const CAMERA_PERMISSION_DENIED_MESSAGE =
   "Camera access was blocked. You can upload a photo instead.";
@@ -44,6 +63,9 @@ export const PHOTO_READS_INSIDE_FRAME_MESSAGE =
 
 export const PHOTO_CROP_FAILED_MESSAGE =
   "We could not crop the photo automatically. You can still continue and edit the text manually.";
+
+export const PHOTO_CROP_UNSAFE_MESSAGE =
+  "AdminAvenger could not crop this photo safely, so it will read the full photo. You can still retake it.";
 
 // Requested camera resolution for the "Take a new photo" flow. A full page
 // of letter text needs enough pixels for Tesseract to resolve individual
@@ -200,6 +222,92 @@ const GUIDE_FRAME_MAX_WIDTH_RATIO = 0.92;
 
 const clampRatio = (value: number): number => Math.max(0, Math.min(1, value));
 
+export const getCropRectPixelAspectRatio = (
+  rect: CropRectRatio,
+  imageWidth: number,
+  imageHeight: number,
+): number => {
+  if (!(rect.width > 0) || !(rect.height > 0) || !(imageWidth > 0) || !(imageHeight > 0)) {
+    return 0;
+  }
+
+  return (rect.width * imageWidth) / (rect.height * imageHeight);
+};
+
+export const isCropRectSafe = (
+  rect: CropRectRatio,
+  imageWidth: number,
+  imageHeight: number,
+): boolean => {
+  if (!(imageWidth > 0) || !(imageHeight > 0)) {
+    return false;
+  }
+
+  if (rect.x < 0 || rect.y < 0 || rect.width <= 0 || rect.height <= 0) {
+    return false;
+  }
+
+  if (rect.x + rect.width > 1 || rect.y + rect.height > 1) {
+    return false;
+  }
+
+  if (rect.width < MIN_SAFE_CROP_WIDTH_RATIO || rect.height < MIN_SAFE_CROP_HEIGHT_RATIO) {
+    return false;
+  }
+
+  const aspectRatio = getCropRectPixelAspectRatio(rect, imageWidth, imageHeight);
+  return (
+    aspectRatio >= MIN_SAFE_A4_CROP_ASPECT_RATIO &&
+    aspectRatio <= MAX_SAFE_A4_CROP_ASPECT_RATIO
+  );
+};
+
+export const mapDisplayedFrameToImageCrop = ({
+  mediaRect,
+  frameRect,
+  naturalWidth,
+  naturalHeight,
+}: DisplayFrameMappingInput): CropRectRatio | null => {
+  if (
+    !(mediaRect.width > 0) ||
+    !(mediaRect.height > 0) ||
+    !(frameRect.width > 0) ||
+    !(frameRect.height > 0) ||
+    !(naturalWidth > 0) ||
+    !(naturalHeight > 0)
+  ) {
+    return null;
+  }
+
+  const naturalAspectRatio = naturalWidth / naturalHeight;
+  const mediaAspectRatio = mediaRect.width / mediaRect.height;
+  const renderedWidth =
+    mediaAspectRatio > naturalAspectRatio ? mediaRect.height * naturalAspectRatio : mediaRect.width;
+  const renderedHeight =
+    mediaAspectRatio > naturalAspectRatio ? mediaRect.height : mediaRect.width / naturalAspectRatio;
+  const renderedLeft = mediaRect.left + (mediaRect.width - renderedWidth) / 2;
+  const renderedTop = mediaRect.top + (mediaRect.height - renderedHeight) / 2;
+
+  const rawRect = {
+    x: (frameRect.left - renderedLeft) / renderedWidth,
+    y: (frameRect.top - renderedTop) / renderedHeight,
+    width: frameRect.width / renderedWidth,
+    height: frameRect.height / renderedHeight,
+  };
+  const left = clampRatio(rawRect.x);
+  const top = clampRatio(rawRect.y);
+  const right = clampRatio(rawRect.x + rawRect.width);
+  const bottom = clampRatio(rawRect.y + rawRect.height);
+  const mappedRect = {
+    x: left,
+    y: top,
+    width: Math.max(0, right - left),
+    height: Math.max(0, bottom - top),
+  };
+
+  return isCropRectSafe(mappedRect, naturalWidth, naturalHeight) ? mappedRect : null;
+};
+
 export function getA4GuideCropRect(imageWidth: number, imageHeight: number): CropRectRatio {
   if (!(imageWidth > 0) || !(imageHeight > 0)) {
     return { x: 0, y: 0, width: 1, height: 1 };
@@ -222,12 +330,16 @@ export function getA4GuideCropRect(imageWidth: number, imageHeight: number): Cro
   const width = clampRatio(cropWidth / imageWidth);
   const height = clampRatio(cropHeight / imageHeight);
 
-  return {
+  const rect = {
     x: clampRatio((1 - width) / 2),
     y: clampRatio((1 - height) / 2),
     width,
     height,
   };
+
+  return isCropRectSafe(rect, imageWidth, imageHeight)
+    ? rect
+    : { x: 0, y: 0, width: 1, height: 1 };
 }
 
 // Pure Blob -> File conversion, kept separate from the canvas/video capture
@@ -250,6 +362,12 @@ export const cropImageBlobToRect = (
 
     element.onload = () => {
       try {
+        if (!isCropRectSafe(rect, element.naturalWidth, element.naturalHeight)) {
+          cleanUp();
+          reject(new Error("Could not crop this photo safely."));
+          return;
+        }
+
         const sourceX = Math.round(clampRatio(rect.x) * element.naturalWidth);
         const sourceY = Math.round(clampRatio(rect.y) * element.naturalHeight);
         const requestedWidth = Math.round(clampRatio(rect.width) * element.naturalWidth);

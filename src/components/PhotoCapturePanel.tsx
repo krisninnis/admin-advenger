@@ -20,6 +20,7 @@ import {
   PHOTO_REVIEW_WARNING_CLASSNAME,
   PHOTO_CROP_FAILED_MESSAGE,
   PHOTO_CROPPED_TO_FRAME_MESSAGE,
+  PHOTO_CROP_UNSAFE_MESSAGE,
   PHOTO_SECONDARY_RETAKE_BUTTON_CLASSNAME,
   PHOTO_SECONDARY_USE_BUTTON_CLASSNAME,
   PHOTO_READS_INSIDE_FRAME_MESSAGE,
@@ -30,10 +31,11 @@ import {
   capturePhotoFromVideoElement,
   cropImageBlobToRect,
   createCapturedPhotoFile,
-  getA4GuideCropRect,
+  mapDisplayedFrameToImageCrop,
   photoCaptureReducer,
   requestEnvironmentCameraStream,
   stopMediaStreamTracks,
+  type CropRectRatio,
 } from "../lib/photoCapture";
 import {
   DOCUMENT_QUALITY_CONTINUE_MESSAGE,
@@ -83,9 +85,10 @@ export function PhotoCapturePanel({ onUsePhoto, onClose }: PhotoCapturePanelProp
   const [documentQuality, setDocumentQuality] = useState<DocumentImageQualityResult | undefined>();
   const streamRef = useRef<MediaStream | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const frameRef = useRef<HTMLDivElement | null>(null);
   const capturedFileRef = useRef<File | undefined>(undefined);
   const fileForOcrRef = useRef<File | undefined>(undefined);
-  const capturedDimensionsRef = useRef<{ width: number; height: number } | undefined>(undefined);
+  const capturedCropRectRef = useRef<CropRectRatio | null>(null);
   const cropPromiseRef = useRef<Promise<void> | undefined>(undefined);
 
   const stopActiveStream = () => {
@@ -111,7 +114,7 @@ export function PhotoCapturePanel({ onUsePhoto, onClose }: PhotoCapturePanelProp
     setIsCropping(false);
     capturedFileRef.current = undefined;
     fileForOcrRef.current = undefined;
-    capturedDimensionsRef.current = undefined;
+    capturedCropRectRef.current = null;
     cropPromiseRef.current = undefined;
     setDocumentQuality(undefined);
   };
@@ -188,18 +191,26 @@ export function PhotoCapturePanel({ onUsePhoto, onClose }: PhotoCapturePanelProp
 
     let cancelled = false;
     const sourceFile = capturedFileRef.current;
-    const dimensions = capturedDimensionsRef.current ?? {
-      width: CAMERA_IDEAL_WIDTH,
-      height: CAMERA_IDEAL_HEIGHT,
-    };
+    const cropRect = capturedCropRectRef.current;
 
     setDocumentQuality(undefined);
     setCropWarning("");
     setIsCropping(true);
 
     const preparePhotoForOcr = async () => {
+      if (!cropRect) {
+        const quality = await assessDocumentImageQuality(sourceFile);
+
+        if (!cancelled) {
+          fileForOcrRef.current = sourceFile;
+          setCropWarning(PHOTO_CROP_UNSAFE_MESSAGE);
+          setDocumentQuality(quality);
+          setIsCropping(false);
+        }
+        return;
+      }
+
       try {
-        const cropRect = getA4GuideCropRect(dimensions.width, dimensions.height);
         const croppedBlob = await cropImageBlobToRect(sourceFile, cropRect, {
           type: sourceFile.type,
         });
@@ -283,15 +294,26 @@ export function PhotoCapturePanel({ onUsePhoto, onClose }: PhotoCapturePanelProp
 
     try {
       const file = await capturePhotoFromVideoElement(videoElement);
+      const dimensions = {
+        width: videoElement.videoWidth || CAMERA_IDEAL_WIDTH,
+        height: videoElement.videoHeight || CAMERA_IDEAL_HEIGHT,
+      };
+      const frameElement = frameRef.current;
+      const mappedCropRect = frameElement
+        ? mapDisplayedFrameToImageCrop({
+            mediaRect: videoElement.getBoundingClientRect(),
+            frameRect: frameElement.getBoundingClientRect(),
+            naturalWidth: dimensions.width,
+            naturalHeight: dimensions.height,
+            objectFit: "contain",
+          })
+        : null;
       // Capture-complete cleanup - the camera does not need to stay on once
       // a frame has been captured.
       stopActiveStream();
       capturedFileRef.current = file;
       fileForOcrRef.current = file;
-      capturedDimensionsRef.current = {
-        width: videoElement.videoWidth || CAMERA_IDEAL_WIDTH,
-        height: videoElement.videoHeight || CAMERA_IDEAL_HEIGHT,
-      };
+      capturedCropRectRef.current = mappedCropRect;
       setCapturedPreviewUrl(URL.createObjectURL(file));
       dispatch({ type: "photo_captured" });
     } catch {
@@ -386,7 +408,7 @@ export function PhotoCapturePanel({ onUsePhoto, onClose }: PhotoCapturePanelProp
                 muted
                 className="max-h-[calc(100dvh-15rem)] min-h-0 w-full object-contain"
               />
-              <div aria-hidden="true" className={CAMERA_GUIDANCE_FRAME_CLASSNAME} />
+              <div ref={frameRef} aria-hidden="true" className={CAMERA_GUIDANCE_FRAME_CLASSNAME} />
               <p
                 aria-hidden="true"
                 className="pointer-events-none absolute inset-x-0 top-2 text-center text-xs font-bold text-white [text-shadow:0_1px_3px_rgb(0_0_0_/_0.8)]"
@@ -431,7 +453,7 @@ export function PhotoCapturePanel({ onUsePhoto, onClose }: PhotoCapturePanelProp
               <div className="rounded-lg border border-cyan-300/20 bg-cyan-300/10 px-4 py-3 text-sm leading-6 text-cyan-50/90">
                 <p className="font-bold">
                   {cropWarning
-                    ? PHOTO_CROP_FAILED_MESSAGE
+                    ? cropWarning
                     : croppedPreviewUrl
                     ? PHOTO_CROPPED_TO_FRAME_MESSAGE
                     : PHOTO_READS_INSIDE_FRAME_MESSAGE}

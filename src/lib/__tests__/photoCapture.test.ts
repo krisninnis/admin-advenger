@@ -30,8 +30,11 @@ import {
   classifyCameraError,
   createCapturedPhotoFile,
   getA4GuideCropRect,
+  getCropRectPixelAspectRatio,
   getCameraErrorMessage,
+  isCropRectSafe,
   isCameraCaptureSupported,
+  mapDisplayedFrameToImageCrop,
   photoCaptureReducer,
   requestEnvironmentCameraStream,
   stageHasActiveCameraStream,
@@ -312,6 +315,58 @@ describe("A4 guide-frame crop", () => {
     }
   });
 
+  it("rejects too-narrow strip crops", () => {
+    expect(isCropRectSafe({ x: 0.45, y: 0.1, width: 0.1, height: 0.8 }, 1200, 2000)).toBe(false);
+  });
+
+  it("rejects crops that remove too much of the source image", () => {
+    expect(isCropRectSafe({ x: 0.2, y: 0.3, width: 0.5, height: 0.4 }, 1200, 2000)).toBe(false);
+  });
+
+  it("accepts a safe A4-ish portrait crop", () => {
+    const rect = { x: 0.1, y: 0.08, width: 0.8, height: 0.84 };
+    expect(getCropRectPixelAspectRatio(rect, 1200, 1600)).toBeCloseTo(0.714, 3);
+    expect(isCropRectSafe(rect, 1200, 1600)).toBe(true);
+  });
+
+  it("maps a centred visible guide frame through object-fit contain", () => {
+    const rect = mapDisplayedFrameToImageCrop({
+      mediaRect: { left: 0, top: 0, width: 300, height: 500 },
+      frameRect: { left: 16, top: 60, width: 268, height: 380 },
+      naturalWidth: 1200,
+      naturalHeight: 2000,
+      objectFit: "contain",
+    });
+
+    expect(rect).not.toBeNull();
+    expect(rect?.x).toBeCloseTo(0.05, 2);
+    expect(rect?.y).toBeCloseTo(0.12, 2);
+    expect(rect?.width).toBeCloseTo(0.89, 2);
+    expect(rect?.height).toBeCloseTo(0.76, 2);
+  });
+
+  it("returns null for impossible or unsafe display-frame geometry", () => {
+    expect(
+      mapDisplayedFrameToImageCrop({
+        mediaRect: { left: 0, top: 0, width: 300, height: 500 },
+        frameRect: { left: 140, top: 50, width: 20, height: 420 },
+        naturalWidth: 1200,
+        naturalHeight: 2000,
+        objectFit: "contain",
+      }),
+    ).toBeNull();
+
+    expect(
+      mapDisplayedFrameToImageCrop({
+        mediaRect: { left: 0, top: 0, width: 0, height: 500 },
+        frameRect: { left: 0, top: 0, width: 100, height: 300 },
+        naturalWidth: 1200,
+        naturalHeight: 2000,
+        objectFit: "contain",
+      }),
+    ).toBeNull();
+  });
+
   const withFakeImageCanvas = async (
     run: (fakeCanvas: {
       width: number;
@@ -377,6 +432,16 @@ describe("A4 guide-frame crop", () => {
       expect(blob).toBeInstanceOf(Blob);
       expect(blob.type).toBe("image/jpeg");
       expect(fakeCanvas.toBlobArgs[0]).toBe("image/jpeg");
+    });
+  });
+
+  it("refuses to crop to an unsafe thin strip", async () => {
+    await withFakeImageCanvas(async () => {
+      const source = new Blob(["full photo"], { type: "image/jpeg" });
+
+      await expect(
+        cropImageBlobToRect(source, { x: 0.49, y: 0.05, width: 0.02, height: 0.9 }),
+      ).rejects.toThrow("safely");
     });
   });
 

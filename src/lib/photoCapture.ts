@@ -105,27 +105,22 @@ export const PHOTO_SECTION_ADDITIONAL_TITLE = "Close-up photo";
 export const CAMERA_IDEAL_WIDTH = 1920;
 export const CAMERA_IDEAL_HEIGHT = 1080;
 
-// ---- Document Capture Coach: camera framing guidance copy ----
+// ---- Document Capture Coach: camera guidance copy ----
 //
 // Shown around the camera preview (see src/components/PhotoCapturePanel.tsx)
-// as simple framing help only. The green frame is not treated as detected
-// page geometry; the user confirms the actual OCR area in the post-capture
-// adjust step.
-export const CAMERA_GUIDANCE_FIT_MESSAGE = "Place the letter inside the frame";
+// as simple photo guidance only. The user confirms the actual OCR area in
+// the post-capture adjust step.
+export const CAMERA_GUIDANCE_FIT_MESSAGE = "Take a clear photo of the letter.";
 export const CAMERA_GUIDANCE_CLOSE_UP_MESSAGE =
-  "Fill the frame with the hard-to-read section";
+  "Take a clear close-up photo of the hard-to-read section.";
 
 export const CAMERA_GUIDANCE_TIPS = [
-  "Anything outside the frame may be ignored",
-  "Move closer until the letter nearly fills the frame",
-  "Move closer if the text is small",
-  "Use good light",
-  "Keep the page flat",
-  "Avoid shadows",
+  "Try to fill the photo with the page.",
+  "You can adjust the document area after taking the photo.",
+  "Use good light.",
+  "Keep the page flat.",
+  "Avoid shadows.",
 ];
-
-export const CAMERA_GUIDANCE_FRAME_CLASSNAME =
-  "pointer-events-none absolute left-1/2 top-1/2 h-[82%] max-h-[88%] aspect-[1/1.414] -translate-x-1/2 -translate-y-1/2 rounded-sm border-[3px] border-emerald-300 shadow-[0_0_0_9999px_rgb(15_23_42_/_0.28)] ring-1 ring-white/70";
 
 export const CAMERA_PREVIEW_ACTIONS_CLASSNAME =
   "sticky bottom-0 z-10 mt-auto grid gap-2 rounded-xl border border-white/10 bg-slate-900/95 p-2 shadow-2xl shadow-slate-950/50 backdrop-blur sm:grid-cols-2";
@@ -245,8 +240,8 @@ const FALLBACK_CAPTURE_WIDTH = 1920;
 const FALLBACK_CAPTURE_HEIGHT = 1080;
 const GUIDE_FRAME_HEIGHT_RATIO = 0.82;
 const GUIDE_FRAME_MAX_WIDTH_RATIO = 0.92;
-export const DEFAULT_MANUAL_CROP_WIDTH_RATIO = 0.84;
-export const DEFAULT_MANUAL_CROP_HEIGHT_RATIO = 0.82;
+export const DEFAULT_MANUAL_CROP_WIDTH_RATIO = 0.9;
+export const DEFAULT_MANUAL_CROP_HEIGHT_RATIO = 0.88;
 export const MIN_MANUAL_CROP_WIDTH_RATIO = 0.2;
 export const MIN_MANUAL_CROP_HEIGHT_RATIO = 0.2;
 export const MANUAL_CROP_MARGIN_RATIO = 0.02;

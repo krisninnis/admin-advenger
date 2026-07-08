@@ -34,9 +34,11 @@ import {
   shouldSubmitOnEnterKey,
 } from "../lib/checkInputKeyboard";
 import {
+  classifyUploadedFile,
+  isSupportedTextFile,
   photoAcceptAttribute,
   quickUploadAcceptAttribute,
-  textFileAcceptAttribute,
+  UNSUPPORTED_FILE_MESSAGE,
 } from "../lib/fileIntakeAccept";
 import {
   PHOTO_ADD_CLOSE_UP_DESCRIPTION,
@@ -240,8 +242,6 @@ const isBroadbandRelatedReminder = (primaryCase: AdminCase, adminCase: AdminCase
   adminCase.itemId === primaryCase.itemId &&
   (adminCase.category === "deadline" || adminCase.category === "important_reply");
 
-const supportedTextFileExtensions = [".txt", ".md", ".csv", ".json"];
-
 const ollamaModelOptions = [
   "llama3.2",
   "qwen2.5:7b",
@@ -350,12 +350,6 @@ const sampleInputs: Array<{ label: string; title: string; sourceType: SourceType
       "Your account will be locked today. Click this link immediately to verify your bank details and avoid suspension. Sender: support@secure-bank-login-example.com. Reply-to: randomhelpdesk@example.net.",
   },
 ];
-
-const isSupportedTextFile = (file: File) => {
-  const fileName = file.name.toLowerCase();
-
-  return supportedTextFileExtensions.some((extension) => fileName.endsWith(extension));
-};
 
 type OcrStatus = "idle" | "reading" | "success" | "error";
 
@@ -484,6 +478,10 @@ export function HomeView({
   const [showEmailSafety, setShowEmailSafety] = useState(false);
   const [showGuidedNextStep, setShowGuidedNextStep] = useState(false);
   const [showPhotoCapturePanel, setShowPhotoCapturePanel] = useState(false);
+  // An image chosen from the "Upload a file" area (or the "+" upload menu) is
+  // handed to PhotoCapturePanel so it opens on the "Adjust document area" step,
+  // exactly like an image uploaded via "Take or upload a photo".
+  const [pendingPhotoFile, setPendingPhotoFile] = useState<File | undefined>();
   const [showExamples, setShowExamples] = useState(false);
   const [showDeveloperOptions, setShowDeveloperOptions] = useState(false);
   const [showInboxTools, setShowInboxTools] = useState(false);
@@ -784,7 +782,7 @@ export function HomeView({
       setInputMessage(
         selectedInput === "paste"
           ? "Paste some text to check this now."
-          : "Image/file reading is not active in this mode. Paste the text from the document or enable a supported AI extraction mode.",
+          : "Choose a text file or photo above, or paste the text from the document to check it now.",
       );
       return;
     }
@@ -1059,6 +1057,7 @@ export function HomeView({
   // introducing a second way to pick a photo.
   const handleRetakePhoto = () => {
     void handleImageUpload(undefined);
+    setPendingPhotoFile(undefined);
     setPhotoCaptureIntent("replace");
     setShowPhotoCapturePanel(true);
   };
@@ -1067,6 +1066,7 @@ export function HomeView({
   // the current text and appends the extra photo's text as a
   // "--- Close-up photo ---" section (see appendExtraPhotoText in photoOcr.ts).
   const handleAddCloseUpPhoto = () => {
+    setPendingPhotoFile(undefined);
     setPhotoCaptureIntent("append");
     setShowPhotoCapturePanel(true);
   };
@@ -1087,9 +1087,7 @@ export function HomeView({
     }
 
     if (!isSupportedTextFile(file)) {
-      setUploadNote(
-        "File reading is coming later. For now, copy/paste the text from the document if you can.",
-      );
+      setUploadNote(UNSUPPORTED_FILE_MESSAGE);
       return;
     }
 
@@ -1104,6 +1102,7 @@ export function HomeView({
 
   const handleOpenPhotoCapturePanel = () => {
     setShowAddMenu(false);
+    setPendingPhotoFile(undefined);
     setPhotoCaptureIntent("replace");
     setShowPhotoCapturePanel(true);
   };
@@ -1129,16 +1128,28 @@ export function HomeView({
     setShowGuidedNextStep(false);
   };
 
-  const handleQuickFileUpload = async (file?: File) => {
+  // Routes any file chosen from an upload control (the "Upload a file" area
+  // and the compact "+" upload menu) to the right place. An image goes
+  // through the same photo OCR flow as "Take or upload a photo", opening the
+  // panel on the "Adjust document area" step - so an image is never shown an
+  // unsupported or "not active in this mode" message. Text files use the
+  // existing text reader; anything else falls through to the "not supported
+  // yet" message inside handleFileUpload.
+  const handleUploadedFileSelection = async (file?: File) => {
     setShowAddMenu(false);
 
     if (!file) {
+      await handleFileUpload(undefined);
       return;
     }
 
-    if (isSupportedPhotoFile(file)) {
-      setSelectedInput("image");
-      await handleImageUpload(file);
+    if (classifyUploadedFile(file) === "photo_ocr") {
+      setUploadNote("");
+      setInputMessage("");
+      setUploadedFileName("");
+      setPendingPhotoFile(file);
+      setPhotoCaptureIntent("replace");
+      setShowPhotoCapturePanel(true);
       return;
     }
 
@@ -1181,7 +1192,7 @@ export function HomeView({
           {[
             ["paste", "Paste text", "Fastest way to check something"],
             ["image", "Take or upload a photo", "Reads the text on your device"],
-            ["file", "Upload a file", "TXT, MD, CSV, JSON"],
+            ["file", "Upload a file", "TXT, MD, CSV, JSON, JPG, PNG"],
           ].map(([value, label, helper]) => (
             <button
               key={value}
@@ -1448,7 +1459,7 @@ export function HomeView({
                         <input
                           type="file"
                           accept={quickUploadAcceptAttribute}
-                          onChange={(event) => void handleQuickFileUpload(event.target.files?.[0])}
+                          onChange={(event) => void handleUploadedFileSelection(event.target.files?.[0])}
                           className="sr-only"
                         />
                       </label>
@@ -1498,12 +1509,12 @@ export function HomeView({
                 <input
                   key={`${selectedInput}-${inputResetKey}`}
                   type="file"
-                  accept={selectedInput === "image" ? photoAcceptAttribute : textFileAcceptAttribute}
+                  accept={selectedInput === "image" ? photoAcceptAttribute : quickUploadAcceptAttribute}
                   capture={selectedInput === "image" ? "environment" : undefined}
                   onChange={(event) =>
                     selectedInput === "image"
                       ? void handleImageUpload(event.target.files?.[0])
-                      : void handleFileUpload(event.target.files?.[0])
+                      : void handleUploadedFileSelection(event.target.files?.[0])
                   }
                   className="mt-4 block w-full rounded-lg border border-white/10 bg-slate-950 px-4 py-3 text-sm text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-emerald-400 file:px-3 file:py-2 file:text-sm file:font-bold file:text-slate-950"
                 />
@@ -1818,8 +1829,12 @@ export function HomeView({
       {showPhotoCapturePanel ? (
         <PhotoCapturePanel
           onUsePhotos={(photos) => void handleCapturedPhotos(photos)}
-          onClose={() => setShowPhotoCapturePanel(false)}
+          onClose={() => {
+            setShowPhotoCapturePanel(false);
+            setPendingPhotoFile(undefined);
+          }}
           defaultSection={photoCaptureIntent === "append" ? "additional" : undefined}
+          initialPhotoFile={pendingPhotoFile}
         />
       ) : null}
 

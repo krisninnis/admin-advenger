@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   A4_PORTRAIT_RATIO,
-  CAMERA_GUIDANCE_FRAME_CLASSNAME,
   CAMERA_GUIDANCE_FIT_MESSAGE,
   CAMERA_GUIDANCE_CLOSE_UP_MESSAGE,
   CAMERA_GUIDANCE_TIPS,
@@ -541,7 +540,7 @@ describe("manual adjust document area crop", () => {
     }
   };
 
-  it("starts with a large centred crop box when no safe guide-frame crop exists", () => {
+  it("starts with a large centred crop box by default", () => {
     const rect = getDefaultManualCropRect(null);
 
     expect(rect.width).toBe(DEFAULT_MANUAL_CROP_WIDTH_RATIO);
@@ -552,7 +551,7 @@ describe("manual adjust document area crop", () => {
     expect(rect.height).toBeGreaterThan(0.8);
   });
 
-  it("uses a safe suggested guide-frame crop as the starting crop box", () => {
+  it("can still use a safe suggested crop as the starting crop box", () => {
     const suggested = { x: 0.1, y: 0.08, width: 0.8, height: 0.84 };
 
     expect(getDefaultManualCropRect(suggested)).toEqual(suggested);
@@ -588,6 +587,31 @@ describe("manual adjust document area crop", () => {
 
       expect(fakeCanvas.width / fakeCanvas.height).toBeGreaterThan(1);
       expect(fakeCanvas.drawImage).toHaveBeenCalledOnce();
+    });
+  });
+
+  it("converts the selected manual crop ratios to original image pixels before OCR", async () => {
+    await withFakeManualImageCanvas(async (fakeCanvas) => {
+      const source = new Blob(["full photo"], { type: "image/jpeg" });
+      await cropImageBlobToRect(
+        source,
+        { x: 0.25, y: 0.1, width: 0.5, height: 0.6 },
+        { safety: "manual", marginRatio: 0 },
+      );
+
+      expect(fakeCanvas.width).toBe(600);
+      expect(fakeCanvas.height).toBe(1200);
+      expect(fakeCanvas.drawImage).toHaveBeenCalledWith(
+        expect.any(Object),
+        300,
+        200,
+        600,
+        1200,
+        0,
+        0,
+        600,
+        1200,
+      );
     });
   });
 
@@ -654,14 +678,14 @@ describe("document capture coach camera guidance copy", () => {
     expect(PHOTO_RETAKE_PHOTO_LABEL).toBe("Retake photo");
   });
 
-  it("shows the required frame guidance message", () => {
-    expect(CAMERA_GUIDANCE_FIT_MESSAGE).toBe("Place the letter inside the frame");
+  it("shows the required simple camera guidance message", () => {
+    expect(CAMERA_GUIDANCE_FIT_MESSAGE).toBe("Take a clear photo of the letter.");
   });
 
   it("keeps the default flow as a single full-page photo with a simple label", () => {
     expect(getPhotoCaptureSectionTitle("full_page")).toBe(PHOTO_SECTION_FULL_PAGE_TITLE);
     expect(PHOTO_SECTION_FULL_PAGE_TITLE).toBe("Full page photo");
-    expect(getCameraGuidanceFitMessage("full_page")).toBe("Place the letter inside the frame");
+    expect(getCameraGuidanceFitMessage("full_page")).toBe("Take a clear photo of the letter.");
     expect(getPhotoCaptureSectionLabel("full_page")).toBe(PHOTO_SECTION_FULL_PAGE_LABEL);
     expect(PHOTO_SECTION_FULL_PAGE_LABEL).toBe("Main photo");
   });
@@ -670,7 +694,9 @@ describe("document capture coach camera guidance copy", () => {
     expect(getPhotoCaptureSectionTitle("additional")).toBe(PHOTO_SECTION_ADDITIONAL_TITLE);
     expect(PHOTO_SECTION_ADDITIONAL_TITLE).toBe("Close-up photo");
     expect(getCameraGuidanceFitMessage("additional")).toBe(CAMERA_GUIDANCE_CLOSE_UP_MESSAGE);
-    expect(CAMERA_GUIDANCE_CLOSE_UP_MESSAGE).toBe("Fill the frame with the hard-to-read section");
+    expect(CAMERA_GUIDANCE_CLOSE_UP_MESSAGE).toBe(
+      "Take a clear close-up photo of the hard-to-read section.",
+    );
     expect(getPhotoCaptureSectionLabel("additional")).toBe(PHOTO_SECTION_ADDITIONAL_LABEL);
     expect(PHOTO_SECTION_ADDITIONAL_LABEL).toBe("Close-up photo");
   });
@@ -729,12 +755,11 @@ describe("document capture coach camera guidance copy", () => {
 
   it("shows the required mobile capture tips", () => {
     expect(CAMERA_GUIDANCE_TIPS).toEqual([
-      "Anything outside the frame may be ignored",
-      "Move closer until the letter nearly fills the frame",
-      "Move closer if the text is small",
-      "Use good light",
-      "Keep the page flat",
-      "Avoid shadows",
+      "Try to fill the photo with the page.",
+      "You can adjust the document area after taking the photo.",
+      "Use good light.",
+      "Keep the page flat.",
+      "Avoid shadows.",
     ]);
   });
 
@@ -760,10 +785,18 @@ describe("document capture coach camera guidance copy", () => {
     }
   });
 
-  it("represents the guide frame as a portrait A4-style target", () => {
-    expect(CAMERA_GUIDANCE_FRAME_CLASSNAME).toContain("aspect-[1/1.414]");
-    expect(CAMERA_GUIDANCE_FRAME_CLASSNAME).toContain("left-1/2");
-    expect(CAMERA_GUIDANCE_FRAME_CLASSNAME).toContain("top-1/2");
+  it("does not require a fixed A4 guide frame in the live camera copy", () => {
+    const allCameraCopy = [
+      CAMERA_GUIDANCE_FIT_MESSAGE,
+      CAMERA_GUIDANCE_CLOSE_UP_MESSAGE,
+      ...CAMERA_GUIDANCE_TIPS,
+    ];
+
+    for (const message of allCameraCopy) {
+      expect(message).not.toMatch(/\binside the frame\b/i);
+      expect(message).not.toMatch(/\banything outside the frame\b/i);
+      expect(message).not.toMatch(/\bA4\b/i);
+    }
   });
 
   it("keeps capture and review actions represented as sticky mobile controls", () => {

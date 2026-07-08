@@ -18,6 +18,34 @@ export type OcrResult = {
   text: string;
   confidence?: number;
   warnings: string[];
+  debug?: OcrImageDebugInfo;
+};
+
+export type OcrImageDebugInfo = {
+  sourceWidth?: number;
+  sourceHeight?: number;
+  ocrWidth?: number;
+  ocrHeight?: number;
+  sourceBytes: number;
+  ocrBytes?: number;
+  sourceMimeType: string;
+  ocrMimeType?: string;
+  preprocessScale: number;
+  usedPreprocessedImage: boolean;
+  preprocessReason: "already_high_resolution" | "upscaled_for_ocr" | "invalid_dimensions" | "unavailable";
+};
+
+export type OcrPreprocessPlan = {
+  scale: number;
+  shouldPreprocess: boolean;
+  outputWidth: number;
+  outputHeight: number;
+  reason: OcrImageDebugInfo["preprocessReason"];
+};
+
+type PreparedOcrImage = {
+  image: File | Blob;
+  debug: OcrImageDebugInfo;
 };
 
 // Shown once OCR has produced text, above the editable review box. Never
@@ -226,24 +254,49 @@ export const OCR_PREPROCESS_TARGET_MIN_DIMENSION = 1600;
 // pretend to improve it.
 export const OCR_PREPROCESS_MAX_UPSCALE_FACTOR = 2;
 
-// Pure - decides the scale factor to apply before OCR, given the image's
-// natural pixel dimensions. Never downscales (Tesseract already handles
-// large photos fine, and downscaling a genuinely large photo would only lose
-// detail) and never upscales past OCR_PREPROCESS_MAX_UPSCALE_FACTOR.
-export const getOcrPreprocessScale = (width: number, height: number): number => {
+// Pure - decides what preprocessing, if any, to apply before OCR. Never
+// downscales (Tesseract already handles large photos fine, and downscaling a
+// genuinely large photo would only lose detail). Large readable photos are
+// passed through unchanged so the OCR worker sees the original high-quality
+// bytes rather than a canvas re-export.
+export const getOcrPreprocessPlan = (width: number, height: number): OcrPreprocessPlan => {
   if (!(width > 0) || !(height > 0)) {
-    return 1;
+    return {
+      scale: 1,
+      shouldPreprocess: false,
+      outputWidth: 0,
+      outputHeight: 0,
+      reason: "invalid_dimensions",
+    };
   }
 
   const longEdge = Math.max(width, height);
 
   if (longEdge >= OCR_PREPROCESS_TARGET_MIN_DIMENSION) {
-    return 1;
+    return {
+      scale: 1,
+      shouldPreprocess: false,
+      outputWidth: width,
+      outputHeight: height,
+      reason: "already_high_resolution",
+    };
   }
 
   const neededScale = OCR_PREPROCESS_TARGET_MIN_DIMENSION / longEdge;
-  return Math.min(neededScale, OCR_PREPROCESS_MAX_UPSCALE_FACTOR);
+  const scale = Math.min(neededScale, OCR_PREPROCESS_MAX_UPSCALE_FACTOR);
+
+  return {
+    scale,
+    shouldPreprocess: scale > 1,
+    outputWidth: Math.max(1, Math.round(width * scale)),
+    outputHeight: Math.max(1, Math.round(height * scale)),
+    reason: "upscaled_for_ocr",
+  };
 };
+
+// Backwards-compatible pure helper used by older tests and call sites.
+export const getOcrPreprocessScale = (width: number, height: number): number =>
+  getOcrPreprocessPlan(width, height).scale;
 
 // A light, fixed contrast boost - safe enough to help faint print without
 // blowing out highlights or crushing shadows on a well-lit photo.
@@ -263,18 +316,14 @@ export const applyGrayscaleContrast = (pixels: Uint8ClampedArray): void => {
   }
 };
 
-// Draws the image to a canvas (upscaling small images per
-// getOcrPreprocessScale), converts it to grayscale, and applies the contrast
-// boost above, resolving a new (lossless PNG) Blob for Tesseract to read.
-// Touches the DOM (Image/canvas), so - like capturePhotoFromVideoElement in
-// photoCapture.ts - this is exercised manually in the browser rather than
-// unit tested directly; getOcrPreprocessScale and applyGrayscaleContrast (the
-// pure math it uses) are unit tested. Preprocessing is a best-effort quality
-// improvement, not a requirement: readTextFromImage below falls back to the
-// original image if this fails for any reason (unsupported format, no canvas
-// support, decode failure), so it can never turn a working OCR read into a
-// broken one.
-export const preprocessImageForOcr = (image: File | Blob): Promise<Blob> =>
+// Decodes the image, then either:
+// - returns the original high-resolution Blob/File unchanged, or
+// - upscales genuinely small images before OCR with grayscale/light contrast.
+//
+// It never downscales and never redraws a clear high-resolution photo through
+// canvas just for the sake of preprocessing. The returned debug object only
+// contains dimensions/sizes/MIME types, never extracted text.
+export const preprocessImageForOcr = (image: File | Blob): Promise<PreparedOcrImage> =>
   new Promise((resolve, reject) => {
     const objectUrl = URL.createObjectURL(image);
     const element = new Image();
@@ -283,10 +332,43 @@ export const preprocessImageForOcr = (image: File | Blob): Promise<Blob> =>
 
     element.onload = () => {
       try {
-        const scale = getOcrPreprocessScale(element.naturalWidth, element.naturalHeight);
+        const plan = getOcrPreprocessPlan(element.naturalWidth, element.naturalHeight);
+        const baseDebug = {
+          sourceWidth: element.naturalWidth,
+          sourceHeight: element.naturalHeight,
+          sourceBytes: image.size,
+          sourceMimeType: image.type || "unknown",
+          preprocessScale: plan.scale,
+          preprocessReason: plan.reason,
+        } satisfies Pick<
+          OcrImageDebugInfo,
+          | "sourceWidth"
+          | "sourceHeight"
+          | "sourceBytes"
+          | "sourceMimeType"
+          | "preprocessScale"
+          | "preprocessReason"
+        >;
+
+        if (!plan.shouldPreprocess) {
+          cleanUp();
+          resolve({
+            image,
+            debug: {
+              ...baseDebug,
+              ocrWidth: element.naturalWidth,
+              ocrHeight: element.naturalHeight,
+              ocrBytes: image.size,
+              ocrMimeType: image.type || "unknown",
+              usedPreprocessedImage: false,
+            },
+          });
+          return;
+        }
+
         const canvas = document.createElement("canvas");
-        canvas.width = Math.max(1, Math.round(element.naturalWidth * scale));
-        canvas.height = Math.max(1, Math.round(element.naturalHeight * scale));
+        canvas.width = plan.outputWidth;
+        canvas.height = plan.outputHeight;
         const context = canvas.getContext("2d");
 
         if (!context) {
@@ -306,7 +388,17 @@ export const preprocessImageForOcr = (image: File | Blob): Promise<Blob> =>
             reject(new Error("Could not prepare this photo for reading."));
             return;
           }
-          resolve(blob);
+          resolve({
+            image: blob,
+            debug: {
+              ...baseDebug,
+              ocrWidth: canvas.width,
+              ocrHeight: canvas.height,
+              ocrBytes: blob.size,
+              ocrMimeType: blob.type || "unknown",
+              usedPreprocessedImage: true,
+            },
+          });
         }, "image/png");
       } catch (error) {
         cleanUp();
@@ -401,8 +493,20 @@ export const readTextFromImage = async (
   // so tests exercise this same fallback path and OCR still runs on the
   // original image, exactly as before this change.
   let sourceForOcr: File | Blob = image;
+  let debug: OcrImageDebugInfo = {
+    sourceBytes: image.size,
+    ocrBytes: image.size,
+    sourceMimeType: image.type || "unknown",
+    ocrMimeType: image.type || "unknown",
+    preprocessScale: 1,
+    usedPreprocessedImage: false,
+    preprocessReason: "unavailable",
+  };
+
   try {
-    sourceForOcr = await preprocessImageForOcr(image);
+    const prepared = await preprocessImageForOcr(image);
+    sourceForOcr = prepared.image;
+    debug = prepared.debug;
   } catch {
     sourceForOcr = image;
   }
@@ -425,6 +529,7 @@ export const readTextFromImage = async (
       text,
       confidence,
       warnings: getOcrQualityWarnings(text, confidence),
+      debug,
     };
   } catch {
     throw new OcrReadError();

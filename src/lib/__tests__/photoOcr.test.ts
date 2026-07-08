@@ -37,11 +37,13 @@ import {
   combineOcrTexts,
   formatOcrSectionWarning,
   getNextCloseUpPhotoLabel,
+  getOcrPreprocessPlan,
   getOcrPreprocessScale,
   getOcrQualityWarnings,
   isLikelyGarbledText,
   isOcrKeyDetailsReliable,
   isOcrResultUnreliable,
+  preprocessImageForOcr,
   shouldSuggestCloseUpPhoto,
   readTextFromImage,
 } from "../photoOcr";
@@ -296,11 +298,23 @@ describe("getOcrPreprocessScale", () => {
   it("does not upscale an image already at or above the target dimension", () => {
     expect(getOcrPreprocessScale(2000, 3000)).toBe(1);
     expect(getOcrPreprocessScale(OCR_PREPROCESS_TARGET_MIN_DIMENSION, 500)).toBe(1);
+    expect(getOcrPreprocessPlan(2000, 3000)).toMatchObject({
+      shouldPreprocess: false,
+      outputWidth: 2000,
+      outputHeight: 3000,
+      reason: "already_high_resolution",
+    });
   });
 
   it("upscales a small image up to the target long edge", () => {
     const scale = getOcrPreprocessScale(800, 600);
     expect(scale).toBeCloseTo(OCR_PREPROCESS_TARGET_MIN_DIMENSION / 800);
+    expect(getOcrPreprocessPlan(800, 600)).toMatchObject({
+      shouldPreprocess: true,
+      outputWidth: 1600,
+      outputHeight: 1200,
+      reason: "upscaled_for_ocr",
+    });
   });
 
   it("never upscales past the max upscale factor, even for a tiny image", () => {
@@ -311,6 +325,141 @@ describe("getOcrPreprocessScale", () => {
   it("treats zero/negative/missing dimensions as 'do not scale' rather than dividing by zero", () => {
     expect(getOcrPreprocessScale(0, 0)).toBe(1);
     expect(getOcrPreprocessScale(-10, 500)).toBe(1);
+    expect(getOcrPreprocessPlan(0, 0)).toMatchObject({
+      shouldPreprocess: false,
+      outputWidth: 0,
+      outputHeight: 0,
+      reason: "invalid_dimensions",
+    });
+  });
+});
+
+describe("preprocessImageForOcr dimensions", () => {
+  const withFakeImageDom = async (
+    dimensions: { width: number; height: number },
+    run: (fakeCanvas: {
+      width: number;
+      height: number;
+      drawImage: ReturnType<typeof vi.fn>;
+      getImageData: ReturnType<typeof vi.fn>;
+      putImageData: ReturnType<typeof vi.fn>;
+    }) => Promise<void>,
+  ) => {
+    const drawImage = vi.fn();
+    const getImageData = vi.fn(() => ({ data: new Uint8ClampedArray([120, 140, 160, 255]) }));
+    const putImageData = vi.fn();
+    const fakeCanvas = {
+      width: 0,
+      height: 0,
+      getContext: () => ({
+        drawImage,
+        getImageData,
+        putImageData,
+      }),
+      toBlob: (callback: (blob: Blob | null) => void, type: string) => {
+        callback(new Blob(["preprocessed"], { type }));
+      },
+    };
+
+    class FakeImage {
+      naturalWidth = dimensions.width;
+      naturalHeight = dimensions.height;
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      set src(_value: string) {
+        this.onload?.();
+      }
+    }
+
+    vi.stubGlobal("document", {
+      createElement: () => fakeCanvas,
+    });
+    vi.stubGlobal("Image", FakeImage);
+    vi.stubGlobal("URL", {
+      createObjectURL: vi.fn(() => "blob:fake-photo"),
+      revokeObjectURL: vi.fn(),
+    });
+
+    try {
+      await run({
+        get width() {
+          return fakeCanvas.width;
+        },
+        get height() {
+          return fakeCanvas.height;
+        },
+        drawImage,
+        getImageData,
+        putImageData,
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  };
+
+  it("preserves high source dimensions and passes readable images through without canvas re-export", async () => {
+    await withFakeImageDom({ width: 2048, height: 1366 }, async (fakeCanvas) => {
+      const source = new Blob(["large readable photo"], { type: "image/jpeg" });
+      const prepared = await preprocessImageForOcr(source);
+
+      expect(prepared.image).toBe(source);
+      expect(prepared.debug).toMatchObject({
+        sourceWidth: 2048,
+        sourceHeight: 1366,
+        ocrWidth: 2048,
+        ocrHeight: 1366,
+        sourceMimeType: "image/jpeg",
+        ocrMimeType: "image/jpeg",
+        preprocessScale: 1,
+        usedPreprocessedImage: false,
+        preprocessReason: "already_high_resolution",
+      });
+      expect(fakeCanvas.drawImage).not.toHaveBeenCalled();
+    });
+  });
+
+  it("upscales only small images before OCR and records OCR dimensions", async () => {
+    await withFakeImageDom({ width: 800, height: 600 }, async (fakeCanvas) => {
+      const source = new Blob(["small photo"], { type: "image/jpeg" });
+      const prepared = await preprocessImageForOcr(source);
+
+      expect(prepared.image).not.toBe(source);
+      expect(prepared.image.type).toBe("image/png");
+      expect(prepared.debug).toMatchObject({
+        sourceWidth: 800,
+        sourceHeight: 600,
+        ocrWidth: 1600,
+        ocrHeight: 1200,
+        preprocessScale: 2,
+        usedPreprocessedImage: true,
+        preprocessReason: "upscaled_for_ocr",
+      });
+      expect(fakeCanvas.width).toBe(1600);
+      expect(fakeCanvas.height).toBe(1200);
+      expect(fakeCanvas.drawImage).toHaveBeenCalledOnce();
+    });
+  });
+
+  it("passes the original high-resolution blob to Tesseract and returns text-free debug info", async () => {
+    await withFakeImageDom({ width: 2048, height: 1366 }, async () => {
+      const source = new Blob(["large readable photo"], { type: "image/jpeg" });
+      recognizeMock.mockResolvedValue({
+        data: { text: "Readable letter text", confidence: 91 },
+      });
+
+      const result = await readTextFromImage(source);
+
+      expect(recognizeMock).toHaveBeenCalledTimes(1);
+      expect(recognizeMock.mock.calls[0][0]).toBe(source);
+      expect(result.debug).toMatchObject({
+        sourceWidth: 2048,
+        sourceHeight: 1366,
+        ocrWidth: 2048,
+        ocrHeight: 1366,
+        usedPreprocessedImage: false,
+      });
+      expect(JSON.stringify(result.debug)).not.toContain("Readable letter text");
+    });
   });
 });
 

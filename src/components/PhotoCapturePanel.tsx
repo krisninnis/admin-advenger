@@ -1,9 +1,6 @@
 import { useEffect, useReducer, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { photoCaptureAcceptAttribute } from "../lib/fileIntakeAccept";
 import {
-  CAMERA_IDEAL_HEIGHT,
-  CAMERA_IDEAL_WIDTH,
-  CAMERA_GUIDANCE_FRAME_CLASSNAME,
   CAMERA_GUIDANCE_TIPS,
   CAMERA_PREVIEW_ACTIONS_CLASSNAME,
   CAMERA_PERMISSION_DENIED_MESSAGE,
@@ -34,7 +31,6 @@ import {
   getCapturedPhotoFileName,
   getPhotoCaptureSectionLabel,
   getPhotoCaptureSectionTitle,
-  mapDisplayedFrameToImageCrop,
   photoCaptureReducer,
   requestEnvironmentCameraStream,
   stopMediaStreamTracks,
@@ -50,6 +46,11 @@ type PhotoCapturePanelProps = {
   onUsePhotos: (photos: CapturedPhotoForOcr[]) => void;
   onClose: () => void;
   defaultSection?: PhotoCaptureSection;
+  // When the panel is opened with an image already chosen elsewhere (e.g. an
+  // image picked from the "Upload a file" area), it skips the choice screen
+  // and jumps straight to the same "Adjust document area" step an uploaded
+  // photo normally reaches - reusing the one upload/crop path, not a new one.
+  initialPhotoFile?: File;
 };
 
 function UploadExistingPhotoInput({ onSelect }: { onSelect: (file: File) => void }) {
@@ -71,16 +72,21 @@ function UploadExistingPhotoInput({ onSelect }: { onSelect: (file: File) => void
   );
 }
 
-export function PhotoCapturePanel({ onUsePhotos, onClose, defaultSection }: PhotoCapturePanelProps) {
+export function PhotoCapturePanel({
+  onUsePhotos,
+  onClose,
+  defaultSection,
+  initialPhotoFile,
+}: PhotoCapturePanelProps) {
   const [stage, dispatch] = useReducer(photoCaptureReducer, "choice");
   const [errorMessage, setErrorMessage] = useState("");
   const [capturedPreviewUrl, setCapturedPreviewUrl] = useState("");
   const [isCropping, setIsCropping] = useState(false);
   const [cropWarning, setCropWarning] = useState("");
   const [cropRect, setCropRect] = useState<CropRectRatio>(() => getDefaultManualCropRect());
+  const initialPhotoSeededRef = useRef(false);
   const streamRef = useRef<MediaStream | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const frameRef = useRef<HTMLDivElement | null>(null);
   const cropAreaRef = useRef<HTMLDivElement | null>(null);
   const capturedFileRef = useRef<File | undefined>(undefined);
   const activeCropDragRef = useRef<{
@@ -218,6 +224,17 @@ export function PhotoCapturePanel({ onUsePhotos, onClose, defaultSection }: Phot
     dispatch({ type: "photo_captured" });
   };
 
+  // If opened with a pre-chosen image, seed it once so the panel opens on the
+  // "Adjust document area" step. Guarded with a ref so React StrictMode's
+  // double-invoke in development doesn't create a second preview object URL.
+  useEffect(() => {
+    if (initialPhotoFile && !initialPhotoSeededRef.current) {
+      initialPhotoSeededRef.current = true;
+      handleUploadExisting(initialPhotoFile);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleTakePhotoClick = async () => {
     const videoElement = videoRef.current;
 
@@ -230,25 +247,11 @@ export function PhotoCapturePanel({ onUsePhotos, onClose, defaultSection }: Phot
         videoElement,
         getCapturedPhotoFileName(currentSection),
       );
-      const dimensions = {
-        width: videoElement.videoWidth || CAMERA_IDEAL_WIDTH,
-        height: videoElement.videoHeight || CAMERA_IDEAL_HEIGHT,
-      };
-      const frameElement = frameRef.current;
-      const mappedCropRect = frameElement
-        ? mapDisplayedFrameToImageCrop({
-            mediaRect: videoElement.getBoundingClientRect(),
-            frameRect: frameElement.getBoundingClientRect(),
-            naturalWidth: dimensions.width,
-            naturalHeight: dimensions.height,
-            objectFit: "contain",
-          })
-        : null;
       // Capture-complete cleanup - the camera does not need to stay on once
       // a frame has been captured.
       stopActiveStream();
       capturedFileRef.current = file;
-      setCropRect(getDefaultManualCropRect(mappedCropRect));
+      setCropRect(getDefaultManualCropRect());
       setCropWarning("");
       setCapturedPreviewUrl(URL.createObjectURL(file));
       dispatch({ type: "photo_captured" });
@@ -393,9 +396,9 @@ export function PhotoCapturePanel({ onUsePhotos, onClose, defaultSection }: Phot
       aria-labelledby="photo-capture-panel-title"
     >
       <div
-        className={`w-full max-w-lg rounded-xl border border-white/10 bg-slate-900 p-4 shadow-2xl shadow-slate-950/50 sm:p-6 ${
+        className={`w-full rounded-xl border border-white/10 bg-slate-900 p-4 shadow-2xl shadow-slate-950/50 sm:p-6 ${
           isCameraWorkStage ? "flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden" : ""
-        }`}
+        } ${isCameraWorkStage ? "max-w-3xl" : "max-w-lg"}`}
       >
         <div className="flex flex-wrap items-start justify-between gap-4">
           <h2 id="photo-capture-panel-title" className="text-xl font-bold text-white sm:text-2xl">
@@ -441,14 +444,11 @@ export function PhotoCapturePanel({ onUsePhotos, onClose, defaultSection }: Phot
           <div className="mt-4 flex min-h-0 flex-1 flex-col gap-2">
             <div className="shrink-0 rounded-lg border border-cyan-300/25 bg-cyan-300/10 px-4 py-3 text-cyan-50">
               <p className="text-sm font-black">{currentSectionTitle}</p>
-              <p className="mt-1 text-base font-black leading-6">{currentGuidanceMessage}.</p>
+              <p className="mt-1 text-base font-black leading-6">{currentGuidanceMessage}</p>
               <p className="mt-1 text-sm leading-6 text-cyan-50/85">
-                Try to fill most of the frame. {PHOTO_ADJUST_AFTER_CAPTURE_MESSAGE}
+                Try to fill the photo with the page. {PHOTO_ADJUST_AFTER_CAPTURE_MESSAGE}
               </p>
             </div>
-            {/* The A4-shaped frame is a plain CSS guide, not real edge
-                detection or the final crop. The user confirms the actual
-                OCR area in the adjust step after taking the photo. */}
             <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-lg border border-white/10 bg-black">
               <video
                 ref={videoRef}
@@ -457,7 +457,6 @@ export function PhotoCapturePanel({ onUsePhotos, onClose, defaultSection }: Phot
                 muted
                 className="max-h-[calc(100dvh-15rem)] min-h-0 w-full object-contain"
               />
-              <div ref={frameRef} aria-hidden="true" className={CAMERA_GUIDANCE_FRAME_CLASSNAME} />
               <p
                 aria-hidden="true"
                 className="pointer-events-none absolute inset-x-0 top-2 text-center text-xs font-bold text-white [text-shadow:0_1px_3px_rgb(0_0_0_/_0.8)]"
@@ -492,52 +491,51 @@ export function PhotoCapturePanel({ onUsePhotos, onClose, defaultSection }: Phot
         {stage === "captured" ? (
           <div className="mt-4 flex min-h-0 flex-1 flex-col gap-3">
             <div className={PHOTO_REVIEW_CONTENT_CLASSNAME}>
-              <div className="rounded-lg border border-emerald-300/20 bg-emerald-300/10 px-4 py-3">
-                <p className="text-sm font-black text-emerald-50">{PHOTO_ADJUST_TITLE}</p>
-                <p className="mt-1 text-sm leading-6 text-emerald-50/85">
+              <div className="rounded-lg border border-cyan-300/20 bg-cyan-300/10 px-4 py-3">
+                <p className="text-sm font-black text-cyan-50">{PHOTO_ADJUST_TITLE}</p>
+                <p className="mt-1 text-sm leading-6 text-cyan-50/85">
                   {PHOTO_ADJUST_INSTRUCTION}
                 </p>
               </div>
               {capturedPreviewUrl ? (
-                <div
-                  ref={cropAreaRef}
-                  className="relative overflow-hidden rounded-lg border border-white/10 bg-black"
-                >
-                  <img
-                    src={capturedPreviewUrl}
-                    alt="Captured photo preview"
-                    className="max-h-[min(46dvh,22rem)] w-full select-none object-contain"
-                    draggable={false}
-                  />
-                  <div
-                    className="absolute border-2 border-emerald-300 bg-emerald-300/10 shadow-[0_0_0_9999px_rgb(15_23_42_/_0.45)]"
-                    style={{
-                      left: `${cropRect.x * 100}%`,
-                      top: `${cropRect.y * 100}%`,
-                      width: `${cropRect.width * 100}%`,
-                      height: `${cropRect.height * 100}%`,
-                    }}
-                    onPointerDown={(event) => startCropDrag("move", event)}
-                    role="presentation"
-                  >
-                    {[
-                      ["top_left", "left-0 top-0 -translate-x-1/2 -translate-y-1/2"],
-                      ["top_right", "right-0 top-0 translate-x-1/2 -translate-y-1/2"],
-                      ["bottom_left", "bottom-0 left-0 -translate-x-1/2 translate-y-1/2"],
-                      ["bottom_right", "bottom-0 right-0 translate-x-1/2 translate-y-1/2"],
-                    ].map(([mode, className]) => (
-                      <div
-                        key={mode}
-                        className={`absolute h-5 w-5 rounded-full border-2 border-slate-950 bg-emerald-300 ${className}`}
-                        onPointerDown={(event) => {
-                          event.stopPropagation();
-                          startCropDrag(
-                            mode as NonNullable<typeof activeCropDragRef.current>["mode"],
-                            event,
-                          );
-                        }}
-                      />
-                    ))}
+                <div className="flex justify-center overflow-hidden rounded-lg border border-white/10 bg-black p-1">
+                  <div ref={cropAreaRef} className="relative max-w-full overflow-hidden">
+                    <img
+                      src={capturedPreviewUrl}
+                      alt="Captured photo preview"
+                      className="block max-h-[min(62dvh,36rem)] max-w-full select-none"
+                      draggable={false}
+                    />
+                    <div
+                      className="absolute border-2 border-cyan-100 bg-cyan-100/10 shadow-[0_0_0_9999px_rgb(15_23_42_/_0.42)]"
+                      style={{
+                        left: `${cropRect.x * 100}%`,
+                        top: `${cropRect.y * 100}%`,
+                        width: `${cropRect.width * 100}%`,
+                        height: `${cropRect.height * 100}%`,
+                      }}
+                      onPointerDown={(event) => startCropDrag("move", event)}
+                      role="presentation"
+                    >
+                      {[
+                        ["top_left", "left-0 top-0 -translate-x-1/2 -translate-y-1/2"],
+                        ["top_right", "right-0 top-0 translate-x-1/2 -translate-y-1/2"],
+                        ["bottom_left", "bottom-0 left-0 -translate-x-1/2 translate-y-1/2"],
+                        ["bottom_right", "bottom-0 right-0 translate-x-1/2 translate-y-1/2"],
+                      ].map(([mode, className]) => (
+                        <div
+                          key={mode}
+                          className={`absolute h-8 w-8 rounded-full border-2 border-slate-950 bg-cyan-100 shadow-lg shadow-slate-950/40 ${className}`}
+                          onPointerDown={(event) => {
+                            event.stopPropagation();
+                            startCropDrag(
+                              mode as NonNullable<typeof activeCropDragRef.current>["mode"],
+                              event,
+                            );
+                          }}
+                        />
+                      ))}
+                    </div>
                   </div>
                 </div>
               ) : null}

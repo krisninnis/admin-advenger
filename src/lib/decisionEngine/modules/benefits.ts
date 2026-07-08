@@ -29,6 +29,17 @@ const findAmount = (text: string) => {
   return match ? `£${match[1]}` : undefined;
 };
 
+// A PIP decision letter usually states the decision date in plain words
+// ("the date of this decision is 4 July 2026" or "decision date: 04/07/2026").
+// We surface it as a date the user must check, never as a confirmed deadline.
+const decisionDatePattern =
+  /(?:date of (?:this|the) decision (?:is|was)?|decision date)[:\s]+(\d{1,2}\s+[A-Za-z]+\s+\d{4}|\d{1,2}\/\d{1,2}\/\d{2,4})/i;
+
+const findDecisionDate = (text: string) => {
+  const match = text.match(decisionDatePattern);
+  return match ? { value: match[1].trim(), sourceQuote: match[0].trim() } : undefined;
+};
+
 type ActivityDefinition = {
   label: string;
   patterns: RegExp[];
@@ -235,12 +246,13 @@ const stageContentByType: Record<BenefitsDocumentType, StageContent> = {
   benefits_decision: {
     title: "PIP decision check",
     plainEnglishSummary:
-      "This looks like a PIP decision letter, at the decision or Mandatory Reconsideration stage.",
+      "This appears to be a PIP decision. Check the decision date on the letter. If you disagree, you can prepare reasons and evidence to ask for it to be looked at again.",
     whatThisLooksLike:
-      "This appears to show a PIP decision, points for daily living and/or mobility, and your Mandatory Reconsideration rights.",
+      "This appears to be a PIP decision letter. It should show the decision date, the points awarded for daily living and mobility if they are listed, and your right to ask for the decision to be looked at again (Mandatory Reconsideration).",
     caseStrength: "urgent_get_advice",
     strengthLabel: "Check your deadline - Mandatory Reconsideration",
     whatMattersMost: [
+      "Check the decision date on the letter.",
       "Focus on which activities or descriptors you disagree with, not just the total points.",
       "Real examples of what happens when you try each activity matter more than the diagnosis itself.",
     ],
@@ -342,6 +354,8 @@ export const analyseBenefitsProblem = (
   const dailyLivingFound = detectActivities(normalisedText, dailyLivingActivities);
   const mobilityFound = detectActivities(normalisedText, mobilityActivities);
   const stage = stageContentByType[documentType];
+  const decisionDate = findDecisionDate(normalisedText);
+  const isDecisionStage = documentType === "benefits_decision" || documentType === "benefits_appeal";
 
   const scotlandNote = mentionsScotlandAdp
     ? "This looks like it may be about Adult Disability Payment (ADP) in Scotland, not Personal Independence Payment (PIP). Scotland uses Adult Disability Payment, run by Social Security Scotland, instead of PIP. The general steps here (check the stage, organise evidence, note deadlines) can still help, but check Social Security Scotland's own guidance for ADP-specific rules."
@@ -359,6 +373,9 @@ export const analyseBenefitsProblem = (
   ];
 
   const sourceFacts: DecisionSourceFact[] = [
+    ...(decisionDate
+      ? [{ label: "Decision date", value: decisionDate.value, sourceQuote: decisionDate.sourceQuote }]
+      : []),
     ...(amountMentioned
       ? [{ label: "Amount mentioned", value: amountMentioned, sourceQuote: amountMentioned }]
       : []),
@@ -387,6 +404,9 @@ export const analyseBenefitsProblem = (
       ? []
       : ["Which specific daily living or mobility activities are affected is not clear from this text alone."],
     cannotKnow: [
+      ...(isDecisionStage
+        ? ["AdminAvenger cannot know whether DWP will change the decision."]
+        : []),
       "Whether DWP will accept the evidence or award any particular points.",
       "The exact wording of the decision letter beyond what has been pasted here.",
     ],

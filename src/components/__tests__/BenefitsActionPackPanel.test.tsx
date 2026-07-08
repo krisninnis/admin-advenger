@@ -39,6 +39,7 @@ const pack: BenefitsActionPack = {
     },
   ],
   evidenceMissing: ["Full statement"],
+  risks: ["A deduction that looks wrong keeps reducing your payment until it is queried."],
   questionsToAnswer: [{ id: "question-1", question: "Do you recognise this deduction?" }],
   uncertainty: ["The exact assessment period needs checking."],
   cannotKnow: ["Whether all account entries are visible."],
@@ -55,8 +56,9 @@ describe("BenefitsActionPackPanel", () => {
     expect(html).toContain("What matters");
     expect(html).toContain("Possible dates to check");
     expect(html).toContain("Money mentioned");
-    expect(html).toContain("Evidence found");
-    expect(html).toContain("Evidence missing");
+    expect(html).toContain("Evidence already seen");
+    expect(html).toContain("Evidence to gather");
+    expect(html).toContain("Risks to be aware of");
     expect(html).toContain("Questions to answer");
     expect(html).toContain("Uncertainty");
     expect(html).toContain("What AdminAvenger cannot know");
@@ -64,5 +66,33 @@ describe("BenefitsActionPackPanel", () => {
     expect(html).toContain("Draft/checklist if available");
     expect(html).toContain("Not counted in savings, recovered money, or the money tracker.");
     expect(html).toContain("Check this date on your letter.");
+  });
+
+  it("never renders raw internal evidence prefixes as if they were human copy", () => {
+    const packWithInternalCaseEvidence: BenefitsActionPack = {
+      ...pack,
+      // Simulates the labels the case file adds for its own bookkeeping. The
+      // builder is expected to strip these before they reach the panel; this
+      // fixture passes them directly to prove the rendered output never shows
+      // debug-style prefixes even if one slipped through.
+      evidenceFound: [
+        { id: "evidence-1", label: "Deductions section found", value: "Yes", source: "detected" },
+      ],
+    };
+
+    const html = renderToStaticMarkup(
+      <BenefitsActionPackPanel pack={packWithInternalCaseEvidence} />,
+    );
+
+    for (const rawPrefix of [
+      "Possible ground:",
+      "Missing:",
+      "Deadline/urgency:",
+      "Risk:",
+      "Safety note:",
+      "Source:",
+    ]) {
+      expect(html).not.toContain(rawPrefix);
+    }
   });
 });

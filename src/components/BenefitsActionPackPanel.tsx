@@ -94,7 +94,7 @@ export function BenefitsActionPackPanel({ pack }: BenefitsActionPackPanelProps) 
           )}
         </Section>
 
-        <Section title="Evidence found">
+        <Section title="Evidence already seen">
           {pack.evidenceFound.length > 0 ? (
             <ul className="space-y-2">
               {pack.evidenceFound.map((item) => (
@@ -104,14 +104,24 @@ export function BenefitsActionPackPanel({ pack }: BenefitsActionPackPanelProps) 
               ))}
             </ul>
           ) : (
-            <p className="text-slate-400">No evidence items were extracted from the text.</p>
+            <p className="text-slate-400">
+              The key dates and amounts are listed in their own sections above. Add anything else
+              from the letter you think matters.
+            </p>
           )}
         </Section>
 
-        <Section title="Evidence missing">
+        <Section title="Evidence to gather">
           <TextList
             items={pack.evidenceMissing}
             emptyText="No missing evidence was listed, but check the letter and your records."
+          />
+        </Section>
+
+        <Section title="Risks to be aware of">
+          <TextList
+            items={pack.risks}
+            emptyText="No specific risks were listed, but check the letter and any deadlines carefully."
           />
         </Section>
 

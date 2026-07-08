@@ -187,6 +187,15 @@ const benefitsDecisionPatterns = [
   /\bdecision date\b/i,
   /\bmandatory reconsideration\b/i,
   /\bone month\b/i,
+  // A PIP refusal/decision letter often does not use the exact words above.
+  // These patterns catch the common "we decided you are not entitled" wording,
+  // the "date of this decision" line, and the "ask us to look at this decision
+  // again" (Mandatory Reconsideration) invitation, so a plain refusal letter is
+  // treated as a decision rather than falling through to the claim-form stage.
+  /not entitled/i,
+  /date of (?:this|the) decision/i,
+  /look at (?:this|the) decision again/i,
+  /we have looked at your claim/i,
 ];
 
 export const detectBenefitsDocumentType = (

@@ -49,6 +49,7 @@ export type BenefitsActionPack = {
   moneyMentioned: BenefitsMoneyLine[];
   evidenceFound: BenefitsEvidenceItem[];
   evidenceMissing: string[];
+  risks: string[];
   questionsToAnswer: BenefitsMissingQuestion[];
   uncertainty: string[];
   cannotKnow: string[];
@@ -154,9 +155,16 @@ const unique = (items: string[]) => {
 
 const firstMoneyValue = (value: string) => value.match(moneyPattern)?.[0]?.trim();
 
+// Generic "amount mentioned" style labels are only ever fallbacks. When the same
+// amount already appears under a specific label (Standard allowance, Housing,
+// Deductions, Total payment, and so on) the generic line is dropped so the money
+// section never shows the same figure twice.
+const genericMoneyLabels = new Set(["money mentioned", "amount mentioned"]);
+
 const addMoneyLine = (
   lines: BenefitsMoneyLine[],
   seen: Set<string>,
+  seenAmounts: Set<string>,
   label: string,
   amountText: string | undefined,
   treatment: DecisionAmountTreatment,
@@ -172,7 +180,14 @@ const addMoneyLine = (
     return;
   }
 
+  const amountKey = normaliseKey(amountText);
+
+  if (genericMoneyLabels.has(normaliseKey(label)) && seenAmounts.has(amountKey)) {
+    return;
+  }
+
   seen.add(key);
+  seenAmounts.add(amountKey);
   lines.push({
     id: `money-${lines.length + 1}`,
     label,
@@ -187,11 +202,13 @@ const addMoneyLine = (
 const buildMoneyLines = (decisionResult: DecisionResult): BenefitsMoneyLine[] => {
   const lines: BenefitsMoneyLine[] = [];
   const seen = new Set<string>();
+  const seenAmounts = new Set<string>();
 
   for (const fact of decisionResult.sourceFacts) {
     addMoneyLine(
       lines,
       seen,
+      seenAmounts,
       fact.label,
       firstMoneyValue(fact.value),
       decisionResult.amountTreatment,
@@ -199,19 +216,14 @@ const buildMoneyLines = (decisionResult: DecisionResult): BenefitsMoneyLine[] =>
     );
   }
 
-  const amountAlreadyFound =
-    decisionResult.amountMentioned &&
-    lines.some((line) => normaliseKey(line.amountText) === normaliseKey(decisionResult.amountMentioned ?? ""));
-
-  if (!amountAlreadyFound) {
-    addMoneyLine(
-      lines,
-      seen,
-      "Money mentioned",
-      decisionResult.amountMentioned,
-      decisionResult.amountTreatment,
-    );
-  }
+  addMoneyLine(
+    lines,
+    seen,
+    seenAmounts,
+    "Money mentioned",
+    decisionResult.amountMentioned,
+    decisionResult.amountTreatment,
+  );
 
   return lines;
 };
@@ -250,12 +262,31 @@ const buildKeyDates = (decisionResult: DecisionResult): BenefitsKeyDate[] => {
     }
   }
 
+  // Only deadlines that carry an actual date belong in "Possible dates to check".
+  // Pure urgency or guidance copy (for example "as soon as possible" or "confirm
+  // the exact deadline") is not a date - it is already surfaced through risks and
+  // next steps, so it must not appear here as if it were a date to look up.
   for (const deadline of decisionResult.deadlines) {
-    addKeyDate(dates, seen, "Possible date or deadline to check", deadline);
+    if (dateValuePattern.test(deadline)) {
+      addKeyDate(dates, seen, "Possible date or deadline to check", deadline);
+    }
   }
 
   return dates;
 };
+
+// Internal working labels that the case file adds for its own bookkeeping. They
+// are already represented as clean, human sections elsewhere in the Action Pack
+// (grounds, evidence to gather, dates, risks, safety) and must never surface as
+// raw "Possible ground:" / "Missing:" / "Risk:" style debug text.
+const internalCaseLabelPattern =
+  /^\s*(possible ground|missing:|deadline\/urgency|risk|safety note|source|rule caveat|caveat)/i;
+
+// Money and dates each have their own dedicated section, so we keep them out of
+// "Evidence already seen" to stop the same figure or date being repeated.
+const isMoneyEvidence = (value: string) => Boolean(firstMoneyValue(value));
+const isDateEvidence = (label: string, value: string) =>
+  dateLabelPattern.test(label) || dateValuePattern.test(value);
 
 const buildEvidenceItems = (
   sourceFacts: DecisionSourceFact[],
@@ -265,6 +296,10 @@ const buildEvidenceItems = (
   const seen = new Set<string>();
 
   for (const fact of sourceFacts) {
+    if (isMoneyEvidence(fact.value) || isDateEvidence(fact.label, fact.value)) {
+      continue;
+    }
+
     const key = normaliseKey(`${fact.label}:${fact.value}`);
 
     if (seen.has(key)) {
@@ -282,6 +317,14 @@ const buildEvidenceItems = (
   }
 
   for (const evidence of adminCase?.evidence ?? []) {
+    if (
+      internalCaseLabelPattern.test(evidence.label) ||
+      isMoneyEvidence(evidence.value) ||
+      isDateEvidence(evidence.label, evidence.value)
+    ) {
+      continue;
+    }
+
     const key = normaliseKey(`${evidence.label}:${evidence.value}`);
 
     if (seen.has(key)) {
@@ -342,6 +385,7 @@ export const buildBenefitsActionPack = (
     moneyMentioned: buildMoneyLines(decisionResult),
     evidenceFound: buildEvidenceItems(decisionResult.sourceFacts, adminCase),
     evidenceMissing: unique(decisionResult.evidenceNeeded),
+    risks: unique(decisionResult.risks),
     questionsToAnswer,
     uncertainty: unique(decisionResult.uncertainty),
     cannotKnow: unique(decisionResult.cannotKnow),

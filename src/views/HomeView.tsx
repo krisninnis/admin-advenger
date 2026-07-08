@@ -6,7 +6,10 @@ import { InboxScanPreview } from "../components/InboxScanPreview";
 import { InboxScanPromptCard } from "../components/InboxScanPromptCard";
 import { OpportunityCardPanel } from "../components/OpportunityCardPanel";
 import { PhotoCapturePanel } from "../components/PhotoCapturePanel";
-import { SimpleResultPanel, type SimpleResultAction } from "../components/SimpleResultPanel";
+import {
+  ResultCaseSheet,
+  type ResultCaseSheetAction,
+} from "../components/ResultCaseSheet";
 import { StatusBadge } from "../components/StatusBadge";
 import { StrategicNextStepPanel } from "../components/StrategicNextStepPanel";
 import type { InboxScanSettings } from "../lib/inboxScanStorage";
@@ -568,26 +571,6 @@ export function HomeView({
           strategicNextStepPlan,
         })
       : undefined;
-  const displayOpportunity =
-    primaryOpportunity && resultViewModel
-      ? {
-          ...primaryOpportunity,
-          title: resultViewModel.title,
-          plainEnglishSummary: resultViewModel.summary,
-          statusLabel: resultViewModel.primaryStatusLabel,
-          evidenceFound:
-            resultViewModel.evidenceFound.length > 0
-              ? resultViewModel.evidenceFound.map((item) => `${item.label}: ${item.value}`)
-              : primaryOpportunity.evidenceFound,
-          missingInformation:
-            resultViewModel.evidenceToGather.length > 0
-              ? resultViewModel.evidenceToGather.map((item) => item.value)
-              : primaryOpportunity.missingInformation,
-          nextBestAction: resultViewModel.bestNextMove
-            ? `${resultViewModel.bestNextMove.label}: ${resultViewModel.bestNextMove.description}`
-            : primaryOpportunity.nextBestAction,
-        }
-      : primaryOpportunity;
   const guidedMode =
     primaryCase && primaryOpportunity
       ? getGuidedCaseMode(primaryCase, primaryOpportunity)
@@ -606,13 +589,6 @@ export function HomeView({
         isLowActionDeliveryUpdate(primaryCase) ||
         isNoActionResult(primaryCase)),
   );
-  const recordSaveHint =
-    primaryOpportunity?.opportunityType === "no_action_needed" ||
-    primaryOpportunity?.opportunityType === "delivery_update"
-      ? "Best for FYI/no-action items."
-      : primaryOpportunity?.opportunityType === "receipt_guardian"
-        ? "Best for proof of purchase."
-        : "Save this for your records only. It will not count as money saved.";
   const hideSaveCase =
     primaryOpportunity?.opportunityType === "no_action_needed" ||
     primaryOpportunity?.opportunityType === "delivery_update" ||
@@ -650,7 +626,7 @@ export function HomeView({
         ? "Save this task"
         : getHomePrimaryActionLabel(primaryOpportunity.opportunityType, guidedMode)
       : undefined;
-  const simplePrimaryAction: SimpleResultAction | undefined =
+  const simplePrimaryAction: ResultCaseSheetAction | undefined =
     primaryOpportunity && primaryCase
       ? {
           label: primaryActionLabel ?? "Save this check",
@@ -664,7 +640,7 @@ export function HomeView({
           emphasis: "primary",
         }
       : undefined;
-  const simpleSecondaryActions: SimpleResultAction[] =
+  const simpleSecondaryActions: ResultCaseSheetAction[] =
     primaryCase && primaryOpportunity
       ? [
           ...(showEmailSafetyButton &&
@@ -1869,15 +1845,11 @@ export function HomeView({
 
       {aiExtraction ? <AiExtractedFactsPanel extraction={aiExtraction} /> : null}
 
-      {displayOpportunity ? (
-        <SimpleResultPanel
-          opportunity={displayOpportunity}
+      {resultViewModel ? (
+        <ResultCaseSheet
+          model={resultViewModel}
           primaryAction={simplePrimaryAction}
           secondaryActions={simpleSecondaryActions}
-          detailsOpen={showDetailed}
-          onToggleDetails={() => setShowDetailed((current) => !current)}
-          note={`Nothing has been saved yet. ${recordSaveHint}`}
-          details={<OpportunityCardPanel opportunity={displayOpportunity} />}
           guidedNextStepButton={
             guidedNextStep
               ? {
@@ -1886,37 +1858,24 @@ export function HomeView({
                 }
               : undefined
           }
+          onDownloadAdviserPack={adviserExportPack ? handleDownloadAdviserPack : undefined}
+          supportingDetailsOpen={showDetailed}
+          onToggleSupportingDetails={() => setShowDetailed((current) => !current)}
         />
       ) : null}
 
-      {adviserExportPack ? (
-        <section className="rounded-lg border border-cyan-300/20 bg-cyan-300/[0.07] p-4 sm:flex sm:items-center sm:justify-between sm:gap-4">
-          <div>
-            <p className="text-sm font-bold uppercase tracking-widest text-cyan-200">
-              Adviser pack
-            </p>
-            <p
-              id="adviser-export-helper"
-              className="mt-2 max-w-3xl text-sm leading-6 text-cyan-50/90"
-            >
-              Creates a Markdown file you can save, print, or share with someone you trust.
-              AdminAvenger does not send it anywhere.
-            </p>
+      {showDetailed && primaryOpportunity ? (
+        <section className="rounded-lg border border-white/10 bg-slate-950/55 p-4 sm:p-5">
+          <p className="text-sm font-bold uppercase tracking-widest text-slate-400">
+            Supporting detail
+          </p>
+          <div className="mt-4 grid gap-4">
+            <OpportunityCardPanel opportunity={primaryOpportunity} />
+            {strategicNextStepPlan ? <StrategicNextStepPanel plan={strategicNextStepPlan} /> : null}
+            {benefitsActionPack ? <BenefitsActionPackPanel pack={benefitsActionPack} /> : null}
           </div>
-          <button
-            type="button"
-            aria-describedby="adviser-export-helper"
-            onClick={handleDownloadAdviserPack}
-            className="mt-4 min-h-11 w-full rounded-lg border border-cyan-300/40 bg-cyan-300 px-4 py-3 text-sm font-bold text-slate-950 shadow-lg shadow-cyan-950/20 transition hover:bg-cyan-200 focus:outline-none focus:ring-2 focus:ring-cyan-200 focus:ring-offset-2 focus:ring-offset-slate-950 sm:mt-0 sm:w-auto"
-          >
-            Download adviser pack
-          </button>
         </section>
       ) : null}
-
-      {strategicNextStepPlan ? <StrategicNextStepPanel plan={strategicNextStepPlan} /> : null}
-
-      {benefitsActionPack ? <BenefitsActionPackPanel pack={benefitsActionPack} /> : null}
 
       {showGuidedNextStep && guidedNextStep ? (
         <GuidedNextStepPanel

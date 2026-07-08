@@ -5,6 +5,7 @@ import type {
   ResultMoneyView,
   ResultViewModel,
 } from "../lib/resultViewModel";
+import { CopyButton } from "./CopyButton";
 
 export type ResultCaseSheetAction = {
   label: string;
@@ -405,7 +406,13 @@ export function ResultCaseSheet({
         <Section title="Draft/checklist" tone="emerald">
           {model.draftOrChecklist ? (
             <div>
-              <p className="font-semibold text-white">{model.draftOrChecklist.title}</p>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <p className="font-semibold text-white">{model.draftOrChecklist.title}</p>
+                <CopyButton
+                  label="draft/checklist"
+                  getText={() => model.draftOrChecklist?.body ?? ""}
+                />
+              </div>
               <pre className="mt-3 max-h-80 overflow-auto whitespace-pre-wrap rounded-lg border border-white/10 bg-slate-950/70 p-4 text-sm leading-6 text-slate-100">
                 {model.draftOrChecklist.body}
               </pre>

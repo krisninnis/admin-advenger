@@ -117,6 +117,19 @@ Please see the attached update. We will write again if more information is neede
     expect(findForbiddenSafetyPhrases(html)).toEqual([]);
   });
 
+  it("shows a copy button beside the draft/checklist text, copying only that text", () => {
+    const { html } = renderCaseSheet(`Universal Credit sanction decision
+We have decided to reduce your Universal Credit because you did not attend an appointment.
+This sanction starts on 10 July 2026.`);
+
+    expect(html).toContain('aria-label="Copy draft/checklist"');
+    // The copy button sits inside the same "Draft/checklist" section, not a
+    // separate/duplicate one, and the section still shows the review notice
+    // - the button must not replace or hide the existing review warning.
+    expect(html).toContain("Draft/checklist");
+    expect(html).toContain("Editable preparation. Review before using or sharing.");
+  });
+
   it("does not repeat primary section titles", () => {
     const { html } = renderCaseSheet(`Universal Credit statement
 Payment date: 7 July 2026

@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { BenefitsActionPackPanel } from "../BenefitsActionPackPanel";
+import benefitsActionPackPanelSource from "../BenefitsActionPackPanel.tsx?raw";
 import type { BenefitsActionPack } from "../../lib/benefitsActionPack";
 
 const pack: BenefitsActionPack = {
@@ -101,5 +102,17 @@ describe("BenefitsActionPackPanel", () => {
     ]) {
       expect(html).not.toContain(rawPrefix);
     }
+  });
+
+  // The draft/checklist text only appears once "Show full action pack" is
+  // expanded, and this project's tests run without jsdom (see
+  // photoCapture.test.ts and others) so that click can't be simulated here.
+  // Checking the source directly confirms the copy button is wired to the
+  // same pack.draftOrChecklist text shown to the user, not a placeholder or
+  // a separate/duplicate value.
+  it("wires a copy button to the same draft/checklist text shown in the full action pack", () => {
+    expect(benefitsActionPackPanelSource).toContain("<CopyButton");
+    expect(benefitsActionPackPanelSource).toContain("pack.draftOrChecklist ?? \"\"");
+    expect(benefitsActionPackPanelSource).toContain("Draft/checklist if available");
   });
 });

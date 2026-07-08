@@ -1,5 +1,5 @@
-import { useState } from "react";
 import type { AdminCase, AdminDraft } from "../types";
+import { CopyButton } from "./CopyButton";
 
 type DraftPanelProps = {
   adminCase?: AdminCase;
@@ -16,8 +16,6 @@ export function DraftPanel({
   isGeneratingDraft,
   errorMessage,
 }: DraftPanelProps) {
-  const [copyState, setCopyState] = useState<"idle" | "copied">("idle");
-
   if (!adminCase) {
     return (
       <section className="rounded-lg border border-dashed border-white/15 bg-white/[0.03] p-6">
@@ -28,17 +26,6 @@ export function DraftPanel({
       </section>
     );
   }
-
-  const handleCopy = async () => {
-    if (!draft) {
-      return;
-    }
-
-    const text = `Subject: ${draft.subject}\n\n${draft.body}`;
-    await navigator.clipboard.writeText(text);
-    setCopyState("copied");
-    window.setTimeout(() => setCopyState("idle"), 1600);
-  };
 
   return (
     <section className="rounded-lg border border-white/10 bg-slate-950/60 p-4">
@@ -100,13 +87,11 @@ export function DraftPanel({
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={handleCopy}
-            className="rounded-lg border border-white/10 bg-slate-900 px-4 py-2.5 text-sm font-semibold text-slate-200 transition hover:border-emerald-300/60 hover:text-white focus:outline-none focus:ring-2 focus:ring-emerald-300/40"
-          >
-            {copyState === "copied" ? "Copied" : "Copy message"}
-          </button>
+          <CopyButton
+            label="message"
+            className="min-h-9 rounded-lg border border-white/10 bg-slate-900 px-4 py-2.5 text-sm font-semibold text-slate-200 transition hover:border-emerald-300/60 hover:text-white focus:outline-none focus:ring-2 focus:ring-emerald-300/40"
+            getText={() => `Subject: ${draft.subject}\n\n${draft.body}`}
+          />
         </div>
       ) : (
         <div className="mt-5 rounded-lg border border-white/10 bg-slate-950/70 p-4">

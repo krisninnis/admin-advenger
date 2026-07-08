@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { useState } from "react";
 import type { BenefitsActionPack } from "../lib/benefitsActionPack";
+import { CopyButton } from "./CopyButton";
 
 type BenefitsActionPackPanelProps = {
   pack: BenefitsActionPack;
@@ -173,9 +174,17 @@ export function BenefitsActionPackPanel({ pack }: BenefitsActionPackPanelProps) 
 
           <Section title="Draft/checklist if available">
             {pack.draftOrChecklist ? (
-              <pre className="whitespace-pre-wrap rounded-lg border border-white/10 bg-slate-950/70 p-4 text-sm leading-6 text-slate-100">
-                {pack.draftOrChecklist}
-              </pre>
+              <div>
+                <div className="flex justify-end">
+                  <CopyButton
+                    label="draft/checklist"
+                    getText={() => pack.draftOrChecklist ?? ""}
+                  />
+                </div>
+                <pre className="mt-2 whitespace-pre-wrap rounded-lg border border-white/10 bg-slate-950/70 p-4 text-sm leading-6 text-slate-100">
+                  {pack.draftOrChecklist}
+                </pre>
+              </div>
             ) : (
               <p className="text-slate-400">
                 No draft or checklist is available yet. Review the evidence and questions first.

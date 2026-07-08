@@ -20,6 +20,7 @@ import {
 import { buildAdminTextFromAiExtraction } from "../lib/aiExtractionAdapter";
 import { buildBenefitsActionPack } from "../lib/benefitsActionPack";
 import { deriveOpportunityCard, describeConfidence } from "../lib/opportunityCards";
+import { buildResultViewModel } from "../lib/resultViewModel";
 import { buildStrategicNextStepPlan } from "../lib/strategicNextStep";
 import {
   createPhotoIntakeMetadata,
@@ -543,6 +544,35 @@ export function HomeView({
         adminCase: primaryCase,
       })
     : undefined;
+  const resultViewModel = primaryCase
+    ? buildResultViewModel({
+        decisionResult: primaryCase.decisionResult,
+        benefitsActionPack,
+        strategicNextStepPlan,
+        opportunity: primaryOpportunity,
+        adminCase: primaryCase,
+      })
+    : undefined;
+  const displayOpportunity =
+    primaryOpportunity && resultViewModel
+      ? {
+          ...primaryOpportunity,
+          title: resultViewModel.title,
+          plainEnglishSummary: resultViewModel.summary,
+          statusLabel: resultViewModel.primaryStatusLabel,
+          evidenceFound:
+            resultViewModel.evidenceFound.length > 0
+              ? resultViewModel.evidenceFound.map((item) => `${item.label}: ${item.value}`)
+              : primaryOpportunity.evidenceFound,
+          missingInformation:
+            resultViewModel.evidenceToGather.length > 0
+              ? resultViewModel.evidenceToGather.map((item) => item.value)
+              : primaryOpportunity.missingInformation,
+          nextBestAction: resultViewModel.bestNextMove
+            ? `${resultViewModel.bestNextMove.label}: ${resultViewModel.bestNextMove.description}`
+            : primaryOpportunity.nextBestAction,
+        }
+      : primaryOpportunity;
   const guidedMode =
     primaryCase && primaryOpportunity
       ? getGuidedCaseMode(primaryCase, primaryOpportunity)
@@ -1813,15 +1843,15 @@ export function HomeView({
 
       {aiExtraction ? <AiExtractedFactsPanel extraction={aiExtraction} /> : null}
 
-      {primaryOpportunity ? (
+      {displayOpportunity ? (
         <SimpleResultPanel
-          opportunity={primaryOpportunity}
+          opportunity={displayOpportunity}
           primaryAction={simplePrimaryAction}
           secondaryActions={simpleSecondaryActions}
           detailsOpen={showDetailed}
           onToggleDetails={() => setShowDetailed((current) => !current)}
           note={`Nothing has been saved yet. ${recordSaveHint}`}
-          details={<OpportunityCardPanel opportunity={primaryOpportunity} />}
+          details={<OpportunityCardPanel opportunity={displayOpportunity} />}
           guidedNextStepButton={
             guidedNextStep
               ? {

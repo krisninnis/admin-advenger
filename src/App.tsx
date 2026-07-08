@@ -46,6 +46,7 @@ import { HomeView } from "./views/HomeView";
 import type { HomeAnalysisResult } from "./views/HomeView";
 import { SettingsView } from "./views/SettingsView";
 import { SavingsView } from "./views/SavingsView";
+import { TrustSafetyView } from "./views/TrustSafetyView";
 import { ValidationView } from "./views/ValidationView";
 import type { StoredAdminAvengerState } from "./lib/storage";
 import type {
@@ -1313,6 +1314,8 @@ function App() {
       {currentView === "validation" ? <ValidationView /> : null}
 
       {currentView === "covenant" ? <CovenantView /> : null}
+
+      {currentView === "trust_safety" ? <TrustSafetyView /> : null}
 
       {currentView === "settings" ? (
         <SettingsView

@@ -466,6 +466,20 @@ export function SettingsView({
         title="What AdminAvenger can and cannot do"
         description="AdminAvenger prepares; you decide."
       >
+        <div className="mb-4 rounded-lg border border-cyan-300/25 bg-cyan-300/[0.07] p-4">
+          <h4 className="text-sm font-bold text-white">Trust &amp; safety</h4>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
+            Read the practical guide to privacy, local downloads, dates, money,
+            drafts, adviser packs, and what AdminAvenger cannot know.
+          </p>
+          <button
+            type="button"
+            onClick={() => onNavigate("trust_safety")}
+            className="mt-3 min-h-11 rounded-lg border border-cyan-300/30 bg-cyan-300/10 px-4 py-2.5 text-sm font-bold text-cyan-100 transition hover:border-cyan-200 hover:text-white focus:outline-none focus:ring-2 focus:ring-cyan-300/40"
+          >
+            Open Trust &amp; safety
+          </button>
+        </div>
         <div className="mb-4 rounded-lg border border-emerald-300/25 bg-emerald-300/[0.07] p-4">
           <h4 className="text-sm font-bold text-white">Free-Forever Covenant</h4>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">

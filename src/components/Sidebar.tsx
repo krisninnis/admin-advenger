@@ -7,6 +7,7 @@ export type AppView =
   | "case_file"
   | "validation"
   | "covenant"
+  | "trust_safety"
   | "settings";
 
 type SidebarProps = {
@@ -70,6 +71,18 @@ export function Sidebar({ currentView, onNavigate, caseCount, findingCount }: Si
       </nav>
 
       <div className="mt-auto space-y-3 pt-4">
+        <button
+          type="button"
+          onClick={() => onNavigate("trust_safety")}
+          aria-current={currentView === "trust_safety" ? "page" : undefined}
+          className={`w-full rounded-lg border px-4 py-3 text-left text-sm font-bold transition focus:outline-none focus:ring-2 focus:ring-emerald-300/40 ${
+            currentView === "trust_safety"
+              ? "border-emerald-300/60 bg-emerald-300/12 text-white"
+              : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-white/20 hover:text-white"
+          }`}
+        >
+          Trust &amp; safety
+        </button>
         <button
           type="button"
           onClick={() => onNavigate("settings")}

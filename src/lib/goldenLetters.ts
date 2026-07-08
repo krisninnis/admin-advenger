@@ -1,3 +1,5 @@
+import type { AdviserExportPack } from "./adviserExportPack";
+import { buildAdviserExportPack } from "./adviserExportPack";
 import type { BenefitsActionPack } from "./benefitsActionPack";
 import { buildBenefitsActionPack } from "./benefitsActionPack";
 import { analyseDecisionProblem } from "./decisionEngine/decisionEngine";
@@ -5,6 +7,7 @@ import type { DecisionDocumentType, DecisionResult } from "./decisionEngine/type
 import { buildResultViewModel, validateResultViewModelSafety } from "./resultViewModel";
 import type { ResultViewModel } from "./resultViewModel";
 import {
+  collectTextFromAdviserExportPack,
   collectTextFromBenefitsActionPack,
   collectTextFromDecisionResult,
   collectTextFromResultViewModel,
@@ -46,6 +49,7 @@ export type GoldenLetterRun = {
   benefitsActionPack: BenefitsActionPack | null;
   strategicNextStepPlan: StrategicNextStepPlan;
   resultViewModel: ResultViewModel;
+  adviserExportPack: AdviserExportPack;
   outputText: string;
 };
 
@@ -504,12 +508,14 @@ export const collectGoldenOutputText = ({
   benefitsActionPack,
   strategicNextStepPlan,
   resultViewModel,
+  adviserExportPack,
 }: Omit<GoldenLetterRun, "fixture" | "outputText">) =>
   [
     collectTextFromDecisionResult(decisionResult),
     benefitsActionPack ? collectTextFromBenefitsActionPack(benefitsActionPack) : "",
     collectTextFromStrategicNextStepPlan(strategicNextStepPlan),
     collectTextFromResultViewModel(resultViewModel),
+    collectTextFromAdviserExportPack(adviserExportPack),
   ].join("\n");
 
 export const runGoldenLetterFixture = (fixtureToRun: GoldenLetterFixture): GoldenLetterRun => {
@@ -524,11 +530,18 @@ export const runGoldenLetterFixture = (fixtureToRun: GoldenLetterFixture): Golde
     benefitsActionPack,
     strategicNextStepPlan,
   });
+  const adviserExportPack = buildAdviserExportPack({
+    decisionResult,
+    resultViewModel,
+    benefitsActionPack,
+    strategicNextStepPlan,
+  });
   const outputText = collectGoldenOutputText({
     decisionResult,
     benefitsActionPack,
     strategicNextStepPlan,
     resultViewModel,
+    adviserExportPack,
   });
 
   return {
@@ -537,6 +550,7 @@ export const runGoldenLetterFixture = (fixtureToRun: GoldenLetterFixture): Golde
     benefitsActionPack,
     strategicNextStepPlan,
     resultViewModel,
+    adviserExportPack,
     outputText,
   };
 };

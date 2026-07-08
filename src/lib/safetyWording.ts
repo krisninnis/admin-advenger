@@ -1,3 +1,4 @@
+import type { AdviserExportPack } from "./adviserExportPack";
 import type { BenefitsActionPack } from "./benefitsActionPack";
 import type { DecisionResult } from "./decisionEngine/types";
 import type { ResultViewModel } from "./resultViewModel";
@@ -68,6 +69,7 @@ export const FORBIDDEN_ADVICE_CLAIMS = [
   "do not pay",
   "do not contact",
   "tell them they are wrong",
+  "case strength",
 ] as const;
 
 export const FORBIDDEN_ADVERSARIAL_LANGUAGE = [
@@ -324,6 +326,28 @@ export const collectTextFromStrategicNextStepPlan = (plan: StrategicNextStepPlan
     ...plan.uncertainty,
     ...plan.cannotKnow,
     ...plan.safetyNotes,
+  ]);
+
+export const collectTextFromAdviserExportPack = (pack: AdviserExportPack) =>
+  joinText([
+    pack.title,
+    pack.whatThisAppearsToBe,
+    pack.whyThisMatters,
+    pack.confidence.statement,
+    ...pack.uncertainty,
+    ...pack.cannotKnow,
+    ...pack.routeToCheck,
+    ...pack.keyDates.map((date) => `${date.label} ${date.value} ${date.caution}`),
+    ...pack.moneyMentioned.map((line) => `${line.label} ${line.amountText} ${line.caution}`),
+    ...pack.evidenceFound.map((item) => `${item.label} ${item.value}`),
+    ...pack.evidenceToGather.map((item) => `${item.label} ${item.value}`),
+    ...pack.questionsToAnswer,
+    ...pack.risks,
+    pack.draft.title,
+    pack.draft.body,
+    pack.draft.noDraftLine,
+    pack.draft.reviewWarning,
+    ...pack.safetyNotes,
   ]);
 
 export const collectTextFromResultViewModel = (viewModel: ResultViewModel) =>

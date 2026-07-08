@@ -18,6 +18,12 @@ import {
   type AiMode,
 } from "../lib/aiProviderSettings";
 import { buildAdminTextFromAiExtraction } from "../lib/aiExtractionAdapter";
+import {
+  buildAdviserExportPack,
+  getAdviserExportFilename,
+  renderAdviserExportMarkdown,
+} from "../lib/adviserExportPack";
+import { downloadAdviserExportMarkdown } from "../lib/adviserExportDownload";
 import { buildBenefitsActionPack } from "../lib/benefitsActionPack";
 import { deriveOpportunityCard, describeConfidence } from "../lib/opportunityCards";
 import { buildResultViewModel } from "../lib/resultViewModel";
@@ -553,6 +559,15 @@ export function HomeView({
         adminCase: primaryCase,
       })
     : undefined;
+  const adviserExportPack =
+    primaryCase?.decisionResult && resultViewModel
+      ? buildAdviserExportPack({
+          decisionResult: primaryCase.decisionResult,
+          resultViewModel,
+          benefitsActionPack,
+          strategicNextStepPlan,
+        })
+      : undefined;
   const displayOpportunity =
     primaryOpportunity && resultViewModel
       ? {
@@ -686,6 +701,17 @@ export function HomeView({
           },
         ]
       : [];
+
+  const handleDownloadAdviserPack = () => {
+    if (!adviserExportPack) {
+      return;
+    }
+
+    downloadAdviserExportMarkdown(
+      renderAdviserExportMarkdown(adviserExportPack),
+      getAdviserExportFilename(),
+    );
+  };
 
   useEffect(
     () => () => {
@@ -1861,6 +1887,31 @@ export function HomeView({
               : undefined
           }
         />
+      ) : null}
+
+      {adviserExportPack ? (
+        <section className="rounded-lg border border-cyan-300/20 bg-cyan-300/[0.07] p-4 sm:flex sm:items-center sm:justify-between sm:gap-4">
+          <div>
+            <p className="text-sm font-bold uppercase tracking-widest text-cyan-200">
+              Adviser pack
+            </p>
+            <p
+              id="adviser-export-helper"
+              className="mt-2 max-w-3xl text-sm leading-6 text-cyan-50/90"
+            >
+              Creates a Markdown file you can save, print, or share with someone you trust.
+              AdminAvenger does not send it anywhere.
+            </p>
+          </div>
+          <button
+            type="button"
+            aria-describedby="adviser-export-helper"
+            onClick={handleDownloadAdviserPack}
+            className="mt-4 min-h-11 w-full rounded-lg border border-cyan-300/40 bg-cyan-300 px-4 py-3 text-sm font-bold text-slate-950 shadow-lg shadow-cyan-950/20 transition hover:bg-cyan-200 focus:outline-none focus:ring-2 focus:ring-cyan-200 focus:ring-offset-2 focus:ring-offset-slate-950 sm:mt-0 sm:w-auto"
+          >
+            Download adviser pack
+          </button>
+        </section>
       ) : null}
 
       {strategicNextStepPlan ? <StrategicNextStepPanel plan={strategicNextStepPlan} /> : null}

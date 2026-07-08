@@ -242,3 +242,47 @@ describe("golden letter corpus ResultViewModel integration", () => {
     expect(scorecard.fixturesWithMoney).toBeGreaterThanOrEqual(8);
   });
 });
+
+describe("golden letter corpus Adviser Export Pack integration", () => {
+  it.each(runs)("$fixture.id builds an Adviser Export Pack that keeps cannotKnow and uncertainty", (run) => {
+    expect(run.adviserExportPack.whyThisMatters).not.toBe("");
+    expect(run.adviserExportPack.confidence.statement).not.toBe("");
+    expect(run.adviserExportPack.cannotKnow).toEqual(run.resultViewModel.cannotKnow);
+    expect(run.adviserExportPack.uncertainty).toEqual(run.resultViewModel.uncertainty);
+    expect(run.adviserExportPack.cannotKnow.length).toBeGreaterThan(0);
+    expect(run.adviserExportPack.uncertainty.length).toBeGreaterThan(0);
+    expect(run.adviserExportPack.routeToCheck.length).toBeGreaterThan(0);
+  });
+
+  it.each(runs)("$fixture.id Adviser Export Pack has no forbidden generated safety wording", (run) => {
+    const output = normaliseGoldenText(run.outputText);
+
+    for (const forbidden of run.fixture.expectedForbiddenAbsent) {
+      expect(output).not.toContain(normaliseGoldenText(forbidden));
+    }
+
+    expect(output).not.toContain("case strength");
+  });
+
+  it.each(runs)("$fixture.id Adviser Export Pack always includes the required safety lines", (run) => {
+    const notes = run.adviserExportPack.safetyNotes.map((note) => normaliseGoldenText(note));
+
+    expect(notes.some((note) => note.includes("preparation only"))).toBe(true);
+    expect(notes.some((note) => note.includes("nothing in this pack has been sent"))).toBe(true);
+    expect(notes.some((note) => note.includes("nothing in this pack has been submitted"))).toBe(true);
+    expect(notes.some((note) => note.includes("you stay in control"))).toBe(true);
+    expect(notes.some((note) => note.includes("not legal, benefits, debt, financial, or immigration advice"))).toBe(true);
+    expect(notes.some((note) => note.includes("checked against the original letter"))).toBe(true);
+    expect(notes.some((note) => note.includes("display-only"))).toBe(true);
+  });
+
+  it.each(runs)("$fixture.id Adviser Export Pack handles the draft/checklist section explicitly", (run) => {
+    const draft = run.adviserExportPack.draft;
+
+    if (draft.included) {
+      expect(draft.body).toBeTruthy();
+    } else {
+      expect(draft.noDraftLine).toBe("No draft was included in this pack.");
+    }
+  });
+});

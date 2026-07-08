@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { buildAdviserExportPack } from "../adviserExportPack";
 import { buildBenefitsActionPack } from "../benefitsActionPack";
 import { analyseDecisionProblem } from "../decisionEngine/decisionEngine";
 import { buildResultViewModel } from "../resultViewModel";
 import {
   assertNoForbiddenSafetyPhrases,
+  collectTextFromAdviserExportPack,
   collectTextFromBenefitsActionPack,
   collectTextFromDecisionResult,
   collectTextFromResultViewModel,
@@ -134,15 +136,23 @@ const buildArtifacts = (fixture: SafetyFixture) => {
     benefitsActionPack,
     strategicNextStepPlan,
   });
+  const adviserExportPack = buildAdviserExportPack({
+    decisionResult,
+    resultViewModel,
+    benefitsActionPack,
+    strategicNextStepPlan,
+  });
   const decisionText = collectTextFromDecisionResult(decisionResult);
   const benefitsText = benefitsActionPack ? collectTextFromBenefitsActionPack(benefitsActionPack) : "";
   const strategicText = collectTextFromStrategicNextStepPlan(strategicNextStepPlan);
   const resultViewText = collectTextFromResultViewModel(resultViewModel);
+  const adviserPackText = collectTextFromAdviserExportPack(adviserExportPack);
   const combinedText = [
     decisionText,
     benefitsText,
     strategicText,
     resultViewText,
+    adviserPackText,
   ].join("\n");
 
   return {
@@ -150,10 +160,12 @@ const buildArtifacts = (fixture: SafetyFixture) => {
     benefitsActionPack,
     strategicNextStepPlan,
     resultViewModel,
+    adviserExportPack,
     decisionText,
     benefitsText,
     strategicText,
     resultViewText,
+    adviserPackText,
     combinedText,
   };
 };
@@ -268,6 +280,23 @@ describe("generated safety wording regression", () => {
     expect(artifacts.resultViewModel.keyDates.every((date) => date.userMustCheck === true)).toBe(true);
     expect(artifacts.resultViewModel.moneyMentioned.every((line) => line.countedInMoneyTracker === false)).toBe(true);
     expect(hasSafetyTheme(artifacts.resultViewText, "no_contact")).toBe(true);
+  });
+
+  it.each(fixtures)("Adviser Export Pack for $name keeps safety invariants and drops nothing", (fixture) => {
+    const artifacts = buildArtifacts(fixture);
+    const pack = artifacts.adviserExportPack;
+
+    expectNoForbiddenOutput(artifacts.adviserPackText, `${fixture.name} adviser export pack`);
+    expect(pack.whyThisMatters).not.toBe("");
+    expect(pack.confidence.statement).not.toBe("");
+    expect(pack.uncertainty.length).toBeGreaterThan(0);
+    expect(pack.cannotKnow.length).toBeGreaterThan(0);
+    expect(pack.routeToCheck.length).toBeGreaterThan(0);
+    expect(
+      pack.draft.included ? Boolean(pack.draft.body) : pack.draft.noDraftLine === "No draft was included in this pack.",
+    ).toBe(true);
+    expect(normaliseSafetyText(artifacts.adviserPackText)).not.toContain("case strength");
+    expect(hasSafetyTheme(artifacts.adviserPackText, "no_contact")).toBe(true);
   });
 
   it("debt and parking outputs do not use unsafe debt or legal claims", () => {

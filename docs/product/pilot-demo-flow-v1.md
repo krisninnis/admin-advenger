@@ -14,6 +14,12 @@ Check a message
 The purpose is to show how AdminAvenger helps prepare. The user stays in
 control.
 
+## Pilot Readiness Update
+
+Pilot Demo Flow v1 originally lived near the Home input. For pilot readiness it
+has moved into a dedicated Demo / tour page so the main Home workflow stays
+focused on the real user task: checking a letter or message.
+
 ## Who It Is For
 
 The demo flow is for:

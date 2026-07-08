@@ -1,32 +1,53 @@
 import { describe, expect, it } from "vitest";
 import homeViewSource from "../HomeView.tsx?raw";
+import demoTourViewSource from "../DemoTourView.tsx?raw";
+import appSource from "../../App.tsx?raw";
+import sidebarSource from "../../components/Sidebar.tsx?raw";
+import settingsSource from "../SettingsView.tsx?raw";
 import { demoScenarios } from "../../lib/demoScenarios";
 import { goldenLetterFixtures } from "../../lib/goldenLetters";
 import { findForbiddenSafetyPhrases } from "../../lib/safetyWording";
 
 describe("Pilot demo flow", () => {
-  it("renders a safe demo selector near the Home input", () => {
-    expect(homeViewSource).toContain("Try a safe demo letter");
-    expect(homeViewSource).toContain(
-      "Use a synthetic example to see how AdminAvenger works without using a real",
+  it("keeps the full demo selector out of the Home input area", () => {
+    expect(homeViewSource).not.toContain("Try a safe demo letter");
+    expect(homeViewSource).not.toContain("Use this demo");
+    expect(homeViewSource).toContain("Paste text");
+    expect(homeViewSource).toContain("Take or upload a photo");
+  });
+
+  it("adds a Demo / tour route and navigation", () => {
+    expect(appSource).toContain('currentView === "demo_tour"');
+    expect(sidebarSource).toContain("Demo / tour");
+    expect(sidebarSource).toContain('"demo_tour"');
+    expect(settingsSource).toContain("Open Demo / tour");
+    expect(settingsSource).toContain('onNavigate("demo_tour")');
+  });
+
+  it("renders the dedicated Demo / tour page copy and result label", () => {
+    expect(demoTourViewSource).toContain("Demo / tour");
+    expect(demoTourViewSource).toContain(
+      "Try AdminAvenger safely with synthetic examples.",
     );
-    expect(homeViewSource).toContain("Use this demo");
-    expect(homeViewSource).toContain("Synthetic example");
-  });
-
-  it("uses demo fixtures through the normal Home result flow", () => {
-    expect(homeViewSource).toContain("handleUseDemoScenario");
-    expect(homeViewSource).toContain("onCheck(");
-    expect(homeViewSource).toContain("selectedDemoScenario.inputText.trim()");
-    expect(homeViewSource).toContain("<ResultCaseSheet");
-    expect(homeViewSource).toContain("onDownloadAdviserPack");
-  });
-
-  it("labels demo results clearly", () => {
-    expect(homeViewSource).toContain("Synthetic demo");
-    expect(homeViewSource).toContain(
+    expect(demoTourViewSource).toContain(
+      "All examples here are synthetic and come from the Golden Letter",
+    );
+    expect(demoTourViewSource).toContain("Choose a synthetic demo letter");
+    expect(demoTourViewSource).toContain("Run demo check");
+    expect(demoTourViewSource).toContain("Synthetic demo");
+    expect(demoTourViewSource).toContain(
       "This result was created from a synthetic example, not a real document.",
     );
+  });
+
+  it("uses demo fixtures through the normal result flow on Demo / tour", () => {
+    expect(demoTourViewSource).toContain("handleRunDemo");
+    expect(demoTourViewSource).toContain("onCheck(");
+    expect(demoTourViewSource).toContain("selectedScenario.inputText.trim()");
+    expect(demoTourViewSource).toContain("<ResultCaseSheet");
+    expect(demoTourViewSource).toContain("onDownloadAdviserPack");
+    expect(appSource).toContain("handleDemoTourCheck");
+    expect(appSource).toContain("setDemoTourResult");
   });
 
   it("keeps demo scenarios sourced from the Golden Letter Corpus", () => {
@@ -53,7 +74,8 @@ describe("Pilot demo flow", () => {
 
   it("keeps visible demo copy inside safety boundaries", () => {
     const visibleDemoCopy = [
-      "Try a safe demo letter",
+      "Demo / tour",
+      "Try AdminAvenger safely with synthetic examples.",
       "Use a synthetic example to see how AdminAvenger works without using a real letter.",
       "This result was created from a synthetic example, not a real document.",
       ...demoScenarios.flatMap((scenario) => [

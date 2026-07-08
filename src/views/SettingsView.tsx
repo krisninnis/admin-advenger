@@ -632,6 +632,20 @@ export function SettingsView({
         description="AdminAvenger prepares; you decide."
       >
         <div className="mb-4 rounded-lg border border-cyan-300/25 bg-cyan-300/[0.07] p-4">
+          <h4 className="text-sm font-bold text-white">Demo / tour</h4>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
+            Try safe synthetic examples from the Golden Letter Corpus without using
+            a real letter.
+          </p>
+          <button
+            type="button"
+            onClick={() => onNavigate("demo_tour")}
+            className="mt-3 min-h-11 rounded-lg border border-cyan-300/30 bg-cyan-300/10 px-4 py-2.5 text-sm font-bold text-cyan-100 transition hover:border-cyan-200 hover:text-white focus:outline-none focus:ring-2 focus:ring-cyan-300/40"
+          >
+            Open Demo / tour
+          </button>
+        </div>
+        <div className="mb-4 rounded-lg border border-cyan-300/25 bg-cyan-300/[0.07] p-4">
           <h4 className="text-sm font-bold text-white">Trust &amp; safety</h4>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
             Read the practical guide to privacy, local downloads, dates, money,

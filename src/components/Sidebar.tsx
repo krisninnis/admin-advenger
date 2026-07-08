@@ -1,5 +1,6 @@
 export type AppView =
   | "home"
+  | "demo_tour"
   | "savings"
   | "dashboard"
   | "add_item"
@@ -23,6 +24,7 @@ const navItems: Array<{
   helper: string;
 }> = [
   { view: "home", label: "Check a message", helper: "Paste a bill, email, or message" },
+  { view: "demo_tour", label: "Demo / tour", helper: "Try safe synthetic examples" },
   { view: "cases", label: "Saved items", helper: "Come back to saved items" },
   { view: "savings", label: "Money tracker", helper: "Savings, refunds, and progress" },
 ];

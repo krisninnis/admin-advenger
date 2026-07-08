@@ -42,6 +42,7 @@ import { CaseFileView } from "./views/CaseFileView";
 import { CasesView } from "./views/CasesView";
 import { CovenantView } from "./views/CovenantView";
 import { DashboardView } from "./views/DashboardView";
+import { DemoTourView } from "./views/DemoTourView";
 import { HomeView } from "./views/HomeView";
 import type { HomeAnalysisResult } from "./views/HomeView";
 import { SettingsView } from "./views/SettingsView";
@@ -181,6 +182,8 @@ function App() {
   const [hasAcceptedTerms, setHasAcceptedTerms] = useState(hasAcceptedCurrentTerms);
   const [showTermsReview, setShowTermsReview] = useState(false);
   const [dataControlMessage, setDataControlMessage] = useState("");
+  const [demoTourResult, setDemoTourResult] = useState<HomeAnalysisResult>();
+  const [activeDemoScenarioId, setActiveDemoScenarioId] = useState<string | undefined>();
   const [inboxScanSettings, setInboxScanSettings] = useState<InboxScanSettings>(
     loadInboxScanSettings,
   );
@@ -393,8 +396,9 @@ function App() {
     sourceType: SourceType,
     rawText: string,
     openCaseFile: boolean,
+    setPreviewResult: (result: HomeAnalysisResult | undefined) => void = setHomeResult,
   ): Promise<HomeAnalysisResult | undefined> => {
-    setHomeResult(undefined);
+    setPreviewResult(undefined);
     const now = new Date().toISOString();
     const item: AdminItem = {
       id: `item-${crypto.randomUUID()}`,
@@ -412,7 +416,7 @@ function App() {
     if (analysisResult.status === "error") {
       setAnalysisStatus("error");
       setAnalysisError(analysisResult.error.message);
-      setHomeResult(undefined);
+      setPreviewResult(undefined);
       return undefined;
     }
 
@@ -447,7 +451,7 @@ function App() {
       setSelectedCaseId(newCases[0].id);
     }
 
-    setHomeResult(result);
+    setPreviewResult(result);
     if (openCaseFile) {
       setCurrentView("case_file");
     }
@@ -470,6 +474,15 @@ function App() {
     rawText: string,
   ): Promise<boolean> => {
     const result = await runAnalysis(title, sourceType, rawText, false);
+    return Boolean(result);
+  };
+
+  const handleDemoTourCheck = async (
+    title: string,
+    sourceType: SourceType,
+    rawText: string,
+  ): Promise<boolean> => {
+    const result = await runAnalysis(title, sourceType, rawText, false, setDemoTourResult);
     return Boolean(result);
   };
 
@@ -579,6 +592,12 @@ function App() {
 
   const handleClearHomeResult = () => {
     setHomeResult(undefined);
+    setAnalysisError(undefined);
+  };
+
+  const handleClearDemoTourResult = () => {
+    setDemoTourResult(undefined);
+    setActiveDemoScenarioId(undefined);
     setAnalysisError(undefined);
   };
 
@@ -1152,6 +1171,8 @@ function App() {
     setSelectedFindingId(demoState.selectedFindingId);
     setSelectedCaseId(demoState.selectedCaseId);
     setHomeResult(undefined);
+    setDemoTourResult(undefined);
+    setActiveDemoScenarioId(undefined);
     setInboxScanSettings(defaultInboxScanSettings);
     setDataControlMessage(
       "Sample demo data loaded. This is not your real admin.",
@@ -1192,6 +1213,8 @@ function App() {
     setSelectedCaseId(undefined);
     setInboxScanSettings(defaultInboxScanSettings);
     setHomeResult(undefined);
+    setDemoTourResult(undefined);
+    setActiveDemoScenarioId(undefined);
     setDataControlMessage("AdminAvenger local data was cleared from this browser.");
     return clearResult;
   };
@@ -1243,6 +1266,19 @@ function App() {
           onIgnoreInboxScanItem={handleIgnoreInboxScanItem}
           onSaveScannedItem={handleSaveScannedItem}
           onSaveEmailSafetyCase={handleSaveEmailSafetyCase}
+        />
+      ) : null}
+
+      {currentView === "demo_tour" ? (
+        <DemoTourView
+          result={demoTourResult}
+          activeDemoScenarioId={activeDemoScenarioId}
+          analysisStatus={analysisStatus}
+          analysisError={analysisError}
+          onCheck={handleDemoTourCheck}
+          onClearResult={handleClearDemoTourResult}
+          onActiveDemoScenarioChange={setActiveDemoScenarioId}
+          onNavigate={setCurrentView}
         />
       ) : null}
 

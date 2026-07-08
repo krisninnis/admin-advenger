@@ -28,7 +28,6 @@ import {
 } from "../lib/adviserExportPack";
 import { downloadAdviserExportMarkdown } from "../lib/adviserExportDownload";
 import { buildBenefitsActionPack } from "../lib/benefitsActionPack";
-import { demoScenarios } from "../lib/demoScenarios";
 import { deriveOpportunityCard, describeConfidence } from "../lib/opportunityCards";
 import { buildResultViewModel } from "../lib/resultViewModel";
 import { buildStrategicNextStepPlan } from "../lib/strategicNextStep";
@@ -501,8 +500,6 @@ export function HomeView({
   const [showDeveloperOptions, setShowDeveloperOptions] = useState(false);
   const [showInboxTools, setShowInboxTools] = useState(false);
   const [showAddMenu, setShowAddMenu] = useState(false);
-  const [selectedDemoScenarioId, setSelectedDemoScenarioId] = useState(demoScenarios[0]?.id ?? "");
-  const [activeDemoScenarioId, setActiveDemoScenarioId] = useState<string | undefined>();
   const [isDesktopPointer, setIsDesktopPointer] = useState(false);
   const isChecking = analysisStatus === "loading";
   const isAiReading = aiStatus === "loading";
@@ -621,11 +618,6 @@ export function HomeView({
   const emailSafetyAssessment = result
     ? assessEmailSafety(`${result.item.title}\n${result.item.rawText}`)
     : undefined;
-  const selectedDemoScenario =
-    demoScenarios.find((scenario) => scenario.id === selectedDemoScenarioId) ?? demoScenarios[0];
-  const activeDemoScenario = activeDemoScenarioId
-    ? demoScenarios.find((scenario) => scenario.id === activeDemoScenarioId)
-    : undefined;
   const showEmailSafetyButton =
     Boolean(inboxScanSettings.showEmailSafetyCheckButton && emailSafetyAssessment?.isEmailLike);
   const primaryActionLabel =
@@ -738,7 +730,6 @@ export function HomeView({
     setAiExtraction(undefined);
     setShowDetailed(false);
     setShowEmailSafety(false);
-    setActiveDemoScenarioId(undefined);
     setInputResetKey((current) => current + 1);
     onClearResult();
   };
@@ -761,48 +752,7 @@ export function HomeView({
     setAiFallbackHint("");
     setAiExtraction(undefined);
     setShowEmailSafety(false);
-    setActiveDemoScenarioId(undefined);
     onClearResult();
-  };
-
-  const handleUseDemoScenario = async () => {
-    if (!selectedDemoScenario || isChecking || isAiReading || isReadingPhoto) {
-      return;
-    }
-
-    if (imagePreviewUrl) {
-      URL.revokeObjectURL(imagePreviewUrl);
-      setImagePreviewUrl("");
-    }
-
-    setSelectedInput("paste");
-    setRawText(selectedDemoScenario.inputText);
-    setUploadedFileName("");
-    setUploadNote("");
-    setInputMessage("This is a synthetic example. It is not a real letter.");
-    setPhotoMetadata(undefined);
-    setOcrStatus("idle");
-    setOcrText("");
-    setOcrOriginalText("");
-    setOcrProgress(0);
-    setOcrError("");
-    setOcrConfidence(undefined);
-    setOcrWarnings([]);
-    setAiStatus("idle");
-    setAiError("");
-    setAiFallbackHint("");
-    setAiExtraction(undefined);
-    setShowDetailed(false);
-    setShowEmailSafety(false);
-    onClearResult();
-
-    const checked = await onCheck(
-      `Synthetic demo: ${selectedDemoScenario.title}`,
-      "email",
-      selectedDemoScenario.inputText.trim(),
-    );
-
-    setActiveDemoScenarioId(checked ? selectedDemoScenario.id : undefined);
   };
 
   const updateAiMode = (mode: AiMode) => {
@@ -864,7 +814,6 @@ export function HomeView({
     setAiExtraction(undefined);
     setShowDetailed(false);
     setShowEmailSafety(false);
-    setActiveDemoScenarioId(undefined);
     onClearResult();
 
     if (selectedInput === "image" && rawText.trim().length === 0) {
@@ -1326,58 +1275,6 @@ export function HomeView({
           ))}
         </div>
 
-        <section className="mt-4 rounded-lg border border-cyan-300/20 bg-cyan-300/[0.06] p-4">
-          <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-end">
-            <div>
-              <p className="text-sm font-bold uppercase tracking-wider text-cyan-200">
-                Try a safe demo letter
-              </p>
-              <p className="mt-1 text-sm leading-6 text-slate-300">
-                Use a synthetic example to see how AdminAvenger works without using a real
-                letter.
-              </p>
-              <label className="mt-3 block text-sm font-semibold text-slate-200" htmlFor="demo-scenario">
-                Demo example
-                <select
-                  id="demo-scenario"
-                  value={selectedDemoScenarioId}
-                  onChange={(event) => setSelectedDemoScenarioId(event.target.value)}
-                  className="mt-2 w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-3 text-sm text-white outline-none transition focus:border-cyan-300 focus:ring-2 focus:ring-cyan-300/20"
-                >
-                  {demoScenarios.map((scenario) => (
-                    <option key={scenario.id} value={scenario.id}>
-                      {scenario.title} - {scenario.category}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {selectedDemoScenario ? (
-                <div className="mt-3 rounded-lg border border-white/10 bg-slate-950/55 p-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded-full border border-cyan-300/25 bg-cyan-300/10 px-2 py-1 text-xs font-bold text-cyan-100">
-                      Synthetic example
-                    </span>
-                    <span className="text-sm font-semibold text-white">
-                      {selectedDemoScenario.category}
-                    </span>
-                  </div>
-                  <p className="mt-2 text-sm leading-6 text-slate-400">
-                    {selectedDemoScenario.description}
-                  </p>
-                </div>
-              ) : null}
-            </div>
-            <button
-              type="button"
-              onClick={() => void handleUseDemoScenario()}
-              disabled={!selectedDemoScenario || isChecking || isAiReading || isReadingPhoto}
-              className="min-h-12 rounded-lg border border-cyan-300 bg-cyan-300 px-5 py-3 text-sm font-bold text-slate-950 shadow-lg shadow-cyan-950/20 transition hover:bg-cyan-200 focus:outline-none focus:ring-2 focus:ring-cyan-200 focus:ring-offset-2 focus:ring-offset-slate-950 disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-700 disabled:text-slate-400 disabled:shadow-none"
-            >
-              Use this demo
-            </button>
-          </div>
-        </section>
-
         <div className="mt-4 flex flex-wrap gap-2">
           <button
             type="button"
@@ -1620,10 +1517,7 @@ export function HomeView({
               <textarea
                 id="paste-message"
                 value={rawText}
-                onChange={(event) => {
-                  setRawText(event.target.value);
-                  setActiveDemoScenarioId(undefined);
-                }}
+                onChange={(event) => setRawText(event.target.value)}
                 onKeyDown={(event) => {
                   if (
                     shouldSubmitOnEnterKey({
@@ -1874,10 +1768,7 @@ export function HomeView({
                   Review the loaded text
                   <textarea
                     value={rawText}
-                    onChange={(event) => {
-                      setRawText(event.target.value);
-                      setActiveDemoScenarioId(undefined);
-                    }}
+                    onChange={(event) => setRawText(event.target.value)}
                     rows={8}
                     className="mt-2 w-full resize-y rounded-lg border border-white/10 bg-slate-950 px-4 py-4 text-base leading-7 text-white outline-none transition placeholder:text-slate-600 focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20"
                   />
@@ -1953,22 +1844,6 @@ export function HomeView({
       </section>
 
       {aiExtraction ? <AiExtractedFactsPanel extraction={aiExtraction} /> : null}
-
-      {resultViewModel && activeDemoScenario ? (
-        <section className="rounded-lg border border-cyan-300/20 bg-cyan-300/[0.07] p-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full border border-cyan-300/25 bg-slate-950/60 px-3 py-1 text-xs font-bold uppercase tracking-wider text-cyan-100">
-              Synthetic demo
-            </span>
-            <span className="text-sm font-semibold text-white">
-              {activeDemoScenario.title}
-            </span>
-          </div>
-          <p className="mt-2 text-sm leading-6 text-cyan-50/85">
-            This result was created from a synthetic example, not a real document.
-          </p>
-        </section>
-      ) : null}
 
       {resultViewModel ? (
         <ResultCaseSheet

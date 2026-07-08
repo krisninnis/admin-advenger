@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { EmailSafetyModal } from "../components/EmailSafetyModal";
+import { BenefitsActionPackPanel } from "../components/BenefitsActionPackPanel";
 import { GuidedNextStepPanel } from "../components/GuidedNextStepPanel";
 import { InboxScanPreview } from "../components/InboxScanPreview";
 import { InboxScanPromptCard } from "../components/InboxScanPromptCard";
@@ -16,6 +17,7 @@ import {
   type AiMode,
 } from "../lib/aiProviderSettings";
 import { buildAdminTextFromAiExtraction } from "../lib/aiExtractionAdapter";
+import { buildBenefitsActionPack } from "../lib/benefitsActionPack";
 import { deriveOpportunityCard, describeConfidence } from "../lib/opportunityCards";
 import {
   createPhotoIntakeMetadata,
@@ -528,6 +530,9 @@ export function HomeView({
   const primaryOpportunity = primaryCase
     ? deriveOpportunityCard(primaryCase, result?.item, primaryFinding)
     : undefined;
+  const benefitsActionPack = primaryCase?.decisionResult
+    ? buildBenefitsActionPack(primaryCase.decisionResult, primaryOpportunity, primaryCase)
+    : null;
   const guidedMode =
     primaryCase && primaryOpportunity
       ? getGuidedCaseMode(primaryCase, primaryOpportunity)
@@ -1817,6 +1822,8 @@ export function HomeView({
           }
         />
       ) : null}
+
+      {benefitsActionPack ? <BenefitsActionPackPanel pack={benefitsActionPack} /> : null}
 
       {showGuidedNextStep && guidedNextStep ? (
         <GuidedNextStepPanel

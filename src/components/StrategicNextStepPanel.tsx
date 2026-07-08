@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useState } from "react";
 import type { StrategicNextStepPlan } from "../lib/strategicNextStep";
 
 type StrategicNextStepPanelProps = {
@@ -8,18 +9,26 @@ type StrategicNextStepPanelProps = {
 type TextListProps = {
   items: string[];
   emptyText: string;
+  limit?: number;
+  expanded?: boolean;
 };
 
-const TextList = ({ items, emptyText }: TextListProps) =>
-  items.length > 0 ? (
+const visibleItems = <Item,>(items: Item[], limit: number | undefined, expanded: boolean) =>
+  expanded || limit === undefined ? items : items.slice(0, limit);
+
+const TextList = ({ items, emptyText, limit, expanded = false }: TextListProps) => {
+  const itemsToShow = visibleItems(items, limit, expanded);
+
+  return itemsToShow.length > 0 ? (
     <ul className="space-y-2">
-      {items.map((item) => (
+      {itemsToShow.map((item) => (
         <li key={item}>{item}</li>
       ))}
     </ul>
   ) : (
     <p className="text-slate-400">{emptyText}</p>
   );
+};
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -31,14 +40,21 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 }
 
 export function StrategicNextStepPanel({ plan }: StrategicNextStepPanelProps) {
+  const [showMore, setShowMore] = useState(false);
+  const otherSafeMoves = visibleItems(plan.otherSafeMoves, 2, showMore);
+  const hasMore =
+    plan.otherSafeMoves.length > otherSafeMoves.length ||
+    plan.movesToAvoid.length > 5 ||
+    plan.missingInformation.length > 5 ||
+    plan.whenToGetAdvice.length > 4 ||
+    plan.cannotKnow.length > 2 ||
+    plan.uncertainty.length > 0;
+
   return (
     <section className="rounded-lg border border-violet-300/25 bg-violet-300/[0.07] p-5 shadow-xl shadow-slate-950/15 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="text-sm font-bold uppercase tracking-widest text-violet-300">
-            Next step planner
-          </p>
-          <h3 className="mt-2 text-2xl font-bold text-white">{plan.title}</h3>
+          <h3 className="text-2xl font-bold text-white">{plan.title}</h3>
           <p className="mt-2 max-w-3xl text-base leading-7 text-violet-50/85">
             {plan.plainEnglishSummary}
           </p>
@@ -80,7 +96,7 @@ export function StrategicNextStepPanel({ plan }: StrategicNextStepPanelProps) {
 
         <Section title="Other safe options">
           <ul className="space-y-3">
-            {plan.otherSafeMoves.map((move) => (
+            {otherSafeMoves.map((move) => (
               <li key={move.label}>
                 <p className="font-semibold text-white">{move.label}</p>
                 <p>{move.description}</p>
@@ -94,6 +110,8 @@ export function StrategicNextStepPanel({ plan }: StrategicNextStepPanelProps) {
           <TextList
             items={plan.movesToAvoid}
             emptyText="Do not rush anything that commits you before you have checked the document."
+            limit={5}
+            expanded={showMore}
           />
         </Section>
 
@@ -101,6 +119,8 @@ export function StrategicNextStepPanel({ plan }: StrategicNextStepPanelProps) {
           <TextList
             items={plan.missingInformation}
             emptyText="Check the sender, date, reference, requested action, and any deadline."
+            limit={5}
+            expanded={showMore}
           />
         </Section>
 
@@ -108,6 +128,8 @@ export function StrategicNextStepPanel({ plan }: StrategicNextStepPanelProps) {
           <TextList
             items={plan.whenToGetAdvice}
             emptyText="Get advice if the stakes feel serious or the deadline is unclear."
+            limit={4}
+            expanded={showMore}
           />
         </Section>
 
@@ -115,16 +137,30 @@ export function StrategicNextStepPanel({ plan }: StrategicNextStepPanelProps) {
           <TextList
             items={plan.cannotKnow}
             emptyText="AdminAvenger cannot verify anything outside the message you provided."
+            limit={2}
+            expanded={showMore}
           />
         </Section>
 
-        <Section title="Uncertainty">
-          <TextList
-            items={plan.uncertainty}
-            emptyText="Check the original document before you act."
-          />
-        </Section>
+        {showMore ? (
+          <Section title="Uncertainty">
+            <TextList
+              items={plan.uncertainty}
+              emptyText="Check the original document before you act."
+            />
+          </Section>
+        ) : null}
       </div>
+
+      {hasMore ? (
+        <button
+          type="button"
+          onClick={() => setShowMore((current) => !current)}
+          className="mt-4 min-h-11 rounded-lg border border-violet-300/30 bg-violet-300/10 px-4 py-3 text-sm font-bold text-violet-50 transition hover:border-violet-200 hover:text-white focus:outline-none focus:ring-2 focus:ring-violet-300/40"
+        >
+          {showMore ? "Show less" : "Show more"}
+        </button>
+      ) : null}
 
       <p className="mt-4 rounded-lg border border-amber-300/25 bg-amber-300/10 px-4 py-3 text-sm font-semibold leading-6 text-amber-50">
         {plan.safetyNotes[0]}

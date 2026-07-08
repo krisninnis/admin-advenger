@@ -43,9 +43,44 @@ const plan: StrategicNextStepPlan = {
       requiresAdvice: false,
       doNotAutoSend: true,
     },
+    {
+      label: "Save the case",
+      description: "Keep the letter and reference together.",
+      whyThisHelps: "It keeps useful evidence available later.",
+      riskLevel: "low",
+      reversibility: "easy_to_reverse",
+      preservesOptions: true,
+      requiresEvidence: true,
+      requiresAdvice: false,
+      doNotAutoSend: true,
+    },
+    {
+      label: "Prepare wording",
+      description: "Draft a calm message for review.",
+      whyThisHelps: "It reduces pressure without sending anything.",
+      riskLevel: "low",
+      reversibility: "easy_to_reverse",
+      preservesOptions: true,
+      requiresEvidence: true,
+      requiresAdvice: false,
+      doNotAutoSend: true,
+    },
   ],
-  movesToAvoid: ["Do not count money mentioned in the document as saved or recovered."],
-  whenToGetAdvice: ["Get advice if the letter affects essentials."],
+  movesToAvoid: [
+    "Do not count money mentioned in the document as saved or recovered.",
+    "Do not send an angry message.",
+    "Do not rely on OCR without checking the original letter.",
+    "Do not submit a form automatically.",
+    "Do not assume the statement is wrong without checking.",
+    "Do not use a missing sixth item by default.",
+  ],
+  whenToGetAdvice: [
+    "Get advice if the letter affects essentials.",
+    "Get advice if the deadline is unclear.",
+    "Get advice if payment is stopped.",
+    "Get advice if rent or food is affected.",
+    "Get advice for this fifth item in expanded detail.",
+  ],
   uncertainty: ["The full statement may contain more detail."],
   cannotKnow: ["AdminAvenger cannot know whether the sender has other information."],
   safetyNotes: [STRATEGIC_NEXT_STEP_SAFETY_NOTE],
@@ -66,6 +101,19 @@ describe("StrategicNextStepPanel", () => {
     expect(html).toContain("When to get advice");
     expect(html).toContain("What AdminAvenger cannot know");
     expect(html).toContain(STRATEGIC_NEXT_STEP_SAFETY_NOTE);
+  });
+
+  it("limits long lists by default and offers Show more", () => {
+    const html = renderToStaticMarkup(<StrategicNextStepPanel plan={plan} />);
+
+    expect(html).toContain("Compare with the previous statement");
+    expect(html).toContain("Save the case");
+    expect(html).not.toContain("Prepare wording");
+    expect(html).toContain("Do not assume the statement is wrong without checking.");
+    expect(html).not.toContain("Do not use a missing sixth item by default.");
+    expect(html).toContain("Get advice if rent or food is affected.");
+    expect(html).not.toContain("Get advice for this fifth item in expanded detail.");
+    expect(html).toContain("Show more");
   });
 
   it("does not expose internal strategy jargon in the UI", () => {

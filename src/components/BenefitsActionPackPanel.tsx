@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useState } from "react";
 import type { BenefitsActionPack } from "../lib/benefitsActionPack";
 
 type BenefitsActionPackPanelProps = {
@@ -29,6 +30,8 @@ const TextList = ({ items, emptyText }: { items: string[]; emptyText: string }) 
   );
 
 export function BenefitsActionPackPanel({ pack }: BenefitsActionPackPanelProps) {
+  const [showFullPack, setShowFullPack] = useState(false);
+
   return (
     <section className="rounded-lg border border-sky-300/25 bg-sky-300/[0.07] p-5 shadow-xl shadow-slate-950/15 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -48,13 +51,6 @@ export function BenefitsActionPackPanel({ pack }: BenefitsActionPackPanelProps) 
         <Section title="What this appears to be">
           <p>{pack.documentStage}</p>
           <p className="mt-2 text-slate-400">Check the letter to confirm the exact stage.</p>
-        </Section>
-
-        <Section title="What matters">
-          <TextList
-            items={pack.whatMatters}
-            emptyText="No specific points were extracted. Check the letter before acting."
-          />
         </Section>
 
         <Section title="Possible dates to check">
@@ -94,34 +90,10 @@ export function BenefitsActionPackPanel({ pack }: BenefitsActionPackPanelProps) 
           )}
         </Section>
 
-        <Section title="Evidence already seen">
-          {pack.evidenceFound.length > 0 ? (
-            <ul className="space-y-2">
-              {pack.evidenceFound.map((item) => (
-                <li key={item.id}>
-                  <span className="font-semibold text-white">{item.label}:</span> {item.value}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-slate-400">
-              The key dates and amounts are listed in their own sections above. Add anything else
-              from the letter you think matters.
-            </p>
-          )}
-        </Section>
-
         <Section title="Evidence to gather">
           <TextList
             items={pack.evidenceMissing}
             emptyText="No missing evidence was listed, but check the letter and your records."
-          />
-        </Section>
-
-        <Section title="Risks to be aware of">
-          <TextList
-            items={pack.risks}
-            emptyText="No specific risks were listed, but check the letter and any deadlines carefully."
           />
         </Section>
 
@@ -139,38 +111,79 @@ export function BenefitsActionPackPanel({ pack }: BenefitsActionPackPanelProps) 
           )}
         </Section>
 
-        <Section title="Uncertainty">
-          <TextList
-            items={pack.uncertainty}
-            emptyText="No extra uncertainty was listed. Check the original letter before acting."
-          />
-        </Section>
-
         <Section title="What AdminAvenger cannot know">
           <TextList
             items={pack.cannotKnow}
             emptyText="AdminAvenger cannot verify anything outside the text you provided."
           />
         </Section>
-
-        <Section title="Next safe step">
-          <p>{pack.nextSafeStep}</p>
-        </Section>
       </div>
 
-      <div className="mt-4">
-        <Section title="Draft/checklist if available">
-          {pack.draftOrChecklist ? (
-            <pre className="whitespace-pre-wrap rounded-lg border border-white/10 bg-slate-950/70 p-4 text-sm leading-6 text-slate-100">
-              {pack.draftOrChecklist}
-            </pre>
-          ) : (
-            <p className="text-slate-400">
-              No draft or checklist is available yet. Review the evidence and questions first.
-            </p>
-          )}
-        </Section>
-      </div>
+      <button
+        type="button"
+        onClick={() => setShowFullPack((current) => !current)}
+        className="mt-4 min-h-11 rounded-lg border border-sky-300/30 bg-sky-300/10 px-4 py-3 text-sm font-bold text-sky-50 transition hover:border-sky-200 hover:text-white focus:outline-none focus:ring-2 focus:ring-sky-300/40"
+      >
+        {showFullPack ? "Hide full action pack" : "Show full action pack"}
+      </button>
+
+      {showFullPack ? (
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          <Section title="What matters">
+            <TextList
+              items={pack.whatMatters}
+              emptyText="No specific points were extracted. Check the letter before acting."
+            />
+          </Section>
+
+          <Section title="Evidence already seen">
+            {pack.evidenceFound.length > 0 ? (
+              <ul className="space-y-2">
+                {pack.evidenceFound.map((item) => (
+                  <li key={item.id}>
+                    <span className="font-semibold text-white">{item.label}:</span> {item.value}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-slate-400">
+                The key dates and amounts are listed in their own sections above. Add anything else
+                from the letter you think matters.
+              </p>
+            )}
+          </Section>
+
+          <Section title="Risks to be aware of">
+            <TextList
+              items={pack.risks}
+              emptyText="No specific risks were listed, but check the letter and any deadlines carefully."
+            />
+          </Section>
+
+          <Section title="Uncertainty">
+            <TextList
+              items={pack.uncertainty}
+              emptyText="No extra uncertainty was listed. Check the original letter before acting."
+            />
+          </Section>
+
+          <Section title="Next safe step">
+            <p>{pack.nextSafeStep}</p>
+          </Section>
+
+          <Section title="Draft/checklist if available">
+            {pack.draftOrChecklist ? (
+              <pre className="whitespace-pre-wrap rounded-lg border border-white/10 bg-slate-950/70 p-4 text-sm leading-6 text-slate-100">
+                {pack.draftOrChecklist}
+              </pre>
+            ) : (
+              <p className="text-slate-400">
+                No draft or checklist is available yet. Review the evidence and questions first.
+              </p>
+            )}
+          </Section>
+        </div>
+      ) : null}
 
       <div className="mt-4 rounded-lg border border-amber-300/25 bg-amber-300/10 p-4 text-sm leading-6 text-amber-50">
         <p>

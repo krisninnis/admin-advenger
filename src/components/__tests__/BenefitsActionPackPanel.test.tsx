@@ -49,23 +49,30 @@ const pack: BenefitsActionPack = {
 };
 
 describe("BenefitsActionPackPanel", () => {
-  it("renders every required Benefits Action Pack section", () => {
+  it("renders the core Benefits Action Pack sections by default", () => {
     const html = renderToStaticMarkup(<BenefitsActionPackPanel pack={pack} />);
 
     expect(html).toContain("What this appears to be");
-    expect(html).toContain("What matters");
     expect(html).toContain("Possible dates to check");
     expect(html).toContain("Money mentioned");
-    expect(html).toContain("Evidence already seen");
     expect(html).toContain("Evidence to gather");
-    expect(html).toContain("Risks to be aware of");
     expect(html).toContain("Questions to answer");
-    expect(html).toContain("Uncertainty");
     expect(html).toContain("What AdminAvenger cannot know");
-    expect(html).toContain("Next safe step");
-    expect(html).toContain("Draft/checklist if available");
     expect(html).toContain("Not counted in savings, recovered money, or the money tracker.");
     expect(html).toContain("Check this date on your letter.");
+    expect(html).toContain("does not contact anyone for you");
+    expect(html).toContain("Show full action pack");
+  });
+
+  it("keeps longer action pack detail collapsed by default but accessible", () => {
+    const html = renderToStaticMarkup(<BenefitsActionPackPanel pack={pack} />);
+
+    expect(html).not.toContain("What matters");
+    expect(html).not.toContain("Evidence already seen");
+    expect(html).not.toContain("Risks to be aware of");
+    expect(html).not.toContain("Uncertainty");
+    expect(html).not.toContain("Draft/checklist if available");
+    expect(html).toContain("Show full action pack");
   });
 
   it("never renders raw internal evidence prefixes as if they were human copy", () => {

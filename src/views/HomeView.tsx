@@ -1833,9 +1833,9 @@ export function HomeView({
         />
       ) : null}
 
-      {benefitsActionPack ? <BenefitsActionPackPanel pack={benefitsActionPack} /> : null}
-
       {strategicNextStepPlan ? <StrategicNextStepPanel plan={strategicNextStepPlan} /> : null}
+
+      {benefitsActionPack ? <BenefitsActionPackPanel pack={benefitsActionPack} /> : null}
 
       {showGuidedNextStep && guidedNextStep ? (
         <GuidedNextStepPanel

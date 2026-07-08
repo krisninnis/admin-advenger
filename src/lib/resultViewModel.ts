@@ -1,6 +1,14 @@
 import type { AdminCase, MoneyImpact, OpportunityCard } from "../types";
 import type { BenefitsActionPack, BenefitsKeyDate, BenefitsMoneyLine } from "./benefitsActionPack";
 import type { DecisionAmountTreatment, DecisionResult, DecisionSourceFact } from "./decisionEngine/types";
+import {
+  FORBIDDEN_ADVERSARIAL_LANGUAGE,
+  FORBIDDEN_ADVICE_CLAIMS,
+  FORBIDDEN_AUTOMATION_CLAIMS,
+  FORBIDDEN_MONEY_CLAIMS,
+  FORBIDDEN_OUTCOME_CLAIMS,
+  normaliseSafetyText,
+} from "./safetyWording";
 import type { StrategicNextStepPlan } from "./strategicNextStep";
 
 export type ResultViewSource =
@@ -135,32 +143,14 @@ export const RESULT_MONEY_CAUTION =
   "This is money mentioned in the document. AdminAvenger has not counted it as saved, recovered, or owed.";
 
 export const RESULT_FORBIDDEN_PHRASES = [
-  "you will win",
-  "you qualify",
-  "you are entitled",
-  "dwp is wrong",
-  "this is unlawful",
-  "valid claim",
-  "invalid claim",
-  "guaranteed",
-  "beat dwp",
-  "beat the council",
-  "opponent",
-  "exploit",
-  "game theory",
-  "force them",
-  "pressure them",
+  ...FORBIDDEN_OUTCOME_CLAIMS,
+  ...FORBIDDEN_ADVICE_CLAIMS,
+  ...FORBIDDEN_ADVERSARIAL_LANGUAGE,
+  ...FORBIDDEN_MONEY_CLAIMS,
+  ...FORBIDDEN_AUTOMATION_CLAIMS,
 ] as const;
 
-export const RESULT_ADVERSARIAL_PHRASES = [
-  "beat dwp",
-  "beat the council",
-  "opponent",
-  "exploit",
-  "game theory",
-  "force them",
-  "pressure them",
-] as const;
+export const RESULT_ADVERSARIAL_PHRASES = FORBIDDEN_ADVERSARIAL_LANGUAGE;
 
 const fallbackTitle = "Admin document check";
 const fallbackSummary =
@@ -182,7 +172,7 @@ const moneyImpactsFor = (opportunity?: OpportunityCard): MoneyImpact[] =>
         opportunity?.annualisedAmount,
       ].filter((item): item is MoneyImpact => Boolean(item));
 
-export const normaliseResultText = (value: string) => value.trim().toLowerCase().replace(/\s+/g, " ");
+export const normaliseResultText = normaliseSafetyText;
 
 const hasAnyPhrase = (value: string, phrases: readonly string[]) => {
   const key = normaliseResultText(value);

@@ -122,7 +122,7 @@ export const analyseParkingTicket = ({
     caseStrength,
     strengthLabel,
     whatThisLooksLike:
-      "This appears to be a parking notice, PCN, or private parking charge. The amount is treated as money being demanded, not money saved or recovered.",
+      "This appears to be a parking notice, PCN, or private parking charge. The amount is treated as money being demanded, not a saving or recovery.",
     possibleGrounds:
       possibleGrounds.length > 0
         ? possibleGrounds

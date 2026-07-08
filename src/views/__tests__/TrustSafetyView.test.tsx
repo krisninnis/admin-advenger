@@ -48,6 +48,14 @@ describe("TrustSafetyView", () => {
     expect(html).toContain("whether OCR or text extraction missed something");
   });
 
+  it("links local data clearing back to Settings", () => {
+    const html = getTrustSafetyHtml();
+
+    expect(html).toContain("Want to clear local data?");
+    expect(html).toContain("clear AdminAvenger data saved in this browser from Settings");
+    expect(html).toContain("does not delete files you already downloaded");
+  });
+
   it("contains no forbidden safety phrases", () => {
     const html = getTrustSafetyHtml();
 

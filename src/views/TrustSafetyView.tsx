@@ -5,6 +5,10 @@ type SafetySection = {
   items?: string[];
 };
 
+type TrustSafetyViewProps = {
+  onNavigateToSettings?: () => void;
+};
+
 const processSteps = [
   "You paste text, upload a file, or use a photo.",
   "AdminAvenger reads the text in your browser.",
@@ -114,7 +118,7 @@ function InfoSection({ section }: { section: SafetySection }) {
   );
 }
 
-export function TrustSafetyView() {
+export function TrustSafetyView({ onNavigateToSettings }: TrustSafetyViewProps) {
   return (
     <article aria-labelledby="trust-safety-title" className="mx-auto max-w-6xl space-y-6">
       <header className="rounded-lg border border-cyan-300/20 bg-cyan-300/[0.07] p-5 sm:p-7">
@@ -190,6 +194,26 @@ export function TrustSafetyView() {
           A letter or photo cannot show everything. AdminAvenger cannot know:
         </p>
         <BulletList items={cannotKnow} />
+      </section>
+
+      <section className="rounded-lg border border-cyan-300/20 bg-cyan-300/[0.06] p-5 sm:p-6">
+        <p className="text-sm font-bold uppercase tracking-widest text-cyan-300">
+          Local data
+        </p>
+        <h3 className="mt-2 text-2xl font-bold text-white">Want to clear local data?</h3>
+        <p className="mt-3 max-w-4xl text-sm leading-6 text-slate-300">
+          You can clear AdminAvenger data saved in this browser from Settings. This
+          does not delete files you already downloaded.
+        </p>
+        {onNavigateToSettings ? (
+          <button
+            type="button"
+            onClick={onNavigateToSettings}
+            className="mt-4 min-h-11 rounded-lg border border-cyan-300/30 bg-cyan-300/10 px-4 py-2.5 text-sm font-bold text-cyan-100 transition hover:border-cyan-200 hover:text-white focus:outline-none focus:ring-2 focus:ring-cyan-300/40"
+          >
+            Open Settings
+          </button>
+        ) : null}
       </section>
 
       <div className="grid gap-6 lg:grid-cols-2">

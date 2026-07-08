@@ -9,10 +9,15 @@ import {
   type InboxScanNotificationMethod,
   type InboxScanSettings,
 } from "../lib/inboxScanStorage";
+import {
+  getLocalDataSummary,
+  type ClearLocalDataResult,
+  type LocalDataSummary,
+} from "../lib/localDataControl";
 
 type SettingsViewProps = {
   onResetDemoData: () => void;
-  onClearLocalData: () => void;
+  onClearLocalData: () => ClearLocalDataResult;
   onDownloadBackup: () => void;
   dataControlMessage?: string;
   onNavigate: (view: AppView) => void;
@@ -43,6 +48,164 @@ function ToggleRow({ label, description, checked, onChange }: ToggleRowProps) {
         className="mt-1 h-5 w-5 shrink-0 accent-emerald-400"
       />
     </label>
+  );
+}
+
+const formatApproximateSize = (size?: number) => {
+  if (size === undefined) {
+    return "No saved value found";
+  }
+
+  if (size < 1024) {
+    return `${size} bytes`;
+  }
+
+  return `${(size / 1024).toFixed(1)} KB`;
+};
+
+type LocalDataControlSectionProps = {
+  onClearLocalData: () => ClearLocalDataResult;
+};
+
+export function LocalDataControlSection({ onClearLocalData }: LocalDataControlSectionProps) {
+  const [summary, setSummary] = useState<LocalDataSummary>(() => getLocalDataSummary());
+  const [confirmingClear, setConfirmingClear] = useState(false);
+  const [statusMessage, setStatusMessage] = useState("");
+
+  const handleClear = () => {
+    const result = onClearLocalData();
+
+    setSummary(getLocalDataSummary());
+    setConfirmingClear(false);
+    setStatusMessage(
+      result.failedKeys.length > 0
+        ? "AdminAvenger tried to clear local data, but this browser blocked one or more saved items."
+        : "AdminAvenger local data was cleared from this browser.",
+    );
+  };
+
+  return (
+    <CollapsibleSection
+      eyebrow="Local data control"
+      title="Local data control"
+      description="See what this browser may hold and clear AdminAvenger data from this device."
+      defaultOpen
+    >
+      <div className="space-y-4">
+        <p className="max-w-4xl text-sm leading-6 text-slate-300">
+          AdminAvenger is designed to keep your work under your control. This section
+          shows the local data this browser may hold and lets you clear AdminAvenger
+          data from this device.
+        </p>
+
+        <div className="grid gap-3 md:grid-cols-3">
+          {[
+            "This only clears AdminAvenger data saved in this browser on this device.",
+            "It will not delete files you already downloaded, such as adviser packs.",
+            "It will not contact anyone or cancel anything.",
+          ].map((warning) => (
+            <p
+              key={warning}
+              className="rounded-lg border border-amber-300/25 bg-amber-300/10 p-3 text-sm leading-6 text-amber-50"
+            >
+              {warning}
+            </p>
+          ))}
+        </div>
+
+        <div className="grid gap-3 lg:grid-cols-2">
+          {summary.items.map((item) => (
+            <article
+              key={item.id}
+              className="rounded-lg border border-white/10 bg-slate-950/60 p-4"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h4 className="text-sm font-bold text-white">{item.label}</h4>
+                  <p className="mt-1 text-sm leading-6 text-slate-400">
+                    {item.userFacingExplanation}
+                  </p>
+                </div>
+                <span
+                  className={`rounded-full border px-2.5 py-1 text-xs font-bold ${
+                    item.isPresent
+                      ? "border-emerald-300/35 bg-emerald-300/10 text-emerald-100"
+                      : "border-white/10 bg-white/[0.04] text-slate-400"
+                  }`}
+                >
+                  {item.isPresent ? "Saved here" : "Not found"}
+                </span>
+              </div>
+              <dl className="mt-3 grid gap-2 text-xs leading-5 text-slate-500 sm:grid-cols-3">
+                <div>
+                  <dt className="font-bold uppercase tracking-wider text-slate-600">Storage</dt>
+                  <dd>{item.storageType}</dd>
+                </div>
+                <div>
+                  <dt className="font-bold uppercase tracking-wider text-slate-600">Sensitivity</dt>
+                  <dd>{item.sensitivity}</dd>
+                </div>
+                <div>
+                  <dt className="font-bold uppercase tracking-wider text-slate-600">Approx size</dt>
+                  <dd>{formatApproximateSize(item.approximateSizeBytes)}</dd>
+                </div>
+              </dl>
+            </article>
+          ))}
+        </div>
+
+        <div className="rounded-lg border border-rose-300/25 bg-rose-300/[0.07] p-4">
+          <p className="text-sm font-bold text-white">Clear AdminAvenger data from this device</p>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
+            This clears only the known AdminAvenger keys listed above. It does not
+            clear unrelated browser storage.
+          </p>
+          {!confirmingClear ? (
+            <button
+              type="button"
+              onClick={() => {
+                setConfirmingClear(true);
+                setStatusMessage("");
+              }}
+              className="mt-3 min-h-11 rounded-lg border border-rose-300/40 bg-rose-300/10 px-4 py-2.5 text-sm font-bold text-rose-100 transition hover:border-rose-200 hover:text-white focus:outline-none focus:ring-2 focus:ring-rose-300/40"
+            >
+              Clear AdminAvenger data from this device
+            </button>
+          ) : (
+            <div className="mt-3 rounded-lg border border-rose-200/30 bg-slate-950/50 p-3">
+              <p className="text-sm leading-6 text-rose-50">
+                Please confirm you want to clear AdminAvenger data saved in this
+                browser on this device.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={handleClear}
+                  className="min-h-11 rounded-lg border border-rose-200/40 bg-rose-200/15 px-4 py-2.5 text-sm font-bold text-rose-50 transition hover:border-rose-100 focus:outline-none focus:ring-2 focus:ring-rose-200/40"
+                >
+                  Yes, clear local AdminAvenger data
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmingClear(false)}
+                  className="min-h-11 rounded-lg border border-white/10 bg-slate-950 px-4 py-2.5 text-sm font-bold text-slate-200 transition hover:border-white/20 hover:text-white focus:outline-none focus:ring-2 focus:ring-slate-400/40"
+                >
+                  Keep data
+                </button>
+              </div>
+            </div>
+          )}
+          {statusMessage ? (
+            <p
+              role="status"
+              className="mt-3 rounded-lg border border-emerald-300/30 bg-emerald-300/10 px-4 py-3 text-sm font-semibold text-emerald-50"
+            >
+              {statusMessage}
+            </p>
+          ) : null}
+        </div>
+      </div>
+    </CollapsibleSection>
   );
 }
 
@@ -226,6 +389,8 @@ export function SettingsView({
           Sections are collapsed to keep this page easy to scan.
         </p>
       </header>
+
+      <LocalDataControlSection onClearLocalData={onClearLocalData} />
 
       <CollapsibleSection
         eyebrow="Status"

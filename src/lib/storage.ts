@@ -2,11 +2,12 @@ import type { AdminCase, AdminDraft, AdminFinding, AdminItem, ImpactEntry } from
 import { AI_PROVIDER_SETTINGS_STORAGE_KEY } from "./aiProviderSettings";
 import { deriveImpactFromCase } from "./impactLedger";
 import { INBOX_SCAN_SETTINGS_STORAGE_KEY } from "./inboxScanStorage";
+import { TERMS_ACCEPTANCE_STORAGE_KEY } from "./termsAcceptance";
 import { FEEDBACK_STORAGE_KEY, VALIDATION_STORAGE_KEY } from "./validationStorage";
 
 export const ADMIN_AVENGER_STORAGE_KEY = "admin-avenger-state-v1";
 
-const LEGACY_STORAGE_KEYS = [
+export const LEGACY_STORAGE_KEYS = [
   "admin-avenger-state",
   "admin-avenger-state-v0",
   "adminAvengerState",
@@ -19,6 +20,7 @@ export const ADMIN_AVENGER_LOCAL_STORAGE_KEYS = [
   INBOX_SCAN_SETTINGS_STORAGE_KEY,
   VALIDATION_STORAGE_KEY,
   FEEDBACK_STORAGE_KEY,
+  TERMS_ACCEPTANCE_STORAGE_KEY,
 ];
 
 export type StoredAdminAvengerState = {

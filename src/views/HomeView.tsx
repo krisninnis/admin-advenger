@@ -8,6 +8,7 @@ import { OpportunityCardPanel } from "../components/OpportunityCardPanel";
 import { PhotoCapturePanel } from "../components/PhotoCapturePanel";
 import { SimpleResultPanel, type SimpleResultAction } from "../components/SimpleResultPanel";
 import { StatusBadge } from "../components/StatusBadge";
+import { StrategicNextStepPanel } from "../components/StrategicNextStepPanel";
 import type { InboxScanSettings } from "../lib/inboxScanStorage";
 import { getGuidedCaseMode, type GuidedCaseMode } from "../lib/guidedCaseMode";
 import { deriveGuidedNextStep } from "../lib/guidedNextSteps";
@@ -19,6 +20,7 @@ import {
 import { buildAdminTextFromAiExtraction } from "../lib/aiExtractionAdapter";
 import { buildBenefitsActionPack } from "../lib/benefitsActionPack";
 import { deriveOpportunityCard, describeConfidence } from "../lib/opportunityCards";
+import { buildStrategicNextStepPlan } from "../lib/strategicNextStep";
 import {
   createPhotoIntakeMetadata,
   getImageDimensions,
@@ -533,6 +535,14 @@ export function HomeView({
   const benefitsActionPack = primaryCase?.decisionResult
     ? buildBenefitsActionPack(primaryCase.decisionResult, primaryOpportunity, primaryCase)
     : null;
+  const strategicNextStepPlan = primaryCase
+    ? buildStrategicNextStepPlan({
+        decisionResult: primaryCase.decisionResult,
+        benefitsActionPack,
+        opportunity: primaryOpportunity,
+        adminCase: primaryCase,
+      })
+    : undefined;
   const guidedMode =
     primaryCase && primaryOpportunity
       ? getGuidedCaseMode(primaryCase, primaryOpportunity)
@@ -1824,6 +1834,8 @@ export function HomeView({
       ) : null}
 
       {benefitsActionPack ? <BenefitsActionPackPanel pack={benefitsActionPack} /> : null}
+
+      {strategicNextStepPlan ? <StrategicNextStepPanel plan={strategicNextStepPlan} /> : null}
 
       {showGuidedNextStep && guidedNextStep ? (
         <GuidedNextStepPanel

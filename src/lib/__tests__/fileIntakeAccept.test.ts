@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  attachmentCameraAcceptAttribute,
+  attachmentPickerAcceptAttribute,
   classifyUploadedFile,
+  getAttachmentUnsupportedMessage,
+  isPdfOrWordFile,
   isSupportedTextFile,
+  PDF_OR_WORD_UNSUPPORTED_MESSAGE,
   photoAcceptAttribute,
   photoCaptureAcceptAttribute,
   quickUploadAcceptAttribute,
@@ -114,5 +119,71 @@ describe("UNSUPPORTED_FILE_MESSAGE", () => {
     // wording, and must not imply image OCR is inactive.
     expect(UNSUPPORTED_FILE_MESSAGE).not.toMatch(/not active/i);
     expect(UNSUPPORTED_FILE_MESSAGE).not.toMatch(/coming later/i);
+  });
+});
+
+// Document Attachment Intake v1 - the attachment area's "Choose photos or
+// files" control uses a broader accept string than quickUploadAcceptAttribute
+// so mobile file pickers reliably offer Photos/Gallery/Files.
+describe("attachment picker accept attributes", () => {
+  it("the attachment picker accepts common phone-camera image formats and supported text types", () => {
+    expect(attachmentPickerAcceptAttribute).toContain("image/*");
+    expect(attachmentPickerAcceptAttribute).toContain(".jpg");
+    expect(attachmentPickerAcceptAttribute).toContain(".jpeg");
+    expect(attachmentPickerAcceptAttribute).toContain(".png");
+    expect(attachmentPickerAcceptAttribute).toContain(".webp");
+    expect(attachmentPickerAcceptAttribute).toContain(".heic");
+    expect(attachmentPickerAcceptAttribute).toContain(".heif");
+    expect(attachmentPickerAcceptAttribute).toContain(".txt");
+    expect(attachmentPickerAcceptAttribute).toContain(".md");
+    expect(attachmentPickerAcceptAttribute).toContain(".csv");
+    expect(attachmentPickerAcceptAttribute).toContain(".json");
+  });
+
+  it("the attachment camera control accepts images", () => {
+    expect(attachmentCameraAcceptAttribute).toBe("image/*");
+  });
+});
+
+describe("PDF/Word attachment handling", () => {
+  const makeFile = (name: string, type = "") => new File(["pretend bytes"], name, { type });
+
+  it("recognises PDF and Word documents by extension or MIME type", () => {
+    expect(isPdfOrWordFile(makeFile("statement.pdf", "application/pdf"))).toBe(true);
+    expect(isPdfOrWordFile(makeFile("contract.doc"))).toBe(true);
+    expect(isPdfOrWordFile(makeFile("contract.docx"))).toBe(true);
+    expect(
+      isPdfOrWordFile(
+        makeFile(
+          "contract2",
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ),
+      ),
+    ).toBe(true);
+    expect(isPdfOrWordFile(makeFile("letter.jpg", "image/jpeg"))).toBe(false);
+    expect(isPdfOrWordFile(makeFile("notes.txt"))).toBe(false);
+  });
+
+  it("gives PDF/Word files a specific, honest not-supported-yet message", () => {
+    expect(PDF_OR_WORD_UNSUPPORTED_MESSAGE).toBe(
+      "PDF and Word documents are not supported yet. You can copy and paste the text, or upload/take a photo of the document.",
+    );
+    expect(getAttachmentUnsupportedMessage(makeFile("statement.pdf", "application/pdf"))).toBe(
+      PDF_OR_WORD_UNSUPPORTED_MESSAGE,
+    );
+    expect(getAttachmentUnsupportedMessage(makeFile("contract.docx"))).toBe(
+      PDF_OR_WORD_UNSUPPORTED_MESSAGE,
+    );
+  });
+
+  it("falls back to the general unsupported-file message for anything else", () => {
+    expect(getAttachmentUnsupportedMessage(makeFile("archive.zip", "application/zip"))).toBe(
+      UNSUPPORTED_FILE_MESSAGE,
+    );
+  });
+
+  it("never fakes PDF/DOCX support", () => {
+    expect(PDF_OR_WORD_UNSUPPORTED_MESSAGE.toLowerCase()).not.toContain("we can now read");
+    expect(PDF_OR_WORD_UNSUPPORTED_MESSAGE.toLowerCase()).toContain("not supported yet");
   });
 });

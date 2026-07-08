@@ -62,3 +62,50 @@ export const classifyUploadedFile = (file: File): UploadedFileRoute => {
 // this is ever reached - and points the user at what does work today.
 export const UNSUPPORTED_FILE_MESSAGE =
   "This file type is not supported yet. For images, upload JPG/PNG. For documents, copy and paste the text for now.";
+
+// ---- Document Attachment Intake v1 ----
+//
+// Broad "choose from device" accept string for the attachment area's
+// "Choose photos or files" control (see src/components/DocumentAttachmentArea.tsx
+// and src/lib/documentAttachmentIntake.ts). Deliberately wider than
+// quickUploadAcceptAttribute's MIME list - it also lists common phone-camera
+// image extensions explicitly (HEIC/HEIF often arrive with an empty or
+// non-standard MIME type from mobile file pickers) so the browser/OS file
+// picker offers Photos/Gallery/Files consistently across iOS and Android.
+export const attachmentPickerAcceptAttribute =
+  "image/*,.jpg,.jpeg,.png,.webp,.heic,.heif,.txt,.md,.csv,.json";
+
+// Accept string for the attachment area's "Take photo" control. Kept as its
+// own named constant (identical value to photoAcceptAttribute today) so the
+// two controls can be tuned independently later without one silently
+// affecting the other.
+export const attachmentCameraAcceptAttribute = "image/*";
+
+const pdfOrWordExtensions = [".pdf", ".doc", ".docx"];
+const pdfOrWordMimeTypes = new Set([
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+]);
+
+export const isPdfOrWordFile = (file: File): boolean => {
+  const fileName = file.name.toLowerCase();
+
+  return (
+    pdfOrWordMimeTypes.has(file.type.toLowerCase()) ||
+    pdfOrWordExtensions.some((extension) => fileName.endsWith(extension))
+  );
+};
+
+// A more specific, honest message for the single most common "not supported
+// yet" case in the attachment area (PDF/Word documents) - never implies fake
+// support, and always points at what already works (paste, or photograph the
+// document).
+export const PDF_OR_WORD_UNSUPPORTED_MESSAGE =
+  "PDF and Word documents are not supported yet. You can copy and paste the text, or upload/take a photo of the document.";
+
+// Single source of truth for the message shown next to a rejected attachment.
+// PDF/Word gets its own specific, honest message; everything else falls back
+// to the general UNSUPPORTED_FILE_MESSAGE above.
+export const getAttachmentUnsupportedMessage = (file: File): string =>
+  isPdfOrWordFile(file) ? PDF_OR_WORD_UNSUPPORTED_MESSAGE : UNSUPPORTED_FILE_MESSAGE;

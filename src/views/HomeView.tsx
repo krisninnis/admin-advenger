@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type DragEvent } from "react";
 import { EmailSafetyModal } from "../components/EmailSafetyModal";
 import { BenefitsActionPackPanel } from "../components/BenefitsActionPackPanel";
 import { GuidedNextStepPanel } from "../components/GuidedNextStepPanel";
@@ -54,6 +54,15 @@ import {
   quickUploadAcceptAttribute,
   UNSUPPORTED_FILE_MESSAGE,
 } from "../lib/fileIntakeAccept";
+import { DocumentAttachmentArea } from "../components/DocumentAttachmentArea";
+import {
+  ATTACHMENT_READ_FAILED_MESSAGE,
+  buildAttachedFilesCombinedText,
+  combineTypedTextWithAttachments,
+  createAttachedFile,
+  hasReadableAttachedText,
+  type AttachedFile,
+} from "../lib/documentAttachmentIntake";
 import {
   PHOTO_ADD_CLOSE_UP_DESCRIPTION,
   PHOTO_ADD_CLOSE_UP_LABEL,
@@ -501,9 +510,18 @@ export function HomeView({
   const [showInboxTools, setShowInboxTools] = useState(false);
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [isDesktopPointer, setIsDesktopPointer] = useState(false);
+  // Document Attachment Intake v1 - files attached beside the paste box
+  // (chosen from the device, taken with the camera, or dropped). Kept as its
+  // own small list rather than reusing the single-photo OCR state above, so
+  // attaching files never disturbs the existing "Take or upload a photo" /
+  // "Upload a file" tabs - it only ever feeds combined text into the same
+  // paste/check flow via attachmentCombinedText below.
+  const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
+  const [isDraggingOverAttachment, setIsDraggingOverAttachment] = useState(false);
   const isChecking = analysisStatus === "loading";
   const isAiReading = aiStatus === "loading";
   const isReadingPhoto = ocrStatus === "reading";
+  const isReadingAttachments = attachedFiles.some((attached) => attached.status === "reading");
   const isLocalOllamaMode = aiSettings.mode === "local_ollama";
   const hasEditedOcrText = ocrText.trim() !== ocrOriginalText.trim();
   const isOcrReviewUnreliable =
@@ -534,6 +552,16 @@ export function HomeView({
     () => groupOcrKeyDetails(visibleOcrKeyDetails),
     [visibleOcrKeyDetails],
   );
+  // Document Attachment Intake v1 - combined text from every attached file
+  // that has finished reading, in attachment order. Purely derived so a
+  // failed/removed/re-added file always recomputes correctly; never stored
+  // separately from attachedFiles itself.
+  const attachmentCombinedText = useMemo(
+    () => buildAttachedFilesCombinedText(attachedFiles),
+    [attachedFiles],
+  );
+  const showAttachmentCombinedTextNote =
+    rawText.trim().length > 0 && hasReadableAttachedText(attachedFiles);
   const primaryCase = useMemo(
     () => (result ? getMostImportantCase(result.cases) : undefined),
     [result],
@@ -731,6 +759,8 @@ export function HomeView({
     setShowDetailed(false);
     setShowEmailSafety(false);
     setInputResetKey((current) => current + 1);
+    setAttachedFiles([]);
+    setIsDraggingOverAttachment(false);
     onClearResult();
   };
 
@@ -752,6 +782,8 @@ export function HomeView({
     setAiFallbackHint("");
     setAiExtraction(undefined);
     setShowEmailSafety(false);
+    setAttachedFiles([]);
+    setIsDraggingOverAttachment(false);
     onClearResult();
   };
 
@@ -825,28 +857,37 @@ export function HomeView({
       return;
     }
 
-    if (rawText.trim().length === 0) {
+    // Document Attachment Intake v1 - under the paste tab, whatever was
+    // typed and whatever attached files have finished reading are combined
+    // into one string here, then checked through the exact same "Check a
+    // message" pipeline as plain pasted text. Other tabs are unaffected.
+    const textToCheck =
+      selectedInput === "paste"
+        ? combineTypedTextWithAttachments(rawText, attachmentCombinedText)
+        : rawText.trim();
+
+    if (textToCheck.length === 0) {
       setInputMessage(
         selectedInput === "paste"
-          ? "Paste some text to check this now."
+          ? "Paste some text, or attach a document photo, to check this now."
           : "Choose a text file or photo above, or paste the text from the document to check it now.",
       );
       return;
     }
 
-    if (isChecking || isAiReading || isReadingPhoto) {
+    if (isChecking || isAiReading || isReadingPhoto || isReadingAttachments) {
       return;
     }
 
     if (isLocalOllamaMode) {
-      await runOllamaExtraction();
+      await runOllamaExtraction(textToCheck);
       return;
     }
 
     setInputMessage("");
     setAiError("");
     setAiFallbackHint("");
-    const checked = await onCheck("Pasted admin text", "email", rawText.trim());
+    const checked = await onCheck("Pasted admin text", "email", textToCheck);
 
     if (!checked) {
       setAiExtraction(undefined);
@@ -1204,6 +1245,89 @@ export function HomeView({
     await handleFileUpload(file);
   };
 
+  // Document Attachment Intake v1 - adds newly chosen/dropped files to the
+  // attachment list, then reads each one in the order they were attached:
+  // images through the same on-device OCR as every other photo path, text
+  // files through the browser's own File.text(). A read failure on one file
+  // only marks that file as failed - it never stops the other files from
+  // being read, and never crashes the check flow. Nothing here uploads a
+  // file anywhere; every read happens in this browser tab.
+  const handleAttachmentFilesSelected = async (newFiles: File[]) => {
+    if (newFiles.length === 0) {
+      return;
+    }
+
+    const newEntries = newFiles.map((file) => createAttachedFile(file));
+    setAttachedFiles((current) => [...current, ...newEntries]);
+
+    for (const entry of newEntries) {
+      if (entry.kind === "unsupported") {
+        continue;
+      }
+
+      setAttachedFiles((current) =>
+        current.map((item) => (item.id === entry.id ? { ...item, status: "reading" } : item)),
+      );
+
+      try {
+        if (entry.kind === "image") {
+          // Sequential, in attachment order - see buildAttachedFilesCombinedText.
+          // eslint-disable-next-line no-await-in-loop
+          const result = await readTextFromImage(entry.file);
+
+          setAttachedFiles((current) =>
+            current.map((item) =>
+              item.id === entry.id
+                ? {
+                    ...item,
+                    status: "read",
+                    extractedText: result.text,
+                    confidence: result.confidence,
+                    warnings: result.warnings,
+                  }
+                : item,
+            ),
+          );
+        } else {
+          // eslint-disable-next-line no-await-in-loop
+          const text = await entry.file.text();
+
+          setAttachedFiles((current) =>
+            current.map((item) =>
+              item.id === entry.id ? { ...item, status: "read", extractedText: text } : item,
+            ),
+          );
+        }
+      } catch {
+        setAttachedFiles((current) =>
+          current.map((item) =>
+            item.id === entry.id
+              ? { ...item, status: "failed", errorMessage: ATTACHMENT_READ_FAILED_MESSAGE }
+              : item,
+          ),
+        );
+      }
+    }
+  };
+
+  const handleRemoveAttachedFile = (id: string) => {
+    setAttachedFiles((current) => current.filter((item) => item.id !== id));
+  };
+
+  const handleAttachmentDragOver = () => setIsDraggingOverAttachment(true);
+
+  const handleAttachmentDragLeave = () => setIsDraggingOverAttachment(false);
+
+  // preventDefault on drop (and dragover, in DocumentAttachmentArea) stops
+  // the browser's default behaviour of navigating to/opening the dropped
+  // file as a new page - the file is only ever handed to the same local
+  // attachment pipeline as a chosen/captured file.
+  const handleAttachmentDrop = (event: DragEvent<HTMLDivElement>) => {
+    setIsDraggingOverAttachment(false);
+    const droppedFiles = event.dataTransfer?.files ? Array.from(event.dataTransfer.files) : [];
+    void handleAttachmentFilesSelected(droppedFiles);
+  };
+
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       <header className="mx-auto flex max-w-2xl flex-col items-center space-y-3 pt-1 text-center sm:pt-4">
@@ -1542,6 +1666,18 @@ export function HomeView({
                   Press Enter to check, Shift+Enter for a new line.
                 </p>
               ) : null}
+
+              <DocumentAttachmentArea
+                files={attachedFiles}
+                isDraggingOver={isDraggingOverAttachment}
+                disabled={isChecking || isAiReading}
+                showCombinedTextNote={showAttachmentCombinedTextNote}
+                onFilesSelected={(files) => void handleAttachmentFilesSelected(files)}
+                onRemoveFile={handleRemoveAttachedFile}
+                onDragOver={handleAttachmentDragOver}
+                onDragLeave={handleAttachmentDragLeave}
+                onDrop={handleAttachmentDrop}
+              />
             </div>
           ) : (
             <div className="rounded-lg border border-dashed border-white/15 bg-slate-950/60 p-5">
@@ -1783,8 +1919,8 @@ export function HomeView({
             <button
               type="button"
               onClick={handleCheck}
-              disabled={isChecking || isAiReading || isReadingPhoto}
-              aria-busy={isChecking || isAiReading || isReadingPhoto}
+              disabled={isChecking || isAiReading || isReadingPhoto || isReadingAttachments}
+              aria-busy={isChecking || isAiReading || isReadingPhoto || isReadingAttachments}
               className="w-full rounded-lg bg-emerald-400 px-5 py-4 text-lg font-bold text-slate-950 shadow-lg shadow-emerald-950/30 transition hover:bg-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:ring-offset-2 focus:ring-offset-slate-950 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400 disabled:shadow-none"
             >
               {isAiReading

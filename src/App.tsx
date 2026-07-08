@@ -21,13 +21,13 @@ import {
 } from "./lib/termsAcceptance";
 import { TermsSafetyGate } from "./components/TermsSafetyGate";
 import {
-  clearAllAdminAvengerLocalData,
   createAdminAvengerBackup,
   getLastStorageLoadDiagnostic,
   loadSavedAdminAvengerState,
   saveAdminAvengerState,
   subscribeToStorageSaveErrors,
 } from "./lib/storage";
+import { clearAdminAvengerLocalData } from "./lib/localDataControl";
 import {
   defaultInboxScanSettings,
   loadInboxScanSettings,
@@ -147,6 +147,8 @@ function App() {
     getLastStorageLoadDiagnostic(),
   );
   const skippedInitialInvalidStorageSaveRef = useRef(false);
+  const skipNextStorageSaveRef = useRef(false);
+  const skipNextInboxScanSaveRef = useRef(false);
   const [items, setItems] = useState<AdminItem[]>(initialState.adminItems);
   const [findings, setFindings] = useState<AdminFinding[]>(
     initialState.findings,
@@ -218,6 +220,11 @@ function App() {
   );
 
   useEffect(() => {
+    if (skipNextStorageSaveRef.current) {
+      skipNextStorageSaveRef.current = false;
+      return;
+    }
+
     if (
       storageLoadDiagnostic.source === "invalid" &&
       !skippedInitialInvalidStorageSaveRef.current
@@ -264,6 +271,11 @@ function App() {
   }, [storageLoadDiagnostic]);
 
   useEffect(() => {
+    if (skipNextInboxScanSaveRef.current) {
+      skipNextInboxScanSaveRef.current = false;
+      return;
+    }
+
     saveInboxScanSettings(inboxScanSettings);
   }, [inboxScanSettings]);
 
@@ -1167,16 +1179,10 @@ function App() {
   };
 
   const handleClearLocalData = () => {
-    const shouldClear = window.confirm(
-      "Clear all local AdminAvenger data from this browser? This cannot be undone.",
-    );
+    const clearResult = clearAdminAvengerLocalData();
 
-    if (!shouldClear) {
-      return;
-    }
-
-    clearAllAdminAvengerLocalData();
-    resetTermsAcceptance();
+    skipNextStorageSaveRef.current = true;
+    skipNextInboxScanSaveRef.current = true;
     setItems([]);
     setFindings([]);
     setAdminCases([]);
@@ -1186,9 +1192,8 @@ function App() {
     setSelectedCaseId(undefined);
     setInboxScanSettings(defaultInboxScanSettings);
     setHomeResult(undefined);
-    setHasAcceptedTerms(false);
-    setDataControlMessage("Local AdminAvenger data deleted from this browser.");
-    setCurrentView("home");
+    setDataControlMessage("AdminAvenger local data was cleared from this browser.");
+    return clearResult;
   };
 
   // Pre-use legal/safety gate: nothing else in the app renders or is
@@ -1315,7 +1320,9 @@ function App() {
 
       {currentView === "covenant" ? <CovenantView /> : null}
 
-      {currentView === "trust_safety" ? <TrustSafetyView /> : null}
+      {currentView === "trust_safety" ? (
+        <TrustSafetyView onNavigateToSettings={() => setCurrentView("settings")} />
+      ) : null}
 
       {currentView === "settings" ? (
         <SettingsView

@@ -466,6 +466,20 @@ export function SettingsView({
         title="What AdminAvenger can and cannot do"
         description="AdminAvenger prepares; you decide."
       >
+        <div className="mb-4 rounded-lg border border-emerald-300/25 bg-emerald-300/[0.07] p-4">
+          <h4 className="text-sm font-bold text-white">Free-Forever Covenant</h4>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
+            Read the public promise about the individual core staying free, no ads,
+            no selling user data, and no success fees.
+          </p>
+          <button
+            type="button"
+            onClick={() => onNavigate("covenant")}
+            className="mt-3 min-h-11 rounded-lg border border-emerald-300/30 bg-emerald-300/10 px-4 py-2.5 text-sm font-bold text-emerald-100 transition hover:border-emerald-200 hover:text-white focus:outline-none focus:ring-2 focus:ring-emerald-300/40"
+          >
+            Read the Free-Forever Covenant
+          </button>
+        </div>
         <div className="grid gap-3 md:grid-cols-2">
           {trustSections.map((section) => (
             <article

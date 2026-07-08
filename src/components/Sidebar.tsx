@@ -6,6 +6,7 @@ export type AppView =
   | "cases"
   | "case_file"
   | "validation"
+  | "covenant"
   | "settings";
 
 type SidebarProps = {

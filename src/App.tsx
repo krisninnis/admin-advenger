@@ -40,6 +40,7 @@ import type { ServiceStatus } from "./services/analysisService";
 import { AddItemView } from "./views/AddItemView";
 import { CaseFileView } from "./views/CaseFileView";
 import { CasesView } from "./views/CasesView";
+import { CovenantView } from "./views/CovenantView";
 import { DashboardView } from "./views/DashboardView";
 import { HomeView } from "./views/HomeView";
 import type { HomeAnalysisResult } from "./views/HomeView";
@@ -1310,6 +1311,8 @@ function App() {
       ) : null}
 
       {currentView === "validation" ? <ValidationView /> : null}
+
+      {currentView === "covenant" ? <CovenantView /> : null}
 
       {currentView === "settings" ? (
         <SettingsView

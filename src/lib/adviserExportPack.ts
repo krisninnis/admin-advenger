@@ -1,4 +1,5 @@
 import type { BenefitsActionPack } from "./benefitsActionPack";
+import type { CommunityHelperPack, CommunityHelperSituationType } from "./communityHelperPack";
 import type {
   DecisionConfidenceLevel,
   DecisionDocumentType,
@@ -15,6 +16,7 @@ import {
   FORBIDDEN_ADVERSARIAL_LANGUAGE,
   FORBIDDEN_ADVICE_CLAIMS,
   FORBIDDEN_AUTOMATION_CLAIMS,
+  FORBIDDEN_COMMUNITY_HELPER_CLAIMS,
   FORBIDDEN_MONEY_CLAIMS,
   FORBIDDEN_OUTCOME_CLAIMS,
   normaliseSafetyText,
@@ -52,7 +54,7 @@ export type AdviserExportPackDraft = {
 };
 
 export type AdviserExportPack = {
-  documentType: DecisionDocumentType | WorkplaceSupportDocumentType;
+  documentType: DecisionDocumentType | WorkplaceSupportDocumentType | CommunityHelperSituationType;
   title: string;
   whatThisAppearsToBe: string;
   whyThisMatters: string;
@@ -69,6 +71,7 @@ export type AdviserExportPack = {
   draft: AdviserExportPackDraft;
   safetyNotes: string[];
   workplaceSupportPack?: WorkplaceSupportPack;
+  communityHelperPack?: CommunityHelperPack;
 };
 
 export type BuildAdviserExportPackInput = {
@@ -77,6 +80,7 @@ export type BuildAdviserExportPackInput = {
   benefitsActionPack?: BenefitsActionPack | null;
   strategicNextStepPlan?: StrategicNextStepPlan;
   workplaceSupportPack?: WorkplaceSupportPack;
+  communityHelperPack?: CommunityHelperPack;
 };
 
 // --- Required safety lines (Section 6 of the fix request) -----------------
@@ -127,6 +131,24 @@ export const ADVISER_PACK_SETTLEMENT_REVIEW_NOTE =
 export const ADVISER_PACK_RESIGNATION_REVIEW_NOTE =
   "Get advice before making a resignation decision.";
 
+export const ADVISER_PACK_COMMUNITY_PREPARATION_NOTE =
+  "This is preparation only, not a professional assessment.";
+
+export const ADVISER_PACK_COMMUNITY_BOUNDARY_NOTE =
+  "AdminAvenger cannot decide care needs, safeguarding, diagnosis, capacity, eligibility, equipment, or adaptations.";
+
+export const ADVISER_PACK_COMMUNITY_SIGNPOSTING_NOTE =
+  "Ask a support worker, OT, housing officer, adviser, GP or clinician, social worker, safeguarding professional if urgent, or another trusted person if you are unsure.";
+
+export const ADVISER_PACK_COMMUNITY_CONSENT_NOTE =
+  "Keep the person involved where possible. AdminAvenger does not give authority to act for someone.";
+
+export const ADVISER_PACK_COMMUNITY_URGENT_NOTE =
+  "If someone may be in immediate danger, contact emergency services or the relevant local safeguarding service. AdminAvenger cannot decide safeguarding concerns.";
+
+export const ADVISER_PACK_COMMUNITY_FINANCIAL_FACTS_NOTE =
+  "Financial admin concerns should be written as observed facts, dates, letters, messages, and account records where appropriate. This does not decide wrongdoing or missing money.";
+
 const REQUIRED_ADVISER_PACK_SAFETY_NOTES = [
   ADVISER_PACK_PREPARATION_ONLY_NOTE,
   ADVISER_PACK_NOTHING_SENT_NOTE,
@@ -156,6 +178,7 @@ const forbiddenPhrases = [
   ...FORBIDDEN_ADVERSARIAL_LANGUAGE,
   ...FORBIDDEN_MONEY_CLAIMS,
   ...FORBIDDEN_AUTOMATION_CLAIMS,
+  ...FORBIDDEN_COMMUNITY_HELPER_CLAIMS,
 ] as const;
 
 const isSafeText = (value: string) => {
@@ -222,6 +245,12 @@ const buildWorkplaceWhyThisMatters = (workplaceSupportPack: WorkplaceSupportPack
     "This workplace message is worth checking carefully before you decide what to do.",
   );
 
+const buildCommunityHelperWhyThisMatters = (communityHelperPack: CommunityHelperPack): string =>
+  safeText(
+    `${communityHelperPack.summary} It may matter because admin, daily-life, communication, housing, money, health, care, or safety details may need checking with a suitable person before deciding what to do.`,
+    "This community support situation is worth checking carefully with a suitable person before deciding what to do.",
+  );
+
 // Translates AdminAvenger's own read-confidence into a plain sentence. Never
 // shows the raw level word or a percentage, and never rendered as case
 // strength - `confidence` is about how sure AdminAvenger is of its
@@ -250,10 +279,29 @@ const buildWorkplaceConfidence = (workplaceSupportPack: WorkplaceSupportPack): A
       : "This appears to be a workplace preparation pack, but the original message and full context still need checking.",
 });
 
+const buildCommunityHelperConfidence = (communityHelperPack: CommunityHelperPack): AdviserExportPackConfidence => ({
+  level: communityHelperPack.situationType === "community_helper_unknown" ? "low" : "medium",
+  statement:
+    communityHelperPack.situationType === "community_helper_unknown"
+      ? "This is less clear from what was provided, so treat this community support preparation read with extra care."
+      : "This appears to be a community support preparation pack, but the original message and full context still need checking.",
+});
+
+const buildCommunityHelperRouteToCheck = (communityHelperPack: CommunityHelperPack): string[] =>
+  uniqueSafe([
+    ...(communityHelperPack.situationType === "urgent_safeguarding_like_signpost"
+      ? [ADVISER_PACK_COMMUNITY_URGENT_NOTE]
+      : []),
+    ...communityHelperPack.safeNextSteps,
+    ...communityHelperPack.signposting,
+    ADVISER_PACK_ROUTE_CHECK_LETTER_LINE,
+  ]);
+
 const buildRouteToCheck = (
   decisionResult: DecisionResult | undefined,
   resultViewModel: ResultViewModel,
   workplaceSupportPack?: WorkplaceSupportPack,
+  communityHelperPack?: CommunityHelperPack,
 ): string[] => {
   if (workplaceSupportPack?.documentType === "settlement_agreement_signpost") {
     return uniqueSafe([
@@ -261,6 +309,10 @@ const buildRouteToCheck = (
       "Use this pack only to gather questions and documents for a qualified human review.",
       ADVISER_PACK_ROUTE_CHECK_LETTER_LINE,
     ]);
+  }
+
+  if (communityHelperPack) {
+    return buildCommunityHelperRouteToCheck(communityHelperPack);
   }
 
   const items = uniqueSafe([
@@ -317,35 +369,66 @@ const buildWorkplaceSafetyNotes = (workplaceSupportPack?: WorkplaceSupportPack) 
   ]);
 };
 
+const buildCommunityHelperSafetyNotes = (communityHelperPack?: CommunityHelperPack) => {
+  if (!communityHelperPack) {
+    return [];
+  }
+
+  return uniqueSafe([
+    ADVISER_PACK_COMMUNITY_PREPARATION_NOTE,
+    ADVISER_PACK_CONTROL_NOTE,
+    ADVISER_PACK_COMMUNITY_BOUNDARY_NOTE,
+    ADVISER_PACK_COMMUNITY_SIGNPOSTING_NOTE,
+    ADVISER_PACK_COMMUNITY_CONSENT_NOTE,
+    ...communityHelperPack.preparationOnlyNotes,
+    ...communityHelperPack.consentAndControlNotes,
+    communityHelperPack.situationType === "urgent_safeguarding_like_signpost"
+      ? ADVISER_PACK_COMMUNITY_URGENT_NOTE
+      : undefined,
+    communityHelperPack.situationType === "vulnerability_financial_admin_concern"
+      ? ADVISER_PACK_COMMUNITY_FINANCIAL_FACTS_NOTE
+      : undefined,
+  ]);
+};
+
 export const buildAdviserExportPack = ({
   decisionResult,
   resultViewModel,
   benefitsActionPack,
   strategicNextStepPlan,
   workplaceSupportPack,
+  communityHelperPack,
 }: BuildAdviserExportPackInput): AdviserExportPack => ({
-  documentType: decisionResult?.documentType ?? workplaceSupportPack?.documentType ?? "unknown_admin_dispute",
+  documentType:
+    decisionResult?.documentType ??
+    workplaceSupportPack?.documentType ??
+    communityHelperPack?.situationType ??
+    "unknown_admin_dispute",
   title: resultViewModel.title,
   whatThisAppearsToBe: resultViewModel.summary,
   whyThisMatters: decisionResult
     ? buildWhyThisMatters(decisionResult)
     : workplaceSupportPack
       ? buildWorkplaceWhyThisMatters(workplaceSupportPack)
-      : "This document is worth checking carefully before you decide what to do.",
+      : communityHelperPack
+        ? buildCommunityHelperWhyThisMatters(communityHelperPack)
+        : "This document is worth checking carefully before you decide what to do.",
   confidence: decisionResult
     ? buildConfidence(decisionResult)
     : workplaceSupportPack
       ? buildWorkplaceConfidence(workplaceSupportPack)
-      : {
-          level: "low",
-          statement: "This is less clear from what was provided, so treat this read with extra care.",
-        },
+      : communityHelperPack
+        ? buildCommunityHelperConfidence(communityHelperPack)
+        : {
+            level: "low",
+            statement: "This is less clear from what was provided, so treat this read with extra care.",
+          },
   // Reused directly from ResultViewModel/DecisionResult rather than
   // re-derived, so this section can never silently drop items the engine
   // already produced.
   uncertainty: resultViewModel.uncertainty,
   cannotKnow: resultViewModel.cannotKnow,
-  routeToCheck: buildRouteToCheck(decisionResult, resultViewModel, workplaceSupportPack),
+  routeToCheck: buildRouteToCheck(decisionResult, resultViewModel, workplaceSupportPack, communityHelperPack),
   keyDates: resultViewModel.keyDates,
   moneyMentioned: resultViewModel.moneyMentioned,
   evidenceFound: resultViewModel.evidenceFound,
@@ -359,8 +442,10 @@ export const buildAdviserExportPack = ({
     ...(benefitsActionPack?.safetyNotes ?? []),
     ...(strategicNextStepPlan?.safetyNotes ?? []),
     ...buildWorkplaceSafetyNotes(workplaceSupportPack),
+    ...buildCommunityHelperSafetyNotes(communityHelperPack),
   ]),
   workplaceSupportPack,
+  communityHelperPack,
 });
 
 // Flattens every user-facing string on an AdviserExportPack into one block of
@@ -402,6 +487,29 @@ export const flattenAdviserExportPackText = (pack: AdviserExportPack): string =>
       : "",
     pack.workplaceSupportPack && hasResignationRisk(pack.workplaceSupportPack)
       ? ADVISER_PACK_RESIGNATION_REVIEW_NOTE
+      : "",
+    pack.communityHelperPack?.title ?? "",
+    pack.communityHelperPack?.summary ?? "",
+    ...(pack.communityHelperPack?.dailyLifeImpact ?? []),
+    ...(pack.communityHelperPack?.adminBarriers ?? []),
+    ...(pack.communityHelperPack?.communicationBarriers ?? []),
+    ...(pack.communityHelperPack?.keyFactsToCheck ?? []),
+    ...(pack.communityHelperPack?.evidenceToGather ?? []),
+    ...(pack.communityHelperPack?.questionsToAsk ?? []),
+    ...(pack.communityHelperPack?.cannotKnow ?? []),
+    ...(pack.communityHelperPack?.safeNextSteps ?? []),
+    ...(pack.communityHelperPack?.preparationOnlyNotes ?? []),
+    ...(pack.communityHelperPack?.consentAndControlNotes ?? []),
+    ...(pack.communityHelperPack?.riskWarnings ?? []),
+    ...(pack.communityHelperPack?.signposting ?? []),
+    pack.communityHelperPack ? ADVISER_PACK_COMMUNITY_PREPARATION_NOTE : "",
+    pack.communityHelperPack ? ADVISER_PACK_COMMUNITY_BOUNDARY_NOTE : "",
+    pack.communityHelperPack ? ADVISER_PACK_COMMUNITY_SIGNPOSTING_NOTE : "",
+    pack.communityHelperPack?.situationType === "urgent_safeguarding_like_signpost"
+      ? ADVISER_PACK_COMMUNITY_URGENT_NOTE
+      : "",
+    pack.communityHelperPack?.situationType === "vulnerability_financial_admin_concern"
+      ? ADVISER_PACK_COMMUNITY_FINANCIAL_FACTS_NOTE
       : "",
   ].join("\n");
 
@@ -494,6 +602,72 @@ const renderWorkplaceSection = (pack: WorkplaceSupportPack | undefined) => {
   );
 };
 
+const buildCommunityHelperPreparationNotes = (pack: CommunityHelperPack) =>
+  uniqueSafe([
+    ADVISER_PACK_COMMUNITY_PREPARATION_NOTE,
+    ADVISER_PACK_CONTROL_NOTE,
+    ADVISER_PACK_COMMUNITY_BOUNDARY_NOTE,
+    ADVISER_PACK_COMMUNITY_CONSENT_NOTE,
+    "Use this pack for calm preparation, evidence/context lists, questions, and signposting to a suitable human.",
+    "This pack is not a diagnosis, safeguarding decision, capacity decision, eligibility decision, equipment recommendation, adaptation recommendation, or financial-abuse conclusion.",
+    pack.situationType === "urgent_safeguarding_like_signpost" ? ADVISER_PACK_COMMUNITY_URGENT_NOTE : undefined,
+    pack.situationType === "vulnerability_financial_admin_concern"
+      ? ADVISER_PACK_COMMUNITY_FINANCIAL_FACTS_NOTE
+      : undefined,
+  ]);
+
+const renderCommunityHelperSection = (pack: CommunityHelperPack | undefined) => {
+  if (!pack) {
+    return undefined;
+  }
+
+  const impactItems = uniqueSafe([
+    ...pack.dailyLifeImpact,
+    ...pack.adminBarriers,
+    ...pack.communicationBarriers,
+  ]);
+
+  const humanSupport = uniqueSafe([
+    ADVISER_PACK_COMMUNITY_SIGNPOSTING_NOTE,
+    ...pack.signposting,
+    pack.situationType === "urgent_safeguarding_like_signpost" ? ADVISER_PACK_COMMUNITY_URGENT_NOTE : undefined,
+  ]);
+
+  return renderSection(
+    "Community support preparation pack",
+    [
+      "### What this appears to be about",
+      cleanMarkdownText(pack.title, "Community support preparation pack"),
+      "",
+      cleanMarkdownText(pack.summary, "This appears to be community support preparation."),
+      "",
+      "### Daily-life, admin, or communication impact",
+      renderList(impactItems, "No daily-life, admin, or communication impact was listed in this pack."),
+      "",
+      "### Key facts to check",
+      renderList(pack.keyFactsToCheck, "No key facts were listed in this community support pack."),
+      "",
+      "### Evidence/context to gather",
+      renderList(pack.evidenceToGather, "No evidence or context items were listed in this pack."),
+      "",
+      "### Questions to ask",
+      renderList(pack.questionsToAsk, "No questions were listed in this pack."),
+      "",
+      "### Consent and control notes",
+      renderList(pack.consentAndControlNotes, ADVISER_PACK_COMMUNITY_CONSENT_NOTE),
+      "",
+      "### What AdminAvenger cannot know",
+      renderList(pack.cannotKnow, "No community support cannot-know items were listed in this pack."),
+      "",
+      "### Preparation-only notes",
+      renderList(buildCommunityHelperPreparationNotes(pack), ADVISER_PACK_COMMUNITY_PREPARATION_NOTE),
+      "",
+      "### Human support/signposting",
+      renderList(humanSupport, ADVISER_PACK_COMMUNITY_SIGNPOSTING_NOTE),
+    ].join("\n"),
+  );
+};
+
 const getGeneratedLine = (pack: AdviserExportPack) => {
   const maybeGeneratedAt = (pack as AdviserExportPack & { generatedAt?: unknown }).generatedAt;
 
@@ -536,6 +710,7 @@ export const renderAdviserExportMarkdown = (pack: AdviserExportPack): string => 
     renderSection("Uncertainty", renderList(pack.uncertainty, "No uncertainty was listed in this pack.")),
     renderSection("What may happen next / route to check", renderList(pack.routeToCheck, ADVISER_PACK_ROUTE_CHECK_LETTER_LINE)),
     renderWorkplaceSection(pack.workplaceSupportPack),
+    renderCommunityHelperSection(pack.communityHelperPack),
     renderSection("Key dates to check", renderList(pack.keyDates.map(renderDateLine), "No key dates were listed in this pack.")),
     renderSection("Money mentioned, display-only", renderList(pack.moneyMentioned.map(renderMoneyLine), "No money was listed in this pack.")),
     renderSection("Evidence/documents to bring", evidenceSections),

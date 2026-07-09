@@ -6,6 +6,7 @@ import {
   renderAdviserExportMarkdown,
 } from "../adviserExportPack";
 import { buildBenefitsActionPack } from "../benefitsActionPack";
+import { buildCommunityHelperPack } from "../communityHelperPack";
 import { analyseDecisionProblem } from "../decisionEngine/decisionEngine";
 import type { DecisionResult } from "../decisionEngine/types";
 import { goldenLetterFixtures, runGoldenLetterFixture } from "../goldenLetters";
@@ -71,6 +72,54 @@ const buildWorkplaceAdviserPack = (text: string) => {
   const normalised = normaliseSafetyText(markdown);
 
   return { workplaceSupportPack, resultViewModel, adviserExportPack, markdown, normalised };
+};
+
+
+const communityForbiddenPhrases = [
+  "you are diagnosed",
+  "this proves disability",
+  "this proves neglect",
+  "safeguarding issue confirmed",
+  "risk score",
+  "care score",
+  "eligibility score",
+  "they qualify",
+  "council must provide",
+  "needs this equipment",
+  "needs this adaptation",
+  "cannot live alone",
+  "lacks capacity",
+  "financial abuse proven",
+  "money owed",
+  "money saved",
+  "money recovered",
+  "contacted automatically",
+];
+
+const buildCommunityHelperAdviserPack = (
+  text: string,
+  role: Parameters<typeof buildCommunityHelperPack>[0]["role"] = "helping_someone",
+) => {
+  const communityHelperPack = buildCommunityHelperPack({ text, role });
+  const resultViewModel = buildResultViewModel({ communityHelperPack });
+  const adviserExportPack = buildAdviserExportPack({
+    resultViewModel,
+    communityHelperPack,
+  });
+  const markdown = renderAdviserExportMarkdown(adviserExportPack);
+  const normalised = normaliseSafetyText(markdown);
+
+  return { communityHelperPack, resultViewModel, adviserExportPack, markdown, normalised };
+};
+
+const expectNoForbiddenCommunityMarkdown = (markdown: string) => {
+  const normalised = normaliseSafetyText(markdown);
+
+  for (const phrase of communityForbiddenPhrases) {
+    expect(normalised).not.toContain(normaliseSafetyText(phrase));
+  }
+
+  expect(findForbiddenSafetyPhrases(markdown)).toEqual([]);
 };
 
 const expectNoForbiddenWorkplaceMarkdown = (markdown: string) => {
@@ -304,6 +353,108 @@ describe("Adviser Export Pack v1 - golden corpus Markdown", () => {
     expect(markdown).toContain("Nothing has been sent or submitted by AdminAvenger.");
     expect(findForbiddenSafetyPhrases(markdown)).toEqual([]);
     expect(normaliseSafetyText(markdown)).not.toContain("case strength");
+  });
+});
+
+
+describe("Adviser Export Pack v1 - community helper support", () => {
+  const missedLettersText =
+    "My uncle missed several letters and missed the deadline for an appointment.";
+
+  const otText =
+    "We need to prepare notes for an occupational therapist visit because Mum struggles with letters, daily routine, stairs, bathing, and explaining what happens at home.";
+
+  const urgentText =
+    "I am worried someone may be in immediate danger at home and there are concerns about abuse and neglect.";
+
+  const financialText =
+    "My friend is vulnerable and confused about bank card use, bills, missing payments, and someone else controlling money.";
+
+  it("accepts optional communityHelperPack input", () => {
+    const { communityHelperPack, adviserExportPack, markdown, normalised } =
+      buildCommunityHelperAdviserPack(missedLettersText);
+
+    expect(communityHelperPack.situationType).toBe("missed_letters_or_deadlines");
+    expect(adviserExportPack.documentType).toBe("missed_letters_or_deadlines");
+    expect(adviserExportPack.communityHelperPack).toBe(communityHelperPack);
+    expect(markdown).toContain("## Community support preparation pack");
+    expect(normalised).toContain("community support preparation pack");
+    expect(normalised).toContain("adminavenger helps prepare. you stay in control.");
+    expectNoForbiddenCommunityMarkdown(markdown);
+  });
+
+  it("renders community helper preparation sections safely", () => {
+    const { markdown, normalised } = buildCommunityHelperAdviserPack(missedLettersText);
+
+    expect(markdown).toContain("### What this appears to be about");
+    expect(markdown).toContain("### Daily-life, admin, or communication impact");
+    expect(markdown).toContain("### Key facts to check");
+    expect(markdown).toContain("### Evidence/context to gather");
+    expect(markdown).toContain("### Questions to ask");
+    expect(markdown).toContain("### Consent and control notes");
+    expect(markdown).toContain("### Human support/signposting");
+    expect(normalised).toContain("this is preparation only, not a professional assessment");
+    expect(normalised).toContain("adminavenger cannot decide care needs");
+    expectNoForbiddenCommunityMarkdown(markdown);
+  });
+
+  it("OT or support visit export does not recommend equipment or adaptations", () => {
+    const { communityHelperPack, markdown, normalised } = buildCommunityHelperAdviserPack(otText);
+
+    expect(communityHelperPack.situationType).toBe("ot_or_support_visit_preparation");
+    expect(normalised).toContain("occupational therapist");
+    expect(normalised).not.toContain("needs this equipment");
+    expect(normalised).not.toContain("needs this adaptation");
+    expect(normalised).not.toContain("council must provide");
+    expectNoForbiddenCommunityMarkdown(markdown);
+  });
+
+  it("urgent safeguarding-like export signposts without deciding safeguarding", () => {
+    const { communityHelperPack, markdown, normalised } = buildCommunityHelperAdviserPack(urgentText);
+
+    expect(communityHelperPack.situationType).toBe("urgent_safeguarding_like_signpost");
+    expect(normalised).toContain("emergency services");
+    expect(normalised).toContain("adminavenger cannot decide safeguarding concerns");
+    expect(normalised).not.toContain("safeguarding issue confirmed");
+    expect(normalised).not.toContain("risk score");
+    expectNoForbiddenCommunityMarkdown(markdown);
+  });
+
+  it("financial admin concern export stays factual and non-accusatory", () => {
+    const { communityHelperPack, markdown, normalised } = buildCommunityHelperAdviserPack(financialText);
+
+    expect(communityHelperPack.situationType).toBe("vulnerability_financial_admin_concern");
+    expect(normalised).toContain("financial admin concerns should be written as observed facts");
+    expect(normalised).not.toContain("financial abuse proven");
+    expect(normalised).not.toContain("money owed");
+    expect(normalised).not.toContain("money saved");
+    expect(normalised).not.toContain("money recovered");
+    expectNoForbiddenCommunityMarkdown(markdown);
+  });
+
+  it("keeps consent and control notes visible", () => {
+    const { markdown, normalised } = buildCommunityHelperAdviserPack(missedLettersText);
+
+    expect(markdown).toContain("### Consent and control notes");
+    expect(normalised).toContain("keep the person involved");
+    expect(normalised).toContain("does not give authority to act for someone");
+    expectNoForbiddenCommunityMarkdown(markdown);
+  });
+
+  it("has no forbidden community helper wording across community adviser exports", () => {
+    for (const text of [missedLettersText, otText, urgentText, financialText]) {
+      const { markdown } = buildCommunityHelperAdviserPack(text);
+
+      expectNoForbiddenCommunityMarkdown(markdown);
+    }
+  });
+
+  it("keeps existing non-community adviser export unchanged when no communityHelperPack is supplied", () => {
+    const { adviserExportPack } = buildUcSanctionPack();
+
+    expect(adviserExportPack.communityHelperPack).toBeUndefined();
+    expect(renderAdviserExportMarkdown(adviserExportPack)).not.toContain("## Community support preparation pack");
+    expect(adviserExportPack.documentType).toBe("benefits_uc_sanction");
   });
 });
 

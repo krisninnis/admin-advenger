@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildAdviserExportPack } from "../adviserExportPack";
 import { buildBenefitsActionPack } from "../benefitsActionPack";
+import { buildCommunityHelperPack } from "../communityHelperPack";
 import { buildCaseProgress, flattenCaseProgressText } from "../caseProgress";
 import { analyseDecisionProblem } from "../decisionEngine/decisionEngine";
 import { buildResultViewModel } from "../resultViewModel";
@@ -402,6 +403,45 @@ describe("generated safety wording regression", () => {
     expect(normaliseSafetyText(parking.combinedText)).not.toContain("you do not owe this");
     expect(normaliseSafetyText(ucStatement.strategicText)).not.toContain("game theory");
     expect(normaliseSafetyText(ucStatement.benefitsText)).not.toContain("money saved");
+  });
+
+
+  it("Community Helper Pack exported outputs keep preparation-only boundaries", () => {
+    const communityTexts = [
+      "My uncle missed several letters and missed the deadline for an appointment.",
+      "We need to prepare notes for an occupational therapist visit because Mum struggles with letters and daily routine.",
+      "I am worried someone may be in immediate danger at home and there are concerns about abuse and neglect.",
+      "My friend is vulnerable and confused about bank card use, bills, missing payments, and someone else controlling money.",
+    ];
+
+    for (const text of communityTexts) {
+      const communityHelperPack = buildCommunityHelperPack({ text, role: "helping_someone" });
+      const resultViewModel = buildResultViewModel({ communityHelperPack });
+      const caseProgress = buildCaseProgress({ resultViewModel, communityHelperPack });
+      const adviserExportPack = buildAdviserExportPack({
+        resultViewModel,
+        communityHelperPack,
+      });
+      const resultViewText = collectTextFromResultViewModel(resultViewModel);
+      const caseProgressText = flattenCaseProgressText(caseProgress);
+      const adviserPackText = collectTextFromAdviserExportPack(adviserExportPack);
+      const combined = [resultViewText, caseProgressText, adviserPackText].join("\n");
+      const normalised = normaliseSafetyText(combined);
+
+      expectNoForbiddenOutput(resultViewText, `community result view ${communityHelperPack.situationType}`);
+      expectNoForbiddenOutput(caseProgressText, `community case progress ${communityHelperPack.situationType}`);
+      expectNoForbiddenOutput(adviserPackText, `community adviser export ${communityHelperPack.situationType}`);
+      expect(normalised).toContain("preparation");
+      expect(normalised).toContain("adminavenger helps prepare. you stay in control");
+      expect(normalised).toContain("cannot decide");
+      expect(normalised).not.toContain("safeguarding issue confirmed");
+      expect(normalised).not.toContain("risk score");
+      expect(normalised).not.toContain("eligibility score");
+      expect(normalised).not.toContain("needs this equipment");
+      expect(normalised).not.toContain("needs this adaptation");
+      expect(normalised).not.toContain("financial abuse proven");
+      expect(normalised).not.toContain("money owed");
+    }
   });
 
   it("Workplace Support Pack ResultViewModel output keeps preparation-only boundaries", () => {

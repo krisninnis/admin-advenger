@@ -407,14 +407,25 @@ export const collectTextFromAdviserExportPack = (pack: AdviserExportPack) =>
     ...(pack.workplaceSupportPack?.cannotKnow ?? []),
     ...(pack.workplaceSupportPack?.riskWarnings ?? []),
     ...(pack.workplaceSupportPack?.signposting ?? []),
+    pack.communityHelperPack?.title,
+    pack.communityHelperPack?.summary,
+    ...(pack.communityHelperPack?.dailyLifeImpact ?? []),
+    ...(pack.communityHelperPack?.adminBarriers ?? []),
+    ...(pack.communityHelperPack?.communicationBarriers ?? []),
+    ...(pack.communityHelperPack?.keyFactsToCheck ?? []),
+    ...(pack.communityHelperPack?.evidenceToGather ?? []),
+    ...(pack.communityHelperPack?.questionsToAsk ?? []),
+    ...(pack.communityHelperPack?.cannotKnow ?? []),
+    ...(pack.communityHelperPack?.safeNextSteps ?? []),
+    ...(pack.communityHelperPack?.preparationOnlyNotes ?? []),
+    ...(pack.communityHelperPack?.consentAndControlNotes ?? []),
+    ...(pack.communityHelperPack?.riskWarnings ?? []),
+    ...(pack.communityHelperPack?.signposting ?? []),
   ]);
 
-// Community Helper Pack Core v1 - scans every user-facing field of a
-// generated pack. This is used by the pack's own test suite; it is not yet
-// wired into ResultViewModel/AdviserExportPack collectors since Core v1
-// deliberately does not integrate with those systems (a future
-// community-helper-resultviewmodel-v1 branch would extend
-// collectTextFromResultViewModel/collectTextFromAdviserExportPack instead).
+// Community Helper Pack - scans every user-facing field of a generated pack.
+ // The adviser export collector also includes communityHelperPack fields so
+ // combined-artifact regression tests cover the exported Markdown path.
 export const collectTextFromCommunityHelperPack = (pack: CommunityHelperPack) =>
   joinText([
     pack.title,

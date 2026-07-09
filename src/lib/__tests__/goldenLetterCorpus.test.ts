@@ -88,6 +88,10 @@ describe("golden letter corpus integrity", () => {
     expect(categories.has("benefits")).toBe(true);
     expect(categories.has("debt_legal")).toBe(true);
     expect(categories.has("consumer")).toBe(true);
+    expect(categories.has("workplace")).toBe(true);
+    // Community Helper Pack Core v1 - synthetic fixtures added; still run
+    // through the unmodified main classifier, same as "workplace" above.
+    expect(categories.has("community_helper")).toBe(true);
     expect(categories.has("suspicious_message")).toBe(true);
     expect(categories.has("unknown")).toBe(true);
     expect(expectedTypes.has("benefits_uc_statement")).toBe(true);

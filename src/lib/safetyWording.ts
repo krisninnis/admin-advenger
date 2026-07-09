@@ -1,5 +1,6 @@
 import type { AdviserExportPack } from "./adviserExportPack";
 import type { BenefitsActionPack } from "./benefitsActionPack";
+import type { CommunityHelperPack } from "./communityHelperPack";
 import type { DecisionResult } from "./decisionEngine/types";
 import type { ResultViewModel } from "./resultViewModel";
 import type { StrategicMove, StrategicNextStepPlan } from "./strategicNextStep";
@@ -10,7 +11,8 @@ export type SafetyWordingGroup =
   | "adversarial_language"
   | "money_claim"
   | "automation_claim"
-  | "overclaim_claim";
+  | "overclaim_claim"
+  | "community_helper_claim";
 
 export type SafetyTheme =
   | "no_contact"
@@ -123,6 +125,36 @@ export const FORBIDDEN_OVERCLAIM_PHRASES = [
   "guaranteed text extraction",
 ] as const;
 
+// Community Helper Pack Core v1 - claims a preparation-only community/helper
+// pack must never make, since it would overstep into a diagnosis,
+// safeguarding, capacity, care-eligibility, or financial-abuse decision that
+// only a qualified professional or authority can make. These are
+// phrase-shaped claims (matching the existing groups' discipline), not bare
+// dictionary words: a bare word like "diagnosis" is deliberately excluded
+// here because safe, required cannotKnow wording ("whether a diagnosis...
+// applies") and existing decision-engine copy (e.g. wcaLcwra.ts: "not just
+// your diagnosis") legitimately use that word without making a diagnosis
+// claim - banning it outright would break required safe disclaimers
+// elsewhere in the app. See docs/product/community-helper-pack-core-v1.md.
+export const FORBIDDEN_COMMUNITY_HELPER_CLAIMS = [
+  "you are diagnosed",
+  "this proves disability",
+  "this proves neglect",
+  "safeguarding issue confirmed",
+  "risk score",
+  "care score",
+  "eligibility score",
+  "they qualify",
+  "council must provide",
+  "needs this equipment",
+  "needs this adaptation",
+  "cannot live alone",
+  "lacks capacity",
+  "financial abuse proven",
+  "money owed",
+  "contacted automatically",
+] as const;
+
 export const REQUIRED_SAFETY_THEMES: Record<SafetyTheme, readonly string[]> = {
   no_contact: [
     "does not contact anyone",
@@ -176,6 +208,7 @@ const forbiddenGroups: Record<SafetyWordingGroup, readonly string[]> = {
   money_claim: FORBIDDEN_MONEY_CLAIMS,
   automation_claim: FORBIDDEN_AUTOMATION_CLAIMS,
   overclaim_claim: FORBIDDEN_OVERCLAIM_PHRASES,
+  community_helper_claim: FORBIDDEN_COMMUNITY_HELPER_CLAIMS,
 };
 
 export const ALL_FORBIDDEN_SAFETY_PHRASES = Object.values(forbiddenGroups).flat();
@@ -374,6 +407,30 @@ export const collectTextFromAdviserExportPack = (pack: AdviserExportPack) =>
     ...(pack.workplaceSupportPack?.cannotKnow ?? []),
     ...(pack.workplaceSupportPack?.riskWarnings ?? []),
     ...(pack.workplaceSupportPack?.signposting ?? []),
+  ]);
+
+// Community Helper Pack Core v1 - scans every user-facing field of a
+// generated pack. This is used by the pack's own test suite; it is not yet
+// wired into ResultViewModel/AdviserExportPack collectors since Core v1
+// deliberately does not integrate with those systems (a future
+// community-helper-resultviewmodel-v1 branch would extend
+// collectTextFromResultViewModel/collectTextFromAdviserExportPack instead).
+export const collectTextFromCommunityHelperPack = (pack: CommunityHelperPack) =>
+  joinText([
+    pack.title,
+    pack.summary,
+    ...pack.dailyLifeImpact,
+    ...pack.adminBarriers,
+    ...pack.communicationBarriers,
+    ...pack.keyFactsToCheck,
+    ...pack.evidenceToGather,
+    ...pack.questionsToAsk,
+    ...pack.cannotKnow,
+    ...pack.safeNextSteps,
+    ...pack.preparationOnlyNotes,
+    ...pack.consentAndControlNotes,
+    ...pack.riskWarnings,
+    ...pack.signposting,
   ]);
 
 export const collectTextFromResultViewModel = (viewModel: ResultViewModel) =>

@@ -23,6 +23,7 @@ export type GoldenLetterCategory =
   | "debt_legal"
   | "consumer"
   | "workplace"
+  | "community_helper"
   | "suspicious_message"
   | "unknown"
   | "ocr_edge"
@@ -675,6 +676,185 @@ Reference: REF-EXAMPLE-WORK-010
 
 The attached settlement agreement is sent without prejudice.
 It mentions a COT3 route and asks Alex Example to reply by 30 September 2026.`,
+  }),
+  // Community Helper Pack Core v1 - synthetic only, no real names, no real
+  // addresses, no real phone numbers, no real medical record numbers, no
+  // real personal data. These are NOT Kristian's real PIP documents. Each
+  // fixture is run through the unmodified main classifier
+  // (analyseDecisionProblem) only, so its expectedDocumentType reflects the
+  // existing conservative fallback - the Community Helper Pack builder
+  // (src/lib/communityHelperPack.ts) classifies and handles these
+  // separately, exactly like the "workplace" fixtures above do for
+  // workplaceSupportPack.ts.
+  fixture({
+    id: "community-helper-missed-letters-001",
+    title: "Carer noticing missed letters",
+    category: "community_helper",
+    expectedDocumentType: "unknown_admin_dispute",
+    expectedUrgency: "medium",
+    expectedKeyTerms: ["Admin message check", "more of the message", "check"],
+    expectedDates: [],
+    expectedMoneyMentions: [],
+    expectedCannotKnowThemes: ["what action"],
+    notes: "Synthetic missed-letters example. Community Helper Pack builder classifies this separately; main decision routing remains conservative in core v1.",
+    inputText: `Example carer notes
+Reference: REF-EXAMPLE-CH-001
+
+I help my dad with his post. We missed a letter last month and I forgot to reply in time.
+There is a pile of unopened letters on the side and I'm not sure which ones still matter.`,
+  }),
+  fixture({
+    id: "community-helper-difficulty-understanding-001",
+    title: "Difficulty understanding an official letter",
+    category: "community_helper",
+    expectedDocumentType: "unknown_admin_dispute",
+    expectedUrgency: "medium",
+    expectedKeyTerms: ["Admin message check", "more of the message", "check"],
+    expectedDates: [],
+    expectedMoneyMentions: [],
+    expectedCannotKnowThemes: ["what action"],
+    notes: "Synthetic confusing-letter example for future Community Helper Pack coverage.",
+    inputText: `Example support notes
+Reference: REF-EXAMPLE-CH-002
+
+The person I support received a letter that is full of jargon and I don't understand this letter.
+We can't work out what it means or what it is asking us to do next.`,
+  }),
+  fixture({
+    id: "community-helper-housing-repair-001",
+    title: "Housing repair and access difficulty",
+    category: "community_helper",
+    expectedDocumentType: "unknown_admin_dispute",
+    expectedUrgency: "medium",
+    expectedKeyTerms: ["Admin message check", "more of the message", "check"],
+    expectedDates: [],
+    expectedMoneyMentions: [],
+    expectedCannotKnowThemes: ["what action"],
+    notes: "Synthetic housing repair/access example for future Community Helper Pack coverage.",
+    inputText: `Example housing notes
+Reference: REF-EXAMPLE-CH-003
+
+The landlord hasn't fixed the broken heating and there is damp in the hallway.
+The stairs are also hard to use and there is no working lift in the building.`,
+  }),
+  fixture({
+    id: "community-helper-ot-visit-prep-001",
+    title: "Preparing for an OT or support worker visit",
+    category: "community_helper",
+    expectedDocumentType: "unknown_admin_dispute",
+    expectedUrgency: "low",
+    expectedKeyTerms: ["Admin message check", "more of the message", "check"],
+    expectedDates: [],
+    expectedMoneyMentions: [],
+    expectedCannotKnowThemes: ["what action"],
+    notes: "Synthetic OT/support worker visit preparation example for future Community Helper Pack coverage.",
+    inputText: `Example support notes
+Reference: REF-EXAMPLE-CH-004
+
+We are getting ready for an OT visit next week and want to prepare properly.
+I want to write down the day-to-day difficulties before the appointment.`,
+  }),
+  fixture({
+    id: "community-helper-carer-organising-001",
+    title: "Carer organising someone else's letters",
+    category: "community_helper",
+    expectedDocumentType: "unknown_admin_dispute",
+    expectedUrgency: "medium",
+    expectedKeyTerms: ["Admin message check", "more of the message", "check"],
+    expectedDates: [],
+    expectedMoneyMentions: [],
+    expectedCannotKnowThemes: ["what action"],
+    notes: "Synthetic carer-organising-letters example for future Community Helper Pack coverage.",
+    inputText: `Example carer notes
+Reference: REF-EXAMPLE-CH-005
+
+I'm a carer for my mum and I'm helping my mum organise her letters, there are a lot of them.
+I'm not sure what authority I already have to deal with each organisation.`,
+  }),
+  fixture({
+    id: "community-helper-support-worker-meeting-001",
+    title: "Preparing notes for a support worker meeting",
+    category: "community_helper",
+    expectedDocumentType: "unknown_admin_dispute",
+    expectedUrgency: "low",
+    expectedKeyTerms: ["Admin message check", "more of the message", "check"],
+    expectedDates: [],
+    expectedMoneyMentions: [],
+    expectedCannotKnowThemes: ["what action"],
+    notes: "Synthetic support worker meeting preparation example for future Community Helper Pack coverage.",
+    inputText: `Example support notes
+Reference: REF-EXAMPLE-CH-006
+
+I am preparing notes for a meeting with his support worker next Tuesday, a review meeting.
+I want to note the main points so nothing important gets missed.`,
+  }),
+  fixture({
+    id: "community-helper-daily-overwhelm-001",
+    title: "Daily routine admin overwhelm",
+    category: "community_helper",
+    expectedDocumentType: "unknown_admin_dispute",
+    expectedUrgency: "medium",
+    expectedKeyTerms: ["Admin message check", "more of the message", "check"],
+    expectedDates: [],
+    expectedMoneyMentions: [],
+    expectedCannotKnowThemes: ["what action"],
+    notes: "Synthetic daily-routine-overwhelm example for future Community Helper Pack coverage.",
+    inputText: `Example support notes
+Reference: REF-EXAMPLE-CH-007
+
+Everything is piling up and I can't keep up with all the admin, it feels overwhelming.
+There are letters, forms, and calls all at once and I don't know where to start.`,
+  }),
+  fixture({
+    id: "community-helper-communication-difficulty-001",
+    title: "Communication difficulty affecting admin",
+    category: "community_helper",
+    expectedDocumentType: "unknown_admin_dispute",
+    expectedUrgency: "low",
+    expectedKeyTerms: ["Admin message check", "more of the message", "check"],
+    expectedDates: [],
+    expectedMoneyMentions: [],
+    expectedCannotKnowThemes: ["what action"],
+    notes: "Synthetic communication-difficulty example for future Community Helper Pack coverage.",
+    inputText: `Example support notes
+Reference: REF-EXAMPLE-CH-008
+
+She has a hearing difficulty and finds it hard to use the phone, so calls are difficult.
+We would like to know if there is a different way to contact the organisation involved.`,
+  }),
+  fixture({
+    id: "community-helper-financial-concern-001",
+    title: "Possible financial admin concern",
+    category: "community_helper",
+    expectedDocumentType: "unknown_admin_dispute",
+    expectedUrgency: "high",
+    expectedKeyTerms: ["Admin message check", "more of the message", "check"],
+    expectedDates: [],
+    expectedMoneyMentions: [],
+    expectedCannotKnowThemes: ["what action"],
+    notes: "Synthetic vulnerability/financial admin concern example. Community Helper Pack builder must never claim financial abuse is proven; main decision routing remains conservative in core v1.",
+    inputText: `Example support notes
+Reference: REF-EXAMPLE-CH-009
+
+Someone is controlling his money and he can't access his own bank account, we are worried.
+We are not sure exactly what has happened and want to gather the facts before doing anything.`,
+  }),
+  fixture({
+    id: "community-helper-urgent-safeguarding-001",
+    title: "Urgent safeguarding-like wording",
+    category: "community_helper",
+    expectedDocumentType: "unknown_admin_dispute",
+    expectedUrgency: "high",
+    expectedKeyTerms: ["Admin message check", "more of the message", "check"],
+    expectedDates: [],
+    expectedMoneyMentions: [],
+    expectedCannotKnowThemes: ["what action"],
+    notes: "Synthetic urgent safeguarding-like example. Community Helper Pack builder must signpost emergency services/local safeguarding service and never decide safeguarding itself; main decision routing remains conservative in core v1.",
+    inputText: `Example support notes
+Reference: REF-EXAMPLE-CH-010
+
+I think she may be in immediate danger and is being neglected at home, I'm scared for her.
+I don't know who to tell first and want to prepare what I know before I call someone.`,
   }),
 ];
 

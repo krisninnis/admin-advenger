@@ -227,6 +227,41 @@ describe("safety wording helpers", () => {
     );
   });
 
+  // Community Helper Pack Core v1 - claims a preparation-only community/
+  // helper pack must never make (diagnosis, safeguarding, capacity, care
+  // eligibility, or financial-abuse decisions). See
+  // src/lib/__tests__/communityHelperPack.test.ts for the pack's own,
+  // standalone builder tests - Community Helper Pack Core v1 does not
+  // integrate with ResultViewModel/AdviserExportPack/CaseProgress yet, so
+  // there is no combined-artifact regression block for it here, unlike the
+  // Workplace Support Pack below.
+  it("detects community helper pack overclaims (Community Helper Pack Core v1)", () => {
+    const matches = findForbiddenSafetyPhrases(
+      "You are diagnosed with this. This proves neglect and the safeguarding issue confirmed gives a high risk score, care score, and eligibility score. They qualify and the council must provide it - they clearly needs this equipment and needs this adaptation because they cannot live alone and lacks capacity. Financial abuse proven: money owed will be contacted automatically.",
+      { context: "community helper overclaim test" },
+    );
+
+    expect(matches).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ phrase: "you are diagnosed", group: "community_helper_claim" }),
+        expect.objectContaining({ phrase: "this proves neglect", group: "community_helper_claim" }),
+        expect.objectContaining({ phrase: "safeguarding issue confirmed", group: "community_helper_claim" }),
+        expect.objectContaining({ phrase: "risk score", group: "community_helper_claim" }),
+        expect.objectContaining({ phrase: "care score", group: "community_helper_claim" }),
+        expect.objectContaining({ phrase: "eligibility score", group: "community_helper_claim" }),
+        expect.objectContaining({ phrase: "they qualify", group: "community_helper_claim" }),
+        expect.objectContaining({ phrase: "council must provide", group: "community_helper_claim" }),
+        expect.objectContaining({ phrase: "needs this equipment", group: "community_helper_claim" }),
+        expect.objectContaining({ phrase: "needs this adaptation", group: "community_helper_claim" }),
+        expect.objectContaining({ phrase: "cannot live alone", group: "community_helper_claim" }),
+        expect.objectContaining({ phrase: "lacks capacity", group: "community_helper_claim" }),
+        expect.objectContaining({ phrase: "financial abuse proven", group: "community_helper_claim" }),
+        expect.objectContaining({ phrase: "money owed", group: "community_helper_claim" }),
+        expect.objectContaining({ phrase: "contacted automatically", group: "community_helper_claim" }),
+      ]),
+    );
+  });
+
   it("throws for an intentionally unsafe direct helper call", () => {
     expect(() =>
       assertNoForbiddenSafetyPhrases("You should appeal and you will win.", "unsafe direct helper test"),

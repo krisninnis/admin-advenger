@@ -1,10 +1,12 @@
 import type { AdminCase, MoneyImpact, OpportunityCard } from "../types";
 import type { BenefitsActionPack, BenefitsKeyDate, BenefitsMoneyLine } from "./benefitsActionPack";
+import type { CommunityHelperPack } from "./communityHelperPack";
 import type { DecisionAmountTreatment, DecisionResult, DecisionSourceFact } from "./decisionEngine/types";
 import {
   FORBIDDEN_ADVERSARIAL_LANGUAGE,
   FORBIDDEN_ADVICE_CLAIMS,
   FORBIDDEN_AUTOMATION_CLAIMS,
+  FORBIDDEN_COMMUNITY_HELPER_CLAIMS,
   FORBIDDEN_MONEY_CLAIMS,
   FORBIDDEN_OUTCOME_CLAIMS,
   normaliseSafetyText,
@@ -16,6 +18,7 @@ export type ResultViewSource =
   | "main_result"
   | "benefits_action_pack"
   | "workplace_support_pack"
+  | "community_helper_pack"
   | "best_next_move"
   | "case"
   | "draft";
@@ -118,6 +121,7 @@ export type BuildResultViewModelInput = {
   decisionResult?: DecisionResult;
   benefitsActionPack?: BenefitsActionPack | null;
   workplaceSupportPack?: WorkplaceSupportPack;
+  communityHelperPack?: CommunityHelperPack;
   strategicNextStepPlan?: StrategicNextStepPlan;
   opportunity?: OpportunityCard;
   adminCase?: AdminCase;
@@ -151,6 +155,7 @@ export const RESULT_FORBIDDEN_PHRASES = [
   ...FORBIDDEN_ADVERSARIAL_LANGUAGE,
   ...FORBIDDEN_MONEY_CLAIMS,
   ...FORBIDDEN_AUTOMATION_CLAIMS,
+  ...FORBIDDEN_COMMUNITY_HELPER_CLAIMS,
 ] as const;
 
 export const RESULT_ADVERSARIAL_PHRASES = FORBIDDEN_ADVERSARIAL_LANGUAGE;
@@ -426,19 +431,26 @@ export const buildResultViewModel = ({
   decisionResult,
   benefitsActionPack,
   workplaceSupportPack,
+  communityHelperPack,
   strategicNextStepPlan,
   opportunity,
   adminCase,
 }: BuildResultViewModelInput): ResultViewModel => {
   const bestNextMove = buildBestNextMove(strategicNextStepPlan);
   const title = safeText(
-    opportunity?.title ?? benefitsActionPack?.title ?? workplaceSupportPack?.title ?? decisionResult?.title ?? adminCase?.title,
+    opportunity?.title ??
+      benefitsActionPack?.title ??
+      workplaceSupportPack?.title ??
+      communityHelperPack?.title ??
+      decisionResult?.title ??
+      adminCase?.title,
     fallbackTitle,
   );
   const summary = safeText(
     opportunity?.plainEnglishSummary ??
       benefitsActionPack?.summary ??
       workplaceSupportPack?.summary ??
+      communityHelperPack?.summary ??
       strategicNextStepPlan?.plainEnglishSummary ??
       decisionResult?.plainEnglishSummary ??
       adminCase?.summary,
@@ -447,6 +459,7 @@ export const buildResultViewModel = ({
   const primaryStatusLabel = safeText(
     opportunity?.statusLabel ??
       (workplaceSupportPack ? "Workplace preparation only" : undefined) ??
+      (communityHelperPack ? "Community support preparation only" : undefined) ??
       decisionResult?.strengthLabel ??
       adminCase?.status,
     "Review before acting",
@@ -481,6 +494,7 @@ export const buildResultViewModel = ({
   const evidenceToGatherValues = cleanStringItems([
     ...(benefitsActionPack?.evidenceMissing ?? []),
     ...(workplaceSupportPack?.evidenceToGather ?? []),
+    ...(communityHelperPack?.evidenceToGather ?? []),
     ...(strategicNextStepPlan?.missingInformation ?? []),
     ...(decisionResult?.evidenceNeeded ?? []),
     ...(opportunity?.missingInformation ?? []),
@@ -494,24 +508,29 @@ export const buildResultViewModel = ({
           ? "benefits_action_pack"
           : workplaceSupportPack?.evidenceToGather.includes(value)
             ? "workplace_support_pack"
-            : "main_result",
+            : communityHelperPack?.evidenceToGather.includes(value)
+              ? "community_helper_pack"
+              : "main_result",
       ),
     ),
   );
   const questionsToAnswer = cleanStringItems([
     ...(benefitsActionPack?.questionsToAnswer.map((question) => question.question) ?? []),
     ...(workplaceSupportPack?.questionsToAsk ?? []),
+    ...(communityHelperPack?.questionsToAsk ?? []),
     ...(decisionResult?.questionsToAnswer ?? []),
   ]);
   const risks = cleanStringItems([
     ...(benefitsActionPack?.risks ?? []),
     ...(workplaceSupportPack?.riskWarnings ?? []),
+    ...(communityHelperPack?.riskWarnings ?? []),
     ...(decisionResult?.risks ?? []),
     ...(strategicNextStepPlan?.movesToAvoid ?? []),
   ]);
   const cannotKnow = cleanStringItems([
     ...(benefitsActionPack?.cannotKnow ?? []),
     ...(workplaceSupportPack?.cannotKnow ?? []),
+    ...(communityHelperPack?.cannotKnow ?? []),
     ...(strategicNextStepPlan?.cannotKnow ?? []),
     ...(decisionResult?.cannotKnow ?? []),
   ], fallbackCannotKnow);
@@ -520,6 +539,11 @@ export const buildResultViewModel = ({
     ...(workplaceSupportPack
       ? [
           "Workplace information may depend on the full message, policies, contract, history, and advice from a suitable person.",
+        ]
+      : []),
+    ...(communityHelperPack
+      ? [
+          "Community helper information may depend on the full situation, other documents, and advice from a suitable professional or trusted person.",
         ]
       : []),
     ...(strategicNextStepPlan?.uncertainty ?? []),
@@ -531,6 +555,14 @@ export const buildResultViewModel = ({
     workplaceSupportPack ? "AdminAvenger helps prepare. You stay in control." : undefined,
     workplaceSupportPack?.preparationOnlyWarning,
     ...(workplaceSupportPack?.signposting ?? []),
+    communityHelperPack ? "This is preparation only, not a professional assessment." : undefined,
+    communityHelperPack
+      ? "AdminAvenger cannot decide care needs, safeguarding, diagnosis, capacity, eligibility, equipment, or adaptations."
+      : undefined,
+    communityHelperPack ? "AdminAvenger helps prepare. You stay in control." : undefined,
+    ...(communityHelperPack?.preparationOnlyNotes ?? []),
+    ...(communityHelperPack?.consentAndControlNotes ?? []),
+    ...(communityHelperPack?.signposting ?? []),
     ...(strategicNextStepPlan?.safetyNotes ?? []),
     ...(benefitsActionPack?.safetyNotes ?? []),
     ...(decisionResult?.safetyNotes ?? []),
@@ -569,6 +601,65 @@ export const buildResultViewModel = ({
           "summary",
         )
       : undefined,
+    communityHelperPack
+      ? makeSection(
+          "community-helper-preparation",
+          "Community support preparation",
+          [
+            "This is preparation only, not a professional assessment.",
+            "AdminAvenger cannot decide care needs, safeguarding, diagnosis, capacity, eligibility, equipment, or adaptations.",
+            "AdminAvenger helps prepare. You stay in control.",
+            ...communityHelperPack.safeNextSteps,
+          ],
+          "community_helper_pack",
+          "summary",
+        )
+      : undefined,
+    communityHelperPack
+      ? makeSection(
+          "community-helper-what-this-appears-to-be-about",
+          "What this appears to be about",
+          [communityHelperPack.summary],
+          "community_helper_pack",
+          "summary",
+        )
+      : undefined,
+    communityHelperPack
+      ? makeSection(
+          "community-helper-daily-life-impact",
+          "Daily-life impact",
+          communityHelperPack.dailyLifeImpact,
+          "community_helper_pack",
+          "summary",
+        )
+      : undefined,
+    communityHelperPack
+      ? makeSection(
+          "community-helper-admin-barriers",
+          "Admin and routine barriers",
+          communityHelperPack.adminBarriers,
+          "community_helper_pack",
+          "summary",
+        )
+      : undefined,
+    communityHelperPack
+      ? makeSection(
+          "community-helper-communication-barriers",
+          "Communication barriers",
+          communityHelperPack.communicationBarriers,
+          "community_helper_pack",
+          "summary",
+        )
+      : undefined,
+    communityHelperPack
+      ? makeSection(
+          "community-helper-key-facts-to-check",
+          "Key facts to check",
+          communityHelperPack.keyFactsToCheck,
+          "community_helper_pack",
+          "summary",
+        )
+      : undefined,
     bestNextMove
       ? makeSection(
           "best-next-move",
@@ -599,6 +690,15 @@ export const buildResultViewModel = ({
       evidenceToGather[0]?.source ?? "main_result",
       "summary",
     ),
+    communityHelperPack
+      ? makeSection(
+          "community-helper-evidence-to-gather",
+          "Evidence/context to gather",
+          communityHelperPack.evidenceToGather,
+          "community_helper_pack",
+          "summary",
+        )
+      : undefined,
     makeSection("questions", "Questions to answer", questionsToAnswer, "benefits_action_pack", "summary"),
     workplaceSupportPack
       ? makeSection(
@@ -615,6 +715,33 @@ export const buildResultViewModel = ({
           "Ask someone suitable",
           workplaceSupportPack.signposting,
           "workplace_support_pack",
+          "summary",
+        )
+      : undefined,
+    communityHelperPack
+      ? makeSection(
+          "community-helper-questions-to-ask",
+          "Questions to ask",
+          communityHelperPack.questionsToAsk,
+          "community_helper_pack",
+          "summary",
+        )
+      : undefined,
+    communityHelperPack
+      ? makeSection(
+          "community-helper-consent-and-control-notes",
+          "Consent and control notes",
+          communityHelperPack.consentAndControlNotes,
+          "community_helper_pack",
+          "summary",
+        )
+      : undefined,
+    communityHelperPack
+      ? makeSection(
+          "community-helper-ask-someone-suitable",
+          "Ask someone suitable",
+          communityHelperPack.signposting,
+          "community_helper_pack",
           "summary",
         )
       : undefined,
@@ -637,6 +764,15 @@ export const buildResultViewModel = ({
           "detail",
         )
       : undefined,
+    communityHelperPack
+      ? makeSection(
+          "community-helper-preparation-only-notes",
+          "Preparation-only notes",
+          communityHelperPack.preparationOnlyNotes,
+          "community_helper_pack",
+          "detail",
+        )
+      : undefined,
   ].filter((section): section is ResultSectionView => Boolean(section));
   const summaryView: ResultSummaryView = {
     title,
@@ -648,7 +784,9 @@ export const buildResultViewModel = ({
         ? "benefits_action_pack"
         : workplaceSupportPack
           ? "workplace_support_pack"
-          : "case",
+          : communityHelperPack
+            ? "community_helper_pack"
+            : "case",
   };
   const safetyView: ResultSafetyView = {
     notes: safetyNotes,

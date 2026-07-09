@@ -1266,6 +1266,7 @@ function App() {
           onIgnoreInboxScanItem={handleIgnoreInboxScanItem}
           onSaveScannedItem={handleSaveScannedItem}
           onSaveEmailSafetyCase={handleSaveEmailSafetyCase}
+          onOpenCommunityHelperDemo={() => setCurrentView("demo_tour")}
         />
       ) : null}
 

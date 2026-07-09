@@ -146,6 +146,13 @@ type HomeViewProps = {
   onIgnoreInboxScanItem: (sampleId: string) => void;
   onSaveScannedItem: (item: AdminItem, findings: AdminFinding[], cases: AdminCase[]) => void;
   onSaveEmailSafetyCase: (item: AdminItem, assessment: EmailSafetyAssessment) => void;
+  // Community Helper Home Gated v1 - opens the existing, already-shipped
+  // Community Helper demo/support section on the Demo/tour page. This is a
+  // pure navigation hop: HomeView never builds a community helper pack
+  // itself, never routes pasted text into it, and never touches the
+  // decision-engine classifier or OCR/file intake. See
+  // docs/product/community-helper-home-gated-v1.md.
+  onOpenCommunityHelperDemo: () => void;
 };
 
 const categoryLabels: Record<AdminCase["category"], string> = {
@@ -484,6 +491,7 @@ export function HomeView({
   onIgnoreInboxScanItem,
   onSaveScannedItem,
   onSaveEmailSafetyCase,
+  onOpenCommunityHelperDemo,
 }: HomeViewProps) {
   const [rawText, setRawText] = useState("");
   const [inboxScanOpen, setInboxScanOpen] = useState(false);
@@ -2430,6 +2438,37 @@ export function HomeView({
           </p>
         </section>
       ) : null}
+
+      {/*
+        Community Helper Home Gated v1 - a small, clearly secondary beta/demo
+        entry point, not the main "Check a message" route. Clicking it only
+        navigates to the existing Community Helper demo/support section on
+        the Demo/tour page (see DemoTourView.tsx); it never builds a
+        community helper pack from what is pasted above, and never touches
+        the decision-engine classifier or OCR/file intake. See
+        docs/product/community-helper-home-gated-v1.md.
+      */}
+      <section className="rounded-lg border border-violet-300/20 bg-violet-300/[0.05] p-4 sm:p-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-widest text-violet-300">
+              Beta / demo
+            </p>
+            <p className="mt-1 text-sm font-bold text-white">Community support prep</p>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-400">
+              For carers, support workers, family helpers, or trusted people preparing
+              notes. Preparation only. AdminAvenger helps prepare. You stay in control.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onOpenCommunityHelperDemo}
+            className="min-h-10 shrink-0 rounded-lg border border-violet-300/40 bg-violet-300/10 px-4 py-2 text-sm font-bold text-violet-100 transition hover:border-violet-300/70 hover:bg-violet-300/20 focus:outline-none focus:ring-2 focus:ring-violet-300/40"
+          >
+            Open the demo
+          </button>
+        </div>
+      </section>
     </div>
   );
 }

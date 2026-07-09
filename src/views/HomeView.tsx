@@ -2459,6 +2459,10 @@ export function HomeView({
               For carers, support workers, family helpers, or trusted people preparing
               notes. Preparation only. AdminAvenger helps prepare. You stay in control.
             </p>
+            <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500">
+              Public beta is being prepared carefully. This demo uses synthetic examples
+              only.
+            </p>
           </div>
           <button
             type="button"

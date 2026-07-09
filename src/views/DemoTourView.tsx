@@ -14,6 +14,8 @@ import {
 } from "../lib/adviserExportPack";
 import { downloadAdviserExportMarkdown } from "../lib/adviserExportDownload";
 import { buildBenefitsActionPack } from "../lib/benefitsActionPack";
+import { buildCommunityHelperPack, type CommunityHelperPack } from "../lib/communityHelperPack";
+import { communityHelperDemoScenarios, type CommunityHelperDemoScenario } from "../lib/communityHelperDemoScenarios";
 import {
   demoScenarios,
   standardDemoScenarios,
@@ -88,6 +90,17 @@ type WorkplaceDemoResult = {
   adviserExportPack: ReturnType<typeof buildAdviserExportPack>;
 };
 
+// Community Helper Demo UI v1 - gated, demo-only. Mirrors WorkplaceDemoResult
+// exactly: built directly from a hardcoded synthetic scenario, never from the
+// classifier, and never reachable outside this Demo/tour surface. See
+// docs/product/community-helper-demo-ui-v1.md.
+type CommunityDemoResult = {
+  scenarioId: string;
+  communityHelperPack: CommunityHelperPack;
+  resultViewModel: ResultViewModel;
+  adviserExportPack: ReturnType<typeof buildAdviserExportPack>;
+};
+
 export function DemoTourView({
   result,
   activeDemoScenarioId,
@@ -100,6 +113,7 @@ export function DemoTourView({
 }: DemoTourViewProps) {
   const [selectedScenarioId, setSelectedScenarioId] = useState(standardDemoScenarios[0]?.id ?? "");
   const [workplaceDemoResult, setWorkplaceDemoResult] = useState<WorkplaceDemoResult>();
+  const [communityDemoResult, setCommunityDemoResult] = useState<CommunityDemoResult>();
   const [showSupportingDetail, setShowSupportingDetail] = useState(false);
   const selectedScenario =
     standardDemoScenarios.find((scenario) => scenario.id === selectedScenarioId) ??
@@ -146,13 +160,20 @@ export function DemoTourView({
         })
       : undefined;
   const workplaceSupportPack = workplaceDemoResult?.workplaceSupportPack;
-  const resultViewModel = workplaceDemoResult?.resultViewModel ?? standardResultViewModel;
-  const adviserExportPack = workplaceDemoResult?.adviserExportPack ?? standardAdviserExportPack;
+  const communityHelperPack = communityDemoResult?.communityHelperPack;
+  const activeCommunityScenario = communityDemoResult
+    ? communityHelperDemoScenarios.find((scenario) => scenario.id === communityDemoResult.scenarioId)
+    : undefined;
+  const resultViewModel =
+    workplaceDemoResult?.resultViewModel ?? communityDemoResult?.resultViewModel ?? standardResultViewModel;
+  const adviserExportPack =
+    workplaceDemoResult?.adviserExportPack ?? communityDemoResult?.adviserExportPack ?? standardAdviserExportPack;
   const restartAction: ResultCaseSheetAction = {
     label: "Try another demo",
     onClick: () => {
       onClearResult();
       setWorkplaceDemoResult(undefined);
+      setCommunityDemoResult(undefined);
       onActiveDemoScenarioChange(undefined);
       setShowSupportingDetail(false);
     },
@@ -166,6 +187,7 @@ export function DemoTourView({
 
     onClearResult();
     setWorkplaceDemoResult(undefined);
+    setCommunityDemoResult(undefined);
     onActiveDemoScenarioChange(undefined);
     setShowSupportingDetail(false);
 
@@ -184,6 +206,7 @@ export function DemoTourView({
     }
 
     onClearResult();
+    setCommunityDemoResult(undefined);
     setShowSupportingDetail(false);
 
     const workplaceSupportPack = buildWorkplaceSupportPack({
@@ -198,6 +221,38 @@ export function DemoTourView({
     setWorkplaceDemoResult({
       scenarioId: scenario.id,
       workplaceSupportPack,
+      resultViewModel,
+      adviserExportPack,
+    });
+    onActiveDemoScenarioChange(scenario.id);
+  };
+
+  // Community Helper Demo UI v1 - gated demo path only. Builds directly from
+  // a hardcoded synthetic scenario the same way handleRunWorkplaceDemo does:
+  // never touches the classifier, HomeView, or OCR/file intake. See
+  // docs/product/community-helper-demo-ui-v1.md.
+  const handleRunCommunityDemo = (scenario: CommunityHelperDemoScenario) => {
+    if (isChecking) {
+      return;
+    }
+
+    onClearResult();
+    setWorkplaceDemoResult(undefined);
+    setShowSupportingDetail(false);
+
+    const communityHelperPack = buildCommunityHelperPack({
+      text: scenario.inputText.trim(),
+      role: scenario.role,
+    });
+    const resultViewModel = buildResultViewModel({ communityHelperPack });
+    const adviserExportPack = buildAdviserExportPack({
+      resultViewModel,
+      communityHelperPack,
+    });
+
+    setCommunityDemoResult({
+      scenarioId: scenario.id,
+      communityHelperPack,
       resultViewModel,
       adviserExportPack,
     });
@@ -354,6 +409,84 @@ export function DemoTourView({
         </div>
       </section>
 
+      <section className="rounded-lg border border-violet-300/20 bg-violet-300/[0.06] p-4 sm:p-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h3 className="text-lg font-bold text-white">
+              Try a community support demo
+            </h3>
+            <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-300">
+              These are synthetic examples for carers, support workers, OTs,
+              housing officers, and other trusted helpers. AdminAvenger helps
+              prepare a summary and questions. It does not assess care needs,
+              safeguarding, diagnosis, capacity, eligibility, equipment, or
+              adaptations.
+            </p>
+          </div>
+          <span className="rounded-full border border-violet-300/25 bg-slate-950/60 px-3 py-1 text-xs font-bold uppercase tracking-wider text-violet-100">
+            Gated demo only
+          </span>
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {communityHelperDemoScenarios.map((scenario) => (
+            <article
+              key={scenario.id}
+              className="rounded-lg border border-white/10 bg-slate-950/45 p-4"
+            >
+              <p className="text-sm font-bold text-white">{scenario.title}</p>
+              <p className="mt-2 min-h-20 text-sm leading-6 text-slate-400">
+                {scenario.description}
+              </p>
+              <button
+                type="button"
+                onClick={() => handleRunCommunityDemo(scenario)}
+                disabled={isChecking}
+                className="mt-3 min-h-10 rounded-lg border border-violet-300 bg-violet-300 px-3 py-2 text-sm font-bold text-slate-950 transition hover:bg-violet-200 focus:outline-none focus:ring-2 focus:ring-violet-200 focus:ring-offset-2 focus:ring-offset-slate-950 disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-700 disabled:text-slate-400"
+              >
+                Try this community demo
+              </button>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      {resultViewModel && communityHelperPack ? (
+        <section className="rounded-lg border border-violet-300/20 bg-violet-300/[0.07] p-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-full border border-violet-300/25 bg-slate-950/60 px-3 py-1 text-xs font-bold uppercase tracking-wider text-violet-100">
+              Synthetic demo
+            </span>
+            <span className="text-sm font-semibold text-white">
+              {activeCommunityScenario?.title}
+            </span>
+          </div>
+          <p className="mt-2 text-sm leading-6 text-violet-50/85">
+            This result was created from a synthetic example, not a real
+            person or document.
+          </p>
+          <div className="mt-3 rounded-lg border border-white/10 bg-slate-950/45 p-3 text-sm leading-6 text-violet-50">
+            <p>This is preparation only, not a professional assessment.</p>
+            <p>
+              AdminAvenger cannot decide care needs, safeguarding, diagnosis,
+              capacity, eligibility, equipment, or adaptations.
+            </p>
+            <p>AdminAvenger helps prepare. You stay in control.</p>
+            <p>
+              Ask a support worker, OT, housing officer, adviser, GP or
+              clinician, social worker, safeguarding professional if urgent,
+              or another trusted person if you are unsure.
+            </p>
+            {communityHelperPack.situationType === "urgent_safeguarding_like_signpost" ? (
+              <p className="mt-2 text-amber-100">
+                If someone may be in immediate danger, contact emergency
+                services or the relevant local safeguarding service.
+                AdminAvenger cannot decide safeguarding concerns.
+              </p>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
+
       {resultViewModel && activeScenario ? (
         <section className="rounded-lg border border-cyan-300/20 bg-cyan-300/[0.07] p-4">
           <div className="flex flex-wrap items-center gap-2">
@@ -401,6 +534,7 @@ export function DemoTourView({
           strategicNextStepPlan={strategicNextStepPlan}
           adviserExportPack={adviserExportPack}
           workplaceSupportPack={workplaceSupportPack}
+          communityHelperPack={communityHelperPack}
           secondaryActions={[restartAction]}
           onDownloadAdviserPack={adviserExportPack ? handleDownloadAdviserPack : undefined}
           supportingDetailsOpen={showSupportingDetail}
@@ -439,6 +573,78 @@ export function DemoTourView({
               <h3 className="text-base font-bold text-white">Human support</h3>
               <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-300">
                 {workplaceSupportPack.signposting.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      {showSupportingDetail && communityHelperPack ? (
+        <section className="rounded-lg border border-white/10 bg-slate-950/55 p-4 sm:p-5">
+          <p className="text-sm font-bold uppercase tracking-widest text-slate-400">
+            Community support supporting detail
+          </p>
+          <div className="mt-4 grid gap-4 lg:grid-cols-2">
+            <div>
+              <h3 className="text-base font-bold text-white">
+                Daily-life, admin, or communication impact
+              </h3>
+              <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-300">
+                {[
+                  ...communityHelperPack.dailyLifeImpact,
+                  ...communityHelperPack.adminBarriers,
+                  ...communityHelperPack.communicationBarriers,
+                ].map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-white">Key facts to check</h3>
+              <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-300">
+                {communityHelperPack.keyFactsToCheck.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-white">Evidence/context to gather</h3>
+              <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-300">
+                {communityHelperPack.evidenceToGather.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-white">Questions to ask</h3>
+              <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-300">
+                {communityHelperPack.questionsToAsk.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-white">Consent and control notes</h3>
+              <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-300">
+                {communityHelperPack.consentAndControlNotes.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-white">What AdminAvenger cannot know</h3>
+              <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-300">
+                {communityHelperPack.cannotKnow.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-white">Human support / signposting</h3>
+              <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-300">
+                {communityHelperPack.signposting.map((item) => (
                   <li key={item}>{item}</li>
                 ))}
               </ul>

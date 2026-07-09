@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { buildAdviserExportPack, renderAdviserExportMarkdown } from "../../lib/adviserExportPack";
+import { buildCommunityHelperPack, detectCommunityHelperSituationType } from "../../lib/communityHelperPack";
+import { communityHelperDemoScenarios } from "../../lib/communityHelperDemoScenarios";
 import { buildResultViewModel } from "../../lib/resultViewModel";
 import demoTourViewSource from "../DemoTourView.tsx?raw";
+import homeViewSource from "../HomeView.tsx?raw";
 import { demoScenarios, workplaceDemoScenarios } from "../../lib/demoScenarios";
 import { goldenLetterFixtures } from "../../lib/goldenLetters";
 import { buildWorkplaceSupportPack } from "../../lib/workplaceSupportPack";
@@ -29,6 +32,79 @@ const forbiddenWorkplacePhrases = [
   "sign the agreement",
   "do not sign the agreement",
 ];
+
+const forbiddenCommunityHelperPhrases = [
+  "risk score",
+  "eligibility score",
+  "safeguarding issue confirmed",
+  "needs this equipment",
+  "needs this adaptation",
+  "financial abuse proven",
+  "money owed",
+  "money saved",
+  "money recovered",
+];
+
+const forbiddenAutomationPhrases = [
+  "sent automatically",
+  "submitted automatically",
+  "automatic submission",
+  "we contacted",
+  "we applied for you",
+  "we appealed for you",
+  "we challenged for you",
+  "claim submitted",
+  "contacted automatically",
+];
+
+const renderCommunityDemoCaseSheet = (scenarioId: string) => {
+  const scenario = communityHelperDemoScenarios.find((item) => item.id === scenarioId);
+
+  if (!scenario) {
+    throw new Error(`Missing community helper demo ${scenarioId}`);
+  }
+
+  const communityHelperPack = buildCommunityHelperPack({
+    text: scenario.inputText,
+    role: scenario.role,
+  });
+  const resultViewModel = buildResultViewModel({ communityHelperPack });
+  const adviserExportPack = buildAdviserExportPack({
+    resultViewModel,
+    communityHelperPack,
+  });
+  const html = renderToStaticMarkup(
+    <ResultCaseSheet
+      model={resultViewModel}
+      adviserExportPack={adviserExportPack}
+      communityHelperPack={communityHelperPack}
+      onDownloadAdviserPack={() => undefined}
+      supportingDetailsOpen={false}
+      onToggleSupportingDetails={() => undefined}
+    />,
+  );
+  const markdown = renderAdviserExportMarkdown(adviserExportPack);
+
+  return {
+    scenario,
+    communityHelperPack,
+    resultViewModel,
+    adviserExportPack,
+    html,
+    markdown,
+    normalised: normaliseSafetyText(`${html}\n${markdown}`),
+  };
+};
+
+const expectNoForbiddenCommunityHelperWording = (text: string) => {
+  const normalised = normaliseSafetyText(text);
+
+  for (const phrase of [...forbiddenCommunityHelperPhrases, ...forbiddenAutomationPhrases]) {
+    expect(normalised).not.toContain(normaliseSafetyText(phrase));
+  }
+
+  expect(findForbiddenSafetyPhrases(text)).toEqual([]);
+};
 
 const renderWorkplaceDemoCaseSheet = (scenarioId: string) => {
   const scenario = workplaceDemoScenarios.find((item) => item.id === scenarioId);
@@ -146,6 +222,19 @@ describe("DemoTourView", () => {
     expect(findForbiddenSafetyPhrases(visibleTourCopy)).toEqual([]);
   });
 
+  it("does not introduce forbidden safety wording in visible community helper demo copy", () => {
+    const visibleCommunityCopy = [
+      "Try a community support demo",
+      "AdminAvenger helps prepare a summary and questions.",
+      "This is preparation only, not a professional assessment.",
+      "AdminAvenger helps prepare. You stay in control.",
+      "This result was created from a synthetic example, not a real person or document.",
+      ...communityHelperDemoScenarios.flatMap((scenario) => [scenario.title, scenario.description]),
+    ].join("\n");
+
+    expect(findForbiddenSafetyPhrases(visibleCommunityCopy)).toEqual([]);
+  });
+
   it("selecting a disciplinary workplace demo renders workplace preparation safely", () => {
     const { html, markdown, normalised } = renderWorkplaceDemoCaseSheet("demo-workplace-disciplinary");
 
@@ -173,5 +262,96 @@ describe("DemoTourView", () => {
     expect(normalised).not.toContain("sign the agreement");
     expect(normalised).not.toContain("do not sign the agreement");
     expectNoForbiddenWorkplaceWording(`${html}\n${markdown}`);
+  });
+
+  describe("Community Helper Demo UI v1", () => {
+    it("renders community support demo copy, gating, and wiring", () => {
+      expect(demoTourViewSource).toContain("Try a community support demo");
+      expect(demoTourViewSource).toContain("Gated demo only");
+      expect(demoTourViewSource).toContain("buildCommunityHelperPack");
+      expect(demoTourViewSource).toContain("handleRunCommunityDemo");
+      expect(demoTourViewSource).toContain(
+        "AdminAvenger cannot decide care needs, safeguarding, diagnosis,",
+      );
+    });
+
+    it("provides exactly the 4 required demo scenarios, each selectable/renderable", () => {
+      expect(communityHelperDemoScenarios).toHaveLength(4);
+      expect(communityHelperDemoScenarios.map((scenario) => scenario.title)).toEqual([
+        "Missed letters or deadlines",
+        "OT or support visit preparation",
+        "Urgent safeguarding-like signposting",
+        "Possible financial admin concern",
+      ]);
+
+      for (const scenario of communityHelperDemoScenarios) {
+        expect(demoTourViewSource).toContain("communityHelperDemoScenarios.map");
+        const { html } = renderCommunityDemoCaseSheet(scenario.id);
+        expect(html).toContain("Preparation progress");
+      }
+    });
+
+    it("covers all 4 community helper situation types via the detector", () => {
+      const situationTypes = communityHelperDemoScenarios.map((scenario) =>
+        detectCommunityHelperSituationType(scenario.inputText),
+      );
+
+      expect(situationTypes).toEqual([
+        "missed_letters_or_deadlines",
+        "ot_or_support_visit_preparation",
+        "urgent_safeguarding_like_signpost",
+        "vulnerability_financial_admin_concern",
+      ]);
+    });
+
+    it("every community helper demo scenario renders required preparation-only wording safely", () => {
+      for (const scenario of communityHelperDemoScenarios) {
+        const { html, markdown, normalised } = renderCommunityDemoCaseSheet(scenario.id);
+
+        expect(normalised).toContain("this is preparation only, not a professional assessment");
+        expect(normalised).toContain("adminavenger helps prepare. you stay in control");
+        expect(markdown).toContain("## Community support preparation pack");
+        expect(html).toContain("Preparation progress");
+        expectNoForbiddenCommunityHelperWording(`${html}\n${markdown}`);
+      }
+    });
+
+    it("urgent safeguarding-like scenario signposts without deciding safeguarding", () => {
+      const { normalised } = renderCommunityDemoCaseSheet("community-demo-urgent-safeguarding");
+
+      expect(normalised).toContain("if someone may be in immediate danger");
+      expect(normalised).toContain("adminavenger cannot decide safeguarding concerns");
+      expect(normalised).not.toContain("safeguarding issue confirmed");
+    });
+
+    it("financial admin concern scenario stays factual and does not count money", () => {
+      const { normalised } = renderCommunityDemoCaseSheet("community-demo-financial-concern");
+
+      expect(normalised).not.toContain("financial abuse proven");
+      expect(normalised).not.toContain("money owed");
+      expect(normalised).not.toContain("money saved");
+      expect(normalised).not.toContain("money recovered");
+    });
+
+    it("does not wire the community helper pack into HomeView or public routing", () => {
+      expect(homeViewSource).not.toContain("communityHelperPack");
+      expect(homeViewSource).not.toContain("buildCommunityHelperPack");
+      expect(homeViewSource).not.toContain("CommunityHelperPack");
+    });
+
+    it("does not introduce auto-send, auto-submit, or auto-contact wording", () => {
+      for (const scenario of communityHelperDemoScenarios) {
+        const { html, markdown } = renderCommunityDemoCaseSheet(scenario.id);
+        const combined = normaliseSafetyText(`${html}\n${markdown}`);
+
+        for (const phrase of forbiddenAutomationPhrases) {
+          expect(combined).not.toContain(normaliseSafetyText(phrase));
+        }
+      }
+
+      expect(demoTourViewSource).not.toMatch(/auto-?send/i);
+      expect(demoTourViewSource).not.toMatch(/auto-?submit/i);
+      expect(demoTourViewSource).not.toMatch(/auto-?contact/i);
+    });
   });
 });

@@ -2,6 +2,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import type { AdviserExportPack } from "../lib/adviserExportPack";
 import type { BenefitsActionPack } from "../lib/benefitsActionPack";
 import { buildCaseProgress } from "../lib/caseProgress";
+import type { CommunityHelperPack } from "../lib/communityHelperPack";
 import type { DecisionResult } from "../lib/decisionEngine/types";
 import type {
   ResultDateView,
@@ -32,6 +33,7 @@ type ResultCaseSheetProps = {
   strategicNextStepPlan?: StrategicNextStepPlan;
   adviserExportPack?: AdviserExportPack;
   workplaceSupportPack?: WorkplaceSupportPack;
+  communityHelperPack?: CommunityHelperPack;
   primaryAction?: ResultCaseSheetAction;
   secondaryActions?: ResultCaseSheetAction[];
   guidedNextStepButton?: ResultCaseSheetAction;
@@ -302,6 +304,7 @@ export function ResultCaseSheet({
   strategicNextStepPlan,
   adviserExportPack,
   workplaceSupportPack,
+  communityHelperPack,
   primaryAction,
   secondaryActions = [],
   guidedNextStepButton,
@@ -322,8 +325,17 @@ export function ResultCaseSheet({
         strategicNextStepPlan,
         adviserExportPack,
         workplaceSupportPack,
+        communityHelperPack,
       }),
-    [model, decisionResult, benefitsActionPack, strategicNextStepPlan, adviserExportPack, workplaceSupportPack],
+    [
+      model,
+      decisionResult,
+      benefitsActionPack,
+      strategicNextStepPlan,
+      adviserExportPack,
+      workplaceSupportPack,
+      communityHelperPack,
+    ],
   );
   const checkFirstItems = uniqueTextItems([
     ...model.keyDates.slice(0, 2).map((date) => `${date.label}: ${date.value}`),

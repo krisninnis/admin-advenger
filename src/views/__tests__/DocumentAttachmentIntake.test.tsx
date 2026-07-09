@@ -6,14 +6,17 @@ import {
   ATTACHMENT_COMBINED_TEXT_NOTE,
   ATTACHMENT_DRAG_DROP_LABEL,
   ATTACHMENT_HEADING,
+  ATTACHMENT_HELPER,
   ATTACHMENT_LOCAL_ONLY_NOTE,
   ATTACHMENT_OCR_CAUTION_NOTE,
+  ATTACHMENT_READ_FAILED_MESSAGE,
   ATTACHMENT_TAKE_PHOTO_BUTTON_LABEL,
 } from "../../lib/documentAttachmentIntake";
 import {
   attachmentCameraAcceptAttribute,
   attachmentPickerAcceptAttribute,
-  PDF_OR_WORD_UNSUPPORTED_MESSAGE,
+  DOC_UNSUPPORTED_MESSAGE,
+  UNSUPPORTED_FILE_MESSAGE,
 } from "../../lib/fileIntakeAccept";
 import { findForbiddenSafetyPhrases } from "../../lib/safetyWording";
 
@@ -52,6 +55,19 @@ describe("Document Attachment Intake v1 - HomeView wiring", () => {
     expect(homeViewSource).toContain("status: \"failed\"");
     expect(homeViewSource).toContain("catch");
   });
+
+  // Document File Support v1
+  it("reads DOCX/PDF attachments through the local extractors, never a second parallel reader", () => {
+    expect(homeViewSource).toContain("extractDocxText");
+    expect(homeViewSource).toContain("extractPdfText");
+    expect(homeViewSource).toContain('from "../lib/documentFileText"');
+  });
+
+  it("routes a DOCX/PDF chosen from the compact upload menu into the same attachment pipeline", () => {
+    expect(homeViewSource).toContain("docx_extract");
+    expect(homeViewSource).toContain("pdf_extract");
+    expect(homeViewSource).toContain("handleAttachmentFilesSelected([file])");
+  });
 });
 
 describe("Document Attachment Intake v1 - DocumentAttachmentArea structure", () => {
@@ -65,10 +81,14 @@ describe("Document Attachment Intake v1 - DocumentAttachmentArea structure", () 
     expect(documentAttachmentAreaSource).toContain("ATTACHMENT_COMBINED_TEXT_NOTE");
   });
 
-  it("offers a native file picker that accepts image types and supported text types", () => {
+  it("offers a native file picker that accepts image types, supported text types, DOCX, and PDF", () => {
     expect(documentAttachmentAreaSource).toContain('type="file"');
     expect(documentAttachmentAreaSource).toContain("attachmentPickerAcceptAttribute");
     expect(documentAttachmentAreaSource).toContain("multiple");
+    // The file picker accept string itself must include .docx and .pdf so
+    // the OS/browser file dialog actually offers them.
+    expect(attachmentPickerAcceptAttribute).toContain(".docx");
+    expect(attachmentPickerAcceptAttribute).toContain(".pdf");
   });
 
   it("offers a camera-oriented input where supported, without hiding the normal picker", () => {
@@ -103,23 +123,40 @@ describe("Document Attachment Intake v1 - DocumentAttachmentArea structure", () 
 });
 
 describe("Document Attachment Intake v1 - supported/unsupported file messaging", () => {
-  it("the broad picker accept string covers phone-camera image formats and supported text types", () => {
+  it("the broad picker accept string covers phone-camera image formats, supported text types, DOCX, and PDF", () => {
     expect(attachmentPickerAcceptAttribute).toContain("image/*");
     expect(attachmentPickerAcceptAttribute).toContain(".heic");
     expect(attachmentPickerAcceptAttribute).toContain(".heif");
     expect(attachmentPickerAcceptAttribute).toContain(".txt");
     expect(attachmentPickerAcceptAttribute).toContain(".csv");
     expect(attachmentPickerAcceptAttribute).toContain(".json");
+    expect(attachmentPickerAcceptAttribute).toContain(".docx");
+    expect(attachmentPickerAcceptAttribute).toContain(".pdf");
   });
 
   it("the camera control accepts images", () => {
     expect(attachmentCameraAcceptAttribute).toBe("image/*");
   });
 
-  it("tells the user PDF/Word documents are not supported yet, without faking support", () => {
-    expect(PDF_OR_WORD_UNSUPPORTED_MESSAGE).toContain("PDF and Word documents are not supported yet");
-    expect(PDF_OR_WORD_UNSUPPORTED_MESSAGE).toContain("copy and paste the text");
-    expect(PDF_OR_WORD_UNSUPPORTED_MESSAGE).toContain("photo of the document");
+  it("tells the user unrecognised files cannot be read yet, without saying only 'nothing uploaded'", () => {
+    expect(UNSUPPORTED_FILE_MESSAGE).toContain("selected in this browser");
+    expect(UNSUPPORTED_FILE_MESSAGE).toContain("has not been uploaded or sent anywhere");
+    expect(UNSUPPORTED_FILE_MESSAGE).toContain("copy and paste the text");
+    expect(UNSUPPORTED_FILE_MESSAGE).toContain("photo of the document");
+    expect(UNSUPPORTED_FILE_MESSAGE.trim().toLowerCase()).not.toBe("nothing uploaded");
+  });
+
+  it("gives older .doc files their own clear, honest message pointing at .docx", () => {
+    expect(DOC_UNSUPPORTED_MESSAGE).toContain("Older .doc files are not supported yet");
+    expect(DOC_UNSUPPORTED_MESSAGE).toContain(".docx");
+    expect(DOC_UNSUPPORTED_MESSAGE).toContain("copy and paste the text");
+    expect(DOC_UNSUPPORTED_MESSAGE).toContain("photo of the document");
+  });
+
+  it("gives a clear, local-only message when reading a selected DOCX/PDF fails", () => {
+    expect(ATTACHMENT_READ_FAILED_MESSAGE).toContain("selected in this browser");
+    expect(ATTACHMENT_READ_FAILED_MESSAGE).toContain("has not uploaded or sent it anywhere");
+    expect(ATTACHMENT_READ_FAILED_MESSAGE.trim().toLowerCase()).not.toBe("nothing uploaded");
   });
 });
 
@@ -133,23 +170,31 @@ describe("Document Attachment Intake v1 - required visible copy", () => {
       "Files are read in this browser. AdminAvenger does not upload them or send them anywhere.",
     );
     expect(ATTACHMENT_OCR_CAUTION_NOTE).toBe(
-      "OCR can misread unclear photos. Always check dates, money, and reference numbers against the original document.",
+      "OCR and file text extraction can misread or miss details. Always check dates, money, names, and reference numbers against the original document.",
     );
     expect(ATTACHMENT_COMBINED_TEXT_NOTE).toBe(
       "Your typed text and attached document text will be checked together.",
     );
   });
 
+  it("mentions DOCX/PDF support directly in the attachment area's own copy", () => {
+    expect(ATTACHMENT_HELPER.toLowerCase()).toContain("docx");
+    expect(ATTACHMENT_HELPER.toLowerCase()).toContain("pdf");
+  });
+
   it("contains no forbidden safety wording anywhere in the attachment UI copy or source", () => {
     const visibleCopy = [
       ATTACHMENT_HEADING,
+      ATTACHMENT_HELPER,
       ATTACHMENT_CHOOSE_BUTTON_LABEL,
       ATTACHMENT_TAKE_PHOTO_BUTTON_LABEL,
       ATTACHMENT_DRAG_DROP_LABEL,
       ATTACHMENT_LOCAL_ONLY_NOTE,
       ATTACHMENT_OCR_CAUTION_NOTE,
       ATTACHMENT_COMBINED_TEXT_NOTE,
-      PDF_OR_WORD_UNSUPPORTED_MESSAGE,
+      ATTACHMENT_READ_FAILED_MESSAGE,
+      UNSUPPORTED_FILE_MESSAGE,
+      DOC_UNSUPPORTED_MESSAGE,
     ].join("\n");
 
     expect(findForbiddenSafetyPhrases(visibleCopy)).toEqual([]);
@@ -157,5 +202,8 @@ describe("Document Attachment Intake v1 - required visible copy", () => {
     expect(visibleCopy.toLowerCase()).not.toContain("bank-level security");
     expect(visibleCopy.toLowerCase()).not.toContain("guaranteed");
     expect(visibleCopy.toLowerCase()).not.toContain("gdpr compliant");
+    expect(visibleCopy.toLowerCase()).not.toContain("cloud processed");
+    expect(visibleCopy.toLowerCase()).not.toContain("secure upload");
+    expect(visibleCopy.toLowerCase()).not.toContain("every pdf");
   });
 });

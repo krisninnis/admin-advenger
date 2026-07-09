@@ -125,15 +125,20 @@ Files are processed in the order they were attached:
   `src/lib/photoIntake.ts`).
 - Text: `.txt`, `.md`, `.csv`, `.json` - wherever the existing text-file path
   already supports them (`isSupportedTextFile` in `src/lib/fileIntakeAccept.ts`).
+- Word documents (`.docx`) and PDF (`.pdf`) - added in **Document File
+  Support v1** (see `docs/product/document-file-support-v1.md`), read
+  locally via `mammoth`/`pdfjs-dist` in `src/lib/documentFileText.ts`.
 
 ## Unsupported file types
 
-- PDF and Word documents (`.pdf`, `.doc`, `.docx`) are not supported yet.
-  Attaching one shows: "PDF and Word documents are not supported yet. You
-  can copy and paste the text, or upload/take a photo of the document." This
-  is a specific, honest message - it never pretends PDF/DOCX text extraction
-  exists.
-- Anything else unrecognised falls back to the same general
+- Older Word documents (`.doc`, the legacy binary format) are not supported
+  yet - only `.docx` is. Attaching a `.doc` file shows: "Older .doc files are
+  not supported yet. Please use .docx, copy and paste the text, or
+  upload/take a photo of the document."
+- Scanned/image-only PDFs are routed to the PDF extractor like any other PDF,
+  but produce their own honest "no selectable text found" result rather than
+  being treated as read - see `docs/product/document-file-support-v1.md`.
+- Anything else unrecognised falls back to the general
   `UNSUPPORTED_FILE_MESSAGE` already used by the existing "Upload a file"
   path.
 - An unsupported file is never silently dropped - it is always added to the
@@ -197,12 +202,16 @@ buttons.
 - No new decision-engine or classification logic: attached text is checked
   by the same classifier and engines as pasted text, with no special-casing
   for "came from an attachment".
-- No PDF/DOCX generation or parsing was added or faked.
+- DOCX/PDF parsing (Document File Support v1) is local-only text extraction
+  via `mammoth`/`pdfjs-dist` - no PDF/DOCX *generation* was added, and no
+  fake/placeholder extraction was ever shown as if it were real.
 
 ## Future improvements
 
-- PDF text extraction (with a clear local-only/in-browser caveat).
-- DOCX text extraction.
+- PDF text extraction and DOCX text extraction shipped in **Document File
+  Support v1** - see `docs/product/document-file-support-v1.md` for that
+  feature's own future-improvements list (scanned PDF OCR, `.doc` support,
+  larger file limits, a manual text review screen).
 - Synthetic OCR image fixtures for the Golden Letter Corpus, so multi-photo
   attachment can be tested the same way text fixtures already are.
 - A redaction preview before checking or exporting, so a person can review

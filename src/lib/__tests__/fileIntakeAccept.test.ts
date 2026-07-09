@@ -2,11 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   attachmentCameraAcceptAttribute,
   attachmentPickerAcceptAttribute,
+  classifyFileForIntake,
   classifyUploadedFile,
+  DOC_UNSUPPORTED_MESSAGE,
   getAttachmentUnsupportedMessage,
-  isPdfOrWordFile,
+  isLegacyDocFile,
+  isSupportedDocxFile,
+  isSupportedPdfFile,
   isSupportedTextFile,
-  PDF_OR_WORD_UNSUPPORTED_MESSAGE,
   photoAcceptAttribute,
   photoCaptureAcceptAttribute,
   quickUploadAcceptAttribute,
@@ -58,10 +61,42 @@ describe("isSupportedTextFile", () => {
     expect(isSupportedTextFile(makeFile("data.json"))).toBe(true);
   });
 
-  it("does not treat images or PDFs/DOCX as text files", () => {
+  it("does not treat images or PDFs/DOCX as plain text files", () => {
     expect(isSupportedTextFile(makeFile("letter.jpg", "image/jpeg"))).toBe(false);
     expect(isSupportedTextFile(makeFile("scan.pdf", "application/pdf"))).toBe(false);
     expect(isSupportedTextFile(makeFile("contract.docx"))).toBe(false);
+  });
+});
+
+// Document File Support v1 - DOCX (not legacy .doc) and PDF are now their
+// own supported classifications, read locally (see documentFileText.ts),
+// never treated the same as an unrecognised binary file.
+describe("isSupportedDocxFile / isSupportedPdfFile / isLegacyDocFile", () => {
+  it("accepts .docx by extension or MIME type", () => {
+    expect(isSupportedDocxFile(makeFile("contract.docx"))).toBe(true);
+    expect(
+      isSupportedDocxFile(
+        makeFile(
+          "contract2",
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it("never treats a plain .doc file as a supported .docx file", () => {
+    expect(isSupportedDocxFile(makeFile("contract.doc"))).toBe(false);
+    expect(isSupportedDocxFile(makeFile("contract.doc", "application/msword"))).toBe(false);
+  });
+
+  it("accepts .pdf by extension or MIME type", () => {
+    expect(isSupportedPdfFile(makeFile("statement.pdf"))).toBe(true);
+    expect(isSupportedPdfFile(makeFile("statement", "application/pdf"))).toBe(true);
+  });
+
+  it("flags only genuine legacy .doc files, never .docx", () => {
+    expect(isLegacyDocFile(makeFile("contract.doc"))).toBe(true);
+    expect(isLegacyDocFile(makeFile("contract.docx"))).toBe(false);
   });
 });
 
@@ -104,21 +139,78 @@ describe("classifyUploadedFile", () => {
     expect(classifyUploadedFile(makeFile("data.json"))).toBe("text_file");
   });
 
-  it("marks PDF/DOCX as unsupported for now", () => {
-    expect(classifyUploadedFile(makeFile("statement.pdf", "application/pdf"))).toBe("unsupported");
-    expect(classifyUploadedFile(makeFile("contract.docx"))).toBe("unsupported");
+  it("routes DOCX to the local DOCX extractor, not the unsupported message", () => {
+    expect(classifyUploadedFile(makeFile("contract.docx"))).toBe("docx_extract");
+  });
+
+  it("routes PDF to the local PDF extractor, not the unsupported message", () => {
+    expect(classifyUploadedFile(makeFile("statement.pdf", "application/pdf"))).toBe("pdf_extract");
+  });
+
+  it("marks a legacy .doc file as unsupported", () => {
+    expect(classifyUploadedFile(makeFile("contract.doc"))).toBe("unsupported");
+  });
+
+  it("marks an unrecognised binary file as unsupported", () => {
+    expect(classifyUploadedFile(makeFile("archive.zip", "application/zip"))).toBe("unsupported");
+    expect(classifyUploadedFile(makeFile("app.exe", "application/octet-stream"))).toBe("unsupported");
+  });
+});
+
+describe("classifyFileForIntake", () => {
+  it("accepts docx", () => {
+    expect(classifyFileForIntake(makeFile("contract.docx"))).toBe("supported_docx");
+  });
+
+  it("accepts pdf", () => {
+    expect(classifyFileForIntake(makeFile("statement.pdf", "application/pdf"))).toBe("supported_pdf");
+  });
+
+  it("rejects doc", () => {
+    expect(classifyFileForIntake(makeFile("contract.doc"))).toBe("unsupported");
+    expect(classifyFileForIntake(makeFile("contract.doc", "application/msword"))).toBe("unsupported");
+  });
+
+  it("rejects unsupported binary files", () => {
+    expect(classifyFileForIntake(makeFile("archive.zip", "application/zip"))).toBe("unsupported");
+    expect(classifyFileForIntake(makeFile("app.exe", "application/octet-stream"))).toBe("unsupported");
+    expect(classifyFileForIntake(makeFile("no-extension-at-all"))).toBe("unsupported");
+  });
+
+  it("preserves existing image support", () => {
+    expect(classifyFileForIntake(makeFile("letter.jpg", "image/jpeg"))).toBe("image");
+    expect(classifyFileForIntake(makeFile("letter.png", "image/png"))).toBe("image");
+    expect(classifyFileForIntake(makeFile("letter.heic", ""))).toBe("image");
+  });
+
+  it("preserves existing text-file support", () => {
+    expect(classifyFileForIntake(makeFile("notes.txt"))).toBe("supported_text");
+    expect(classifyFileForIntake(makeFile("notes.md"))).toBe("supported_text");
+    expect(classifyFileForIntake(makeFile("notes.csv"))).toBe("supported_text");
+    expect(classifyFileForIntake(makeFile("notes.json"))).toBe("supported_text");
   });
 });
 
 describe("UNSUPPORTED_FILE_MESSAGE", () => {
-  it("points the user at images and pasting, without implying image reading is off", () => {
+  it("is clear the file was only selected in this browser, never uploaded or sent anywhere", () => {
     expect(UNSUPPORTED_FILE_MESSAGE).toBe(
-      "This file type is not supported yet. For images, upload JPG/PNG. For documents, copy and paste the text for now.",
+      "AdminAvenger cannot read this file type yet. The file was selected in this browser but has not been uploaded or sent anywhere. You can copy and paste the text, or upload/take a photo of the document.",
     );
-    // Must not resurrect the old "not active in this mode" / "coming later"
-    // wording, and must not imply image OCR is inactive.
+    // Must not resurrect the old "not active" / "coming later" wording, and
+    // must not imply image OCR is inactive, and must never say only
+    // "nothing uploaded" in a way that reads like the file vanished.
     expect(UNSUPPORTED_FILE_MESSAGE).not.toMatch(/not active/i);
     expect(UNSUPPORTED_FILE_MESSAGE).not.toMatch(/coming later/i);
+    expect(UNSUPPORTED_FILE_MESSAGE.toLowerCase()).not.toBe("nothing uploaded");
+  });
+});
+
+describe("DOC_UNSUPPORTED_MESSAGE", () => {
+  it("gives older .doc files their own specific, honest message", () => {
+    expect(DOC_UNSUPPORTED_MESSAGE).toBe(
+      "Older .doc files are not supported yet. Please use .docx, copy and paste the text, or upload/take a photo of the document.",
+    );
+    expect(DOC_UNSUPPORTED_MESSAGE).toContain(".docx");
   });
 });
 
@@ -140,50 +232,29 @@ describe("attachment picker accept attributes", () => {
     expect(attachmentPickerAcceptAttribute).toContain(".json");
   });
 
+  it("the attachment picker now also accepts .docx and .pdf (Document File Support v1)", () => {
+    expect(attachmentPickerAcceptAttribute).toContain(".docx");
+    expect(attachmentPickerAcceptAttribute).toContain(".pdf");
+  });
+
   it("the attachment camera control accepts images", () => {
     expect(attachmentCameraAcceptAttribute).toBe("image/*");
   });
 });
 
-describe("PDF/Word attachment handling", () => {
-  const makeFile = (name: string, type = "") => new File(["pretend bytes"], name, { type });
-
-  it("recognises PDF and Word documents by extension or MIME type", () => {
-    expect(isPdfOrWordFile(makeFile("statement.pdf", "application/pdf"))).toBe(true);
-    expect(isPdfOrWordFile(makeFile("contract.doc"))).toBe(true);
-    expect(isPdfOrWordFile(makeFile("contract.docx"))).toBe(true);
-    expect(
-      isPdfOrWordFile(
-        makeFile(
-          "contract2",
-          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        ),
-      ),
-    ).toBe(true);
-    expect(isPdfOrWordFile(makeFile("letter.jpg", "image/jpeg"))).toBe(false);
-    expect(isPdfOrWordFile(makeFile("notes.txt"))).toBe(false);
+describe("getAttachmentUnsupportedMessage", () => {
+  it("gives a legacy .doc file its own specific, honest message", () => {
+    expect(getAttachmentUnsupportedMessage(makeFile("contract.doc"))).toBe(DOC_UNSUPPORTED_MESSAGE);
   });
 
-  it("gives PDF/Word files a specific, honest not-supported-yet message", () => {
-    expect(PDF_OR_WORD_UNSUPPORTED_MESSAGE).toBe(
-      "PDF and Word documents are not supported yet. You can copy and paste the text, or upload/take a photo of the document.",
-    );
-    expect(getAttachmentUnsupportedMessage(makeFile("statement.pdf", "application/pdf"))).toBe(
-      PDF_OR_WORD_UNSUPPORTED_MESSAGE,
-    );
-    expect(getAttachmentUnsupportedMessage(makeFile("contract.docx"))).toBe(
-      PDF_OR_WORD_UNSUPPORTED_MESSAGE,
-    );
-  });
-
-  it("falls back to the general unsupported-file message for anything else", () => {
+  it("falls back to the general unsupported-file message for anything else unreadable", () => {
     expect(getAttachmentUnsupportedMessage(makeFile("archive.zip", "application/zip"))).toBe(
       UNSUPPORTED_FILE_MESSAGE,
     );
   });
 
-  it("never fakes PDF/DOCX support", () => {
-    expect(PDF_OR_WORD_UNSUPPORTED_MESSAGE.toLowerCase()).not.toContain("we can now read");
-    expect(PDF_OR_WORD_UNSUPPORTED_MESSAGE.toLowerCase()).toContain("not supported yet");
+  it("never claims fake support for DOC, and never implies DOCX/PDF are unsupported", () => {
+    expect(DOC_UNSUPPORTED_MESSAGE.toLowerCase()).not.toContain("we can now read");
+    expect(DOC_UNSUPPORTED_MESSAGE.toLowerCase()).toContain("not supported yet");
   });
 });

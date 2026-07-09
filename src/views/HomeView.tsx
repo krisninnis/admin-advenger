@@ -68,6 +68,7 @@ import {
   hasReadableAttachedText,
   type AttachedFile,
 } from "../lib/documentAttachmentIntake";
+import { extractDocxText, extractPdfText } from "../lib/documentFileText";
 import {
   PHOTO_ADD_CLOSE_UP_DESCRIPTION,
   PHOTO_ADD_CLOSE_UP_LABEL,
@@ -1280,7 +1281,9 @@ export function HomeView({
       return;
     }
 
-    if (classifyUploadedFile(file) === "photo_ocr") {
+    const route = classifyUploadedFile(file);
+
+    if (route === "photo_ocr") {
       setUploadNote("");
       setInputMessage("");
       setUploadedFileName("");
@@ -1290,17 +1293,34 @@ export function HomeView({
       return;
     }
 
+    if (route === "docx_extract" || route === "pdf_extract") {
+      // Document File Support v1 - a DOCX/PDF chosen from the compact "+"
+      // menu or the "Upload a file" tab is read through the exact same local
+      // attachment pipeline as the "Attach document photos" area below
+      // (handleAttachmentFilesSelected), never a second, parallel reader for
+      // the same file types. Switching to the paste tab is what makes the
+      // attached file (and its Reading/Read/Failed status) visible.
+      setUploadNote("");
+      setInputMessage("");
+      setUploadedFileName("");
+      setSelectedInput("paste");
+      await handleAttachmentFilesSelected([file]);
+      return;
+    }
+
     setSelectedInput("file");
     await handleFileUpload(file);
   };
 
-  // Document Attachment Intake v1 - adds newly chosen/dropped files to the
-  // attachment list, then reads each one in the order they were attached:
-  // images through the same on-device OCR as every other photo path, text
-  // files through the browser's own File.text(). A read failure on one file
-  // only marks that file as failed - it never stops the other files from
-  // being read, and never crashes the check flow. Nothing here uploads a
-  // file anywhere; every read happens in this browser tab.
+  // Document Attachment Intake v1 (+ Document File Support v1) - adds newly
+  // chosen/dropped files to the attachment list, then reads each one in the
+  // order they were attached: images through the same on-device OCR as every
+  // other photo path, text files through the browser's own File.text(), and
+  // DOCX/PDF files through the local extractors in
+  // src/lib/documentFileText.ts. A read failure on one file only marks that
+  // file as failed - it never stops the other files from being read, and
+  // never crashes the check flow. Nothing here uploads a file anywhere;
+  // every read happens in this browser tab.
   const handleAttachmentFilesSelected = async (newFiles: File[]) => {
     if (newFiles.length === 0) {
       return;
@@ -1337,6 +1357,39 @@ export function HomeView({
                 : item,
             ),
           );
+        } else if (entry.kind === "docx" || entry.kind === "pdf") {
+          // Document File Support v1 - DOCX/PDF are read locally with
+          // mammoth/pdfjs-dist (see src/lib/documentFileText.ts), never
+          // uploaded anywhere. A "no selectable text" result (a scanned PDF,
+          // or an empty DOCX) is not a crash - it is shown as its own
+          // "failed" row with an honest, specific message, and never blocks
+          // the other attached files from being read and combined.
+          // eslint-disable-next-line no-await-in-loop
+          const result =
+            entry.kind === "docx" ? await extractDocxText(entry.file) : await extractPdfText(entry.file);
+
+          if (result.status === "success") {
+            setAttachedFiles((current) =>
+              current.map((item) =>
+                item.id === entry.id
+                  ? {
+                      ...item,
+                      status: "read",
+                      extractedText: result.text,
+                      warnings: result.warnings,
+                    }
+                  : item,
+              ),
+            );
+          } else {
+            setAttachedFiles((current) =>
+              current.map((item) =>
+                item.id === entry.id
+                  ? { ...item, status: "failed", errorMessage: result.message }
+                  : item,
+              ),
+            );
+          }
         } else {
           // eslint-disable-next-line no-await-in-loop
           const text = await entry.file.text();
@@ -1412,7 +1465,7 @@ export function HomeView({
           {[
             ["paste", "Paste text", "Fastest way to check something"],
             ["image", "Take or upload a photo", "Reads the text on your device"],
-            ["file", "Upload a file", "TXT, MD, CSV, JSON, JPG, PNG"],
+            ["file", "Upload a file", "TXT, MD, CSV, JSON, DOCX, PDF, JPG, PNG"],
           ].map(([value, label, helper]) => (
             <button
               key={value}

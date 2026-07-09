@@ -33,35 +33,133 @@ export const isSupportedTextFile = (file: File): boolean => {
   return supportedTextFileExtensions.some((extension) => fileName.endsWith(extension));
 };
 
-// Where a file chosen from an upload control should go:
-// - "photo_ocr": an image, handled by the same on-device photo OCR flow as
-//   "Take or upload a photo" (including the "Adjust document area" step)
-// - "text_file": a supported text/document file the browser can read as text
-// - "unsupported": anything else (e.g. PDF/DOCX), which shows the
-//   "not supported yet" message rather than pretending it can be read
-export type UploadedFileRoute = "photo_ocr" | "text_file" | "unsupported";
+// ---- Document File Support v1 ----
+//
+// DOCX and PDF are now read locally in the browser (see
+// src/lib/documentFileText.ts for the mammoth/pdfjs-dist extraction, and
+// src/lib/documentAttachmentIntake.ts for how the extracted text is combined
+// into the normal check flow). Older .doc files are deliberately still not
+// supported - Word's legacy binary format is much harder to parse reliably
+// in the browser, so rather than guess at it, AdminAvenger tells the person
+// clearly to use .docx, paste the text, or photograph the document instead.
+// Random/unrecognised binary files (zip, exe, ...) are never treated as
+// supported either.
 
-// Single source of truth for routing an uploaded file. Images are checked
-// first so an image is never treated as an unreadable file - this is the fix
-// for image uploads in the "Upload a file" area showing an unsupported-file
-// message instead of going to photo OCR.
-export const classifyUploadedFile = (file: File): UploadedFileRoute => {
+export const supportedDocxExtensions = [".docx"] as const;
+export const supportedPdfExtensions = [".pdf"] as const;
+
+const docxMimeTypes = new Set([
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+]);
+const pdfMimeTypes = new Set(["application/pdf"]);
+
+export const isSupportedDocxFile = (file: File): boolean => {
+  const fileName = file.name.toLowerCase();
+
+  // ".docx" only - a plain ".doc" extension must never match here, even if
+  // it happens to share a MIME type in some browsers.
+  if (fileName.endsWith(".doc") && !fileName.endsWith(".docx")) {
+    return false;
+  }
+
+  return (
+    supportedDocxExtensions.some((extension) => fileName.endsWith(extension)) ||
+    docxMimeTypes.has(file.type.toLowerCase())
+  );
+};
+
+export const isSupportedPdfFile = (file: File): boolean => {
+  const fileName = file.name.toLowerCase();
+
+  return (
+    supportedPdfExtensions.some((extension) => fileName.endsWith(extension)) ||
+    pdfMimeTypes.has(file.type.toLowerCase())
+  );
+};
+
+// Older Word binary format (.doc) - never treated as supported. Checked by
+// extension only (not MIME type) since ".doc" and ".docx" can arrive with
+// overlapping/ambiguous MIME types from different browsers/OSes.
+export const isLegacyDocFile = (file: File): boolean => {
+  const fileName = file.name.toLowerCase();
+
+  return fileName.endsWith(".doc") && !fileName.endsWith(".docx");
+};
+
+// Single source of truth for classifying any file chosen/dropped anywhere in
+// the app (the compact upload menu, the "Upload a file" tab, and the
+// "Attach document photos" area) into one of five buckets. Images are
+// checked first so an image is never treated as a document; supported text
+// files keep their existing behaviour unchanged.
+export type FileIntakeClassification =
+  | "image"
+  | "supported_text"
+  | "supported_docx"
+  | "supported_pdf"
+  | "unsupported";
+
+export const classifyFileForIntake = (file: File): FileIntakeClassification => {
   if (isSupportedPhotoFile(file)) {
-    return "photo_ocr";
+    return "image";
   }
 
   if (isSupportedTextFile(file)) {
-    return "text_file";
+    return "supported_text";
+  }
+
+  if (isLegacyDocFile(file)) {
+    return "unsupported";
+  }
+
+  if (isSupportedDocxFile(file)) {
+    return "supported_docx";
+  }
+
+  if (isSupportedPdfFile(file)) {
+    return "supported_pdf";
   }
 
   return "unsupported";
 };
 
-// Shown when a file genuinely can't be read yet (e.g. PDF/DOCX). Deliberately
-// does not imply image reading is off - images are routed to photo OCR before
-// this is ever reached - and points the user at what does work today.
+// Where a file chosen from an upload control should go:
+// - "photo_ocr": an image, handled by the same on-device photo OCR flow as
+//   "Take or upload a photo" (including the "Adjust document area" step)
+// - "text_file": a supported text/document file the browser can read as text
+// - "docx_extract": a .docx file, read locally with the DOCX text extractor
+//   in src/lib/documentFileText.ts
+// - "pdf_extract": a PDF file, read locally with the PDF text extractor in
+//   src/lib/documentFileText.ts
+// - "unsupported": anything else (older .doc files, random binaries, ...),
+//   which shows a clear "cannot read this yet" message rather than
+//   pretending it can be read
+export type UploadedFileRoute = "photo_ocr" | "text_file" | "docx_extract" | "pdf_extract" | "unsupported";
+
+const routeByClassification: Record<FileIntakeClassification, UploadedFileRoute> = {
+  image: "photo_ocr",
+  supported_text: "text_file",
+  supported_docx: "docx_extract",
+  supported_pdf: "pdf_extract",
+  unsupported: "unsupported",
+};
+
+// Single source of truth for routing an uploaded file, built on top of
+// classifyFileForIntake above so every entry point in the app (the compact
+// "+" upload menu, the "Upload a file" tab, and the "Attach document photos"
+// area) agrees on what a given file is. Images are checked first so an image
+// is never treated as an unreadable file - this is the fix for image uploads
+// in the "Upload a file" area showing an unsupported-file message instead of
+// going to photo OCR.
+export const classifyUploadedFile = (file: File): UploadedFileRoute =>
+  routeByClassification[classifyFileForIntake(file)];
+
+// Shown when a file genuinely can't be read yet (e.g. an unrecognised binary
+// file - see DOC_UNSUPPORTED_MESSAGE below for the older-.doc-file case).
+// Deliberately does not imply image reading is off - images are routed to
+// photo OCR before this is ever reached - and always makes clear the file
+// was only selected in this browser, never uploaded or sent anywhere.
 export const UNSUPPORTED_FILE_MESSAGE =
-  "This file type is not supported yet. For images, upload JPG/PNG. For documents, copy and paste the text for now.";
+  "AdminAvenger cannot read this file type yet. The file was selected in this browser but has not been uploaded or sent anywhere. You can copy and paste the text, or upload/take a photo of the document.";
 
 // ---- Document Attachment Intake v1 ----
 //
@@ -72,8 +170,10 @@ export const UNSUPPORTED_FILE_MESSAGE =
 // image extensions explicitly (HEIC/HEIF often arrive with an empty or
 // non-standard MIME type from mobile file pickers) so the browser/OS file
 // picker offers Photos/Gallery/Files consistently across iOS and Android.
+// Includes .docx and .pdf now that both are read locally (Document File
+// Support v1) - see classifyFileForIntake above.
 export const attachmentPickerAcceptAttribute =
-  "image/*,.jpg,.jpeg,.png,.webp,.heic,.heif,.txt,.md,.csv,.json";
+  "image/*,.jpg,.jpeg,.png,.webp,.heic,.heif,.txt,.md,.csv,.json,.docx,.pdf";
 
 // Accept string for the attachment area's "Take photo" control. Kept as its
 // own named constant (identical value to photoAcceptAttribute today) so the
@@ -81,31 +181,17 @@ export const attachmentPickerAcceptAttribute =
 // affecting the other.
 export const attachmentCameraAcceptAttribute = "image/*";
 
-const pdfOrWordExtensions = [".pdf", ".doc", ".docx"];
-const pdfOrWordMimeTypes = new Set([
-  "application/pdf",
-  "application/msword",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-]);
+// Older .doc files get their own specific, honest message rather than the
+// general unsupported-file message - it points the person at the one thing
+// that would actually work (re-saving/copying as .docx), not just a generic
+// "not supported" shrug.
+export const DOC_UNSUPPORTED_MESSAGE =
+  "Older .doc files are not supported yet. Please use .docx, copy and paste the text, or upload/take a photo of the document.";
 
-export const isPdfOrWordFile = (file: File): boolean => {
-  const fileName = file.name.toLowerCase();
-
-  return (
-    pdfOrWordMimeTypes.has(file.type.toLowerCase()) ||
-    pdfOrWordExtensions.some((extension) => fileName.endsWith(extension))
-  );
-};
-
-// A more specific, honest message for the single most common "not supported
-// yet" case in the attachment area (PDF/Word documents) - never implies fake
-// support, and always points at what already works (paste, or photograph the
-// document).
-export const PDF_OR_WORD_UNSUPPORTED_MESSAGE =
-  "PDF and Word documents are not supported yet. You can copy and paste the text, or upload/take a photo of the document.";
-
-// Single source of truth for the message shown next to a rejected attachment.
-// PDF/Word gets its own specific, honest message; everything else falls back
-// to the general UNSUPPORTED_FILE_MESSAGE above.
+// Single source of truth for the message shown next to a rejected
+// attachment. A legacy .doc file gets its own specific message; everything
+// else unsupported falls back to the general UNSUPPORTED_FILE_MESSAGE above.
+// Never shown for supported_docx/supported_pdf/image/supported_text - those
+// are read, not rejected.
 export const getAttachmentUnsupportedMessage = (file: File): string =>
-  isPdfOrWordFile(file) ? PDF_OR_WORD_UNSUPPORTED_MESSAGE : UNSUPPORTED_FILE_MESSAGE;
+  isLegacyDocFile(file) ? DOC_UNSUPPORTED_MESSAGE : UNSUPPORTED_FILE_MESSAGE;

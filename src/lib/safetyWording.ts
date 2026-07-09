@@ -9,7 +9,8 @@ export type SafetyWordingGroup =
   | "advice_claim"
   | "adversarial_language"
   | "money_claim"
-  | "automation_claim";
+  | "automation_claim"
+  | "overclaim_claim";
 
 export type SafetyTheme =
   | "no_contact"
@@ -99,11 +100,27 @@ export const FORBIDDEN_MONEY_CLAIMS = [
 export const FORBIDDEN_AUTOMATION_CLAIMS = [
   "sent automatically",
   "submitted automatically",
+  "automatic submission",
   "we contacted",
   "we applied for you",
   "we appealed for you",
   "we challenged for you",
   "claim submitted",
+] as const;
+
+// Document File Support v1 - technical/privacy overclaims that would make a
+// stronger promise about file handling than a client-side, local-only
+// prototype can actually verify (see src/lib/documentFileText.ts and
+// src/lib/documentAttachmentIntake.ts for the honest wording these rule out).
+export const FORBIDDEN_OVERCLAIM_PHRASES = [
+  "secure upload",
+  "securely uploaded",
+  "cloud processed",
+  "gdpr compliant",
+  "bank-level security",
+  "every pdf",
+  "we read every pdf",
+  "guaranteed text extraction",
 ] as const;
 
 export const REQUIRED_SAFETY_THEMES: Record<SafetyTheme, readonly string[]> = {
@@ -158,6 +175,7 @@ const forbiddenGroups: Record<SafetyWordingGroup, readonly string[]> = {
   adversarial_language: FORBIDDEN_ADVERSARIAL_LANGUAGE,
   money_claim: FORBIDDEN_MONEY_CLAIMS,
   automation_claim: FORBIDDEN_AUTOMATION_CLAIMS,
+  overclaim_claim: FORBIDDEN_OVERCLAIM_PHRASES,
 };
 
 export const ALL_FORBIDDEN_SAFETY_PHRASES = Object.values(forbiddenGroups).flat();

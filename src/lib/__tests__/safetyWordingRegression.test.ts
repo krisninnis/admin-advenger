@@ -204,6 +204,29 @@ describe("safety wording helpers", () => {
     );
   });
 
+  // Document File Support v1 - technical/privacy overclaims about file
+  // handling (secure upload, cloud processed, GDPR compliant, bank-level
+  // security, guaranteed extraction, "every PDF") must be caught the same
+  // way outcome/money/automation overclaims already are.
+  it("detects file-handling overclaims (Document File Support v1)", () => {
+    const matches = findForbiddenSafetyPhrases(
+      "Your file was securely uploaded and cloud processed. This is GDPR compliant with bank-level security. We read every PDF with guaranteed text extraction, and it was submitted automatically.",
+      { context: "overclaim test" },
+    );
+
+    expect(matches).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ phrase: "securely uploaded", group: "overclaim_claim" }),
+        expect.objectContaining({ phrase: "cloud processed", group: "overclaim_claim" }),
+        expect.objectContaining({ phrase: "gdpr compliant", group: "overclaim_claim" }),
+        expect.objectContaining({ phrase: "bank-level security", group: "overclaim_claim" }),
+        expect.objectContaining({ phrase: "every pdf", group: "overclaim_claim" }),
+        expect.objectContaining({ phrase: "guaranteed text extraction", group: "overclaim_claim" }),
+        expect.objectContaining({ phrase: "submitted automatically", group: "automation_claim" }),
+      ]),
+    );
+  });
+
   it("throws for an intentionally unsafe direct helper call", () => {
     expect(() =>
       assertNoForbiddenSafetyPhrases("You should appeal and you will win.", "unsafe direct helper test"),

@@ -10,6 +10,7 @@ import type {
   ResultViewModel,
 } from "../lib/resultViewModel";
 import type { StrategicNextStepPlan } from "../lib/strategicNextStep";
+import type { WorkplaceSupportPack } from "../lib/workplaceSupportPack";
 import { CaseProgressCard } from "./CaseProgressCard";
 import { CopyButton } from "./CopyButton";
 
@@ -30,6 +31,7 @@ type ResultCaseSheetProps = {
   benefitsActionPack?: BenefitsActionPack | null;
   strategicNextStepPlan?: StrategicNextStepPlan;
   adviserExportPack?: AdviserExportPack;
+  workplaceSupportPack?: WorkplaceSupportPack;
   primaryAction?: ResultCaseSheetAction;
   secondaryActions?: ResultCaseSheetAction[];
   guidedNextStepButton?: ResultCaseSheetAction;
@@ -299,6 +301,7 @@ export function ResultCaseSheet({
   benefitsActionPack,
   strategicNextStepPlan,
   adviserExportPack,
+  workplaceSupportPack,
   primaryAction,
   secondaryActions = [],
   guidedNextStepButton,
@@ -318,8 +321,9 @@ export function ResultCaseSheet({
         benefitsActionPack,
         strategicNextStepPlan,
         adviserExportPack,
+        workplaceSupportPack,
       }),
-    [model, decisionResult, benefitsActionPack, strategicNextStepPlan, adviserExportPack],
+    [model, decisionResult, benefitsActionPack, strategicNextStepPlan, adviserExportPack, workplaceSupportPack],
   );
   const checkFirstItems = uniqueTextItems([
     ...model.keyDates.slice(0, 2).map((date) => `${date.label}: ${date.value}`),

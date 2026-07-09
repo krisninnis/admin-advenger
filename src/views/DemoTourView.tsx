@@ -14,10 +14,19 @@ import {
 } from "../lib/adviserExportPack";
 import { downloadAdviserExportMarkdown } from "../lib/adviserExportDownload";
 import { buildBenefitsActionPack } from "../lib/benefitsActionPack";
-import { demoScenarios } from "../lib/demoScenarios";
+import {
+  demoScenarios,
+  standardDemoScenarios,
+  workplaceDemoScenarios,
+  type DemoScenario,
+} from "../lib/demoScenarios";
 import { deriveOpportunityCard } from "../lib/opportunityCards";
-import { buildResultViewModel } from "../lib/resultViewModel";
+import { buildResultViewModel, type ResultViewModel } from "../lib/resultViewModel";
 import { buildStrategicNextStepPlan } from "../lib/strategicNextStep";
+import {
+  buildWorkplaceSupportPack,
+  type WorkplaceSupportPack,
+} from "../lib/workplaceSupportPack";
 import type { ServiceStatus } from "../services/analysisService";
 import type { AdminCase, SourceType } from "../types";
 import type { HomeAnalysisResult } from "./HomeView";
@@ -72,6 +81,13 @@ const tourSteps = [
   "Clear local data from Settings if needed.",
 ];
 
+type WorkplaceDemoResult = {
+  scenarioId: string;
+  workplaceSupportPack: WorkplaceSupportPack;
+  resultViewModel: ResultViewModel;
+  adviserExportPack: ReturnType<typeof buildAdviserExportPack>;
+};
+
 export function DemoTourView({
   result,
   activeDemoScenarioId,
@@ -82,10 +98,12 @@ export function DemoTourView({
   onActiveDemoScenarioChange,
   onNavigate,
 }: DemoTourViewProps) {
-  const [selectedScenarioId, setSelectedScenarioId] = useState(demoScenarios[0]?.id ?? "");
+  const [selectedScenarioId, setSelectedScenarioId] = useState(standardDemoScenarios[0]?.id ?? "");
+  const [workplaceDemoResult, setWorkplaceDemoResult] = useState<WorkplaceDemoResult>();
   const [showSupportingDetail, setShowSupportingDetail] = useState(false);
   const selectedScenario =
-    demoScenarios.find((scenario) => scenario.id === selectedScenarioId) ?? demoScenarios[0];
+    standardDemoScenarios.find((scenario) => scenario.id === selectedScenarioId) ??
+    standardDemoScenarios[0];
   const activeScenario = activeDemoScenarioId
     ? demoScenarios.find((scenario) => scenario.id === activeDemoScenarioId)
     : undefined;
@@ -109,7 +127,7 @@ export function DemoTourView({
         adminCase: primaryCase,
       })
     : undefined;
-  const resultViewModel = primaryCase
+  const standardResultViewModel = primaryCase
     ? buildResultViewModel({
         decisionResult: primaryCase.decisionResult,
         benefitsActionPack,
@@ -118,19 +136,23 @@ export function DemoTourView({
         adminCase: primaryCase,
       })
     : undefined;
-  const adviserExportPack =
-    primaryCase?.decisionResult && resultViewModel
+  const standardAdviserExportPack =
+    primaryCase?.decisionResult && standardResultViewModel
       ? buildAdviserExportPack({
           decisionResult: primaryCase.decisionResult,
-          resultViewModel,
+          resultViewModel: standardResultViewModel,
           benefitsActionPack,
           strategicNextStepPlan,
         })
       : undefined;
+  const workplaceSupportPack = workplaceDemoResult?.workplaceSupportPack;
+  const resultViewModel = workplaceDemoResult?.resultViewModel ?? standardResultViewModel;
+  const adviserExportPack = workplaceDemoResult?.adviserExportPack ?? standardAdviserExportPack;
   const restartAction: ResultCaseSheetAction = {
     label: "Try another demo",
     onClick: () => {
       onClearResult();
+      setWorkplaceDemoResult(undefined);
       onActiveDemoScenarioChange(undefined);
       setShowSupportingDetail(false);
     },
@@ -143,6 +165,7 @@ export function DemoTourView({
     }
 
     onClearResult();
+    setWorkplaceDemoResult(undefined);
     onActiveDemoScenarioChange(undefined);
     setShowSupportingDetail(false);
 
@@ -153,6 +176,32 @@ export function DemoTourView({
     );
 
     onActiveDemoScenarioChange(checked ? selectedScenario.id : undefined);
+  };
+
+  const handleRunWorkplaceDemo = (scenario: DemoScenario) => {
+    if (isChecking) {
+      return;
+    }
+
+    onClearResult();
+    setShowSupportingDetail(false);
+
+    const workplaceSupportPack = buildWorkplaceSupportPack({
+      text: scenario.inputText.trim(),
+    });
+    const resultViewModel = buildResultViewModel({ workplaceSupportPack });
+    const adviserExportPack = buildAdviserExportPack({
+      resultViewModel,
+      workplaceSupportPack,
+    });
+
+    setWorkplaceDemoResult({
+      scenarioId: scenario.id,
+      workplaceSupportPack,
+      resultViewModel,
+      adviserExportPack,
+    });
+    onActiveDemoScenarioChange(scenario.id);
   };
 
   const handleDownloadAdviserPack = () => {
@@ -267,6 +316,44 @@ export function DemoTourView({
         </div>
       </section>
 
+      <section className="rounded-lg border border-emerald-300/20 bg-emerald-300/[0.06] p-4 sm:p-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h3 className="text-lg font-bold text-white">
+              Try a workplace support demo
+            </h3>
+            <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-300">
+              These are synthetic examples. AdminAvenger helps prepare questions
+              and evidence. It does not give legal or employment advice.
+            </p>
+          </div>
+          <span className="rounded-full border border-emerald-300/25 bg-slate-950/60 px-3 py-1 text-xs font-bold uppercase tracking-wider text-emerald-100">
+            Synthetic demo
+          </span>
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {workplaceDemoScenarios.map((scenario) => (
+            <article
+              key={scenario.id}
+              className="rounded-lg border border-white/10 bg-slate-950/45 p-4"
+            >
+              <p className="text-sm font-bold text-white">{scenario.title}</p>
+              <p className="mt-2 min-h-16 text-sm leading-6 text-slate-400">
+                {scenario.description}
+              </p>
+              <button
+                type="button"
+                onClick={() => handleRunWorkplaceDemo(scenario)}
+                disabled={isChecking}
+                className="mt-3 min-h-10 rounded-lg border border-emerald-300 bg-emerald-300 px-3 py-2 text-sm font-bold text-slate-950 transition hover:bg-emerald-200 focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:ring-offset-2 focus:ring-offset-slate-950 disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-700 disabled:text-slate-400"
+              >
+                Try this workplace demo
+              </button>
+            </article>
+          ))}
+        </div>
+      </section>
+
       {resultViewModel && activeScenario ? (
         <section className="rounded-lg border border-cyan-300/20 bg-cyan-300/[0.07] p-4">
           <div className="flex flex-wrap items-center gap-2">
@@ -278,6 +365,31 @@ export function DemoTourView({
           <p className="mt-2 text-sm leading-6 text-cyan-50/85">
             This result was created from a synthetic example, not a real document.
           </p>
+          {workplaceSupportPack ? (
+            <div className="mt-3 rounded-lg border border-white/10 bg-slate-950/45 p-3 text-sm leading-6 text-cyan-50">
+              <p>This is preparation only, not legal or employment advice.</p>
+              <p>AdminAvenger helps prepare. You stay in control.</p>
+              <p>
+                Ask ACAS, a union rep, HR, Citizens Advice, an adviser,
+                solicitor where appropriate, or someone trusted if you are
+                unsure.
+              </p>
+              {workplaceSupportPack.documentType === "settlement_agreement_signpost" ? (
+                <p className="mt-2 text-amber-100">
+                  Do not rely on AdminAvenger to decide what to do with a
+                  settlement agreement. Ask ACAS, a union rep, solicitor,
+                  Citizens Advice, or another qualified adviser.
+                </p>
+              ) : null}
+              {workplaceSupportPack.riskWarnings.some((warning) =>
+                /resignation|constructive dismissal|resign|quitting|walking out/i.test(warning),
+              ) ? (
+                <p className="mt-2 text-amber-100">
+                  Get advice before making a resignation decision.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
         </section>
       ) : null}
 
@@ -288,6 +400,7 @@ export function DemoTourView({
           benefitsActionPack={benefitsActionPack}
           strategicNextStepPlan={strategicNextStepPlan}
           adviserExportPack={adviserExportPack}
+          workplaceSupportPack={workplaceSupportPack}
           secondaryActions={[restartAction]}
           onDownloadAdviserPack={adviserExportPack ? handleDownloadAdviserPack : undefined}
           supportingDetailsOpen={showSupportingDetail}
@@ -304,6 +417,32 @@ export function DemoTourView({
             <OpportunityCardPanel opportunity={primaryOpportunity} />
             {strategicNextStepPlan ? <StrategicNextStepPanel plan={strategicNextStepPlan} /> : null}
             {benefitsActionPack ? <BenefitsActionPackPanel pack={benefitsActionPack} /> : null}
+          </div>
+        </section>
+      ) : null}
+
+      {showSupportingDetail && workplaceSupportPack ? (
+        <section className="rounded-lg border border-white/10 bg-slate-950/55 p-4 sm:p-5">
+          <p className="text-sm font-bold uppercase tracking-widest text-slate-400">
+            Workplace supporting detail
+          </p>
+          <div className="mt-4 grid gap-4 lg:grid-cols-2">
+            <div>
+              <h3 className="text-base font-bold text-white">Key facts to check</h3>
+              <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-300">
+                {workplaceSupportPack.keyFactsToCheck.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-white">Human support</h3>
+              <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-300">
+                {workplaceSupportPack.signposting.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </div>
           </div>
         </section>
       ) : null}

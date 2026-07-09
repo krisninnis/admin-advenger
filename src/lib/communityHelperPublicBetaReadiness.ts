@@ -96,7 +96,19 @@ const findLocalForbiddenPhrases = (text: string): string[] => {
 };
 
 const extractSection = (source: string, startMarker: string, endMarker: string): string => {
-  const start = source.indexOf(startMarker);
+  // Use the LAST occurrence of startMarker, not the first. HomeView.tsx
+  // legitimately mentions "Community Helper Home Gated v1" twice: once in
+  // a prop-type doc comment near the top of the file (documenting the
+  // onOpenCommunityHelperDemo prop), and once in the JSX comment that
+  // immediately precedes the actual rendered <section> card near the
+  // bottom of the file. Taking the first occurrence would anchor `start`
+  // at the doc comment and then grab whatever unrelated <section> happens
+  // to close next in the file - silently scanning the wrong content and
+  // missing the real card entirely. The JSX comment directly above the
+  // rendered section is always the occurrence closest to (i.e. last
+  // before) that section's own markup, so lastIndexOf reliably finds the
+  // real card even if an earlier doc comment repeats the same marker text.
+  const start = source.lastIndexOf(startMarker);
 
   if (start === -1) {
     return "";

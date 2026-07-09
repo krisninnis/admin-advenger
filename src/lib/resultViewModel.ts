@@ -10,10 +10,12 @@ import {
   normaliseSafetyText,
 } from "./safetyWording";
 import type { StrategicNextStepPlan } from "./strategicNextStep";
+import type { WorkplaceSupportPack } from "./workplaceSupportPack";
 
 export type ResultViewSource =
   | "main_result"
   | "benefits_action_pack"
+  | "workplace_support_pack"
   | "best_next_move"
   | "case"
   | "draft";
@@ -115,6 +117,7 @@ export type ResultViewModel = {
 export type BuildResultViewModelInput = {
   decisionResult?: DecisionResult;
   benefitsActionPack?: BenefitsActionPack | null;
+  workplaceSupportPack?: WorkplaceSupportPack;
   strategicNextStepPlan?: StrategicNextStepPlan;
   opportunity?: OpportunityCard;
   adminCase?: AdminCase;
@@ -389,11 +392,27 @@ const buildBestNextMove = (
 const buildDraftView = (
   benefitsActionPack: BenefitsActionPack | null | undefined,
   decisionResult: DecisionResult | undefined,
+  workplaceSupportPack: WorkplaceSupportPack | undefined,
 ): ResultDraftView | undefined => {
   const body = safeText(benefitsActionPack?.draftOrChecklist ?? decisionResult?.draftMessage, "");
 
   if (!body) {
-    return undefined;
+    if (!workplaceSupportPack || workplaceSupportPack.documentType === "settlement_agreement_signpost") {
+      return undefined;
+    }
+
+    const checklist = cleanStringItems([
+      "Workplace preparation checklist.",
+      ...workplaceSupportPack.safeNextSteps,
+      ...workplaceSupportPack.questionsToAsk.map((question) => `Question to ask: ${question}`),
+      ...workplaceSupportPack.draftBoundaryNotes,
+    ]).join("\n");
+
+    return {
+      title: "Workplace preparation checklist",
+      body: checklist,
+      source: "workplace_support_pack",
+    };
   }
 
   return {
@@ -406,25 +425,30 @@ const buildDraftView = (
 export const buildResultViewModel = ({
   decisionResult,
   benefitsActionPack,
+  workplaceSupportPack,
   strategicNextStepPlan,
   opportunity,
   adminCase,
 }: BuildResultViewModelInput): ResultViewModel => {
   const bestNextMove = buildBestNextMove(strategicNextStepPlan);
   const title = safeText(
-    opportunity?.title ?? benefitsActionPack?.title ?? decisionResult?.title ?? adminCase?.title,
+    opportunity?.title ?? benefitsActionPack?.title ?? workplaceSupportPack?.title ?? decisionResult?.title ?? adminCase?.title,
     fallbackTitle,
   );
   const summary = safeText(
     opportunity?.plainEnglishSummary ??
       benefitsActionPack?.summary ??
+      workplaceSupportPack?.summary ??
       strategicNextStepPlan?.plainEnglishSummary ??
       decisionResult?.plainEnglishSummary ??
       adminCase?.summary,
     fallbackSummary,
   );
   const primaryStatusLabel = safeText(
-    opportunity?.statusLabel ?? decisionResult?.strengthLabel ?? adminCase?.status,
+    opportunity?.statusLabel ??
+      (workplaceSupportPack ? "Workplace preparation only" : undefined) ??
+      decisionResult?.strengthLabel ??
+      adminCase?.status,
     "Review before acting",
   );
   const primaryAction = bestNextMove
@@ -456,6 +480,7 @@ export const buildResultViewModel = ({
   ]);
   const evidenceToGatherValues = cleanStringItems([
     ...(benefitsActionPack?.evidenceMissing ?? []),
+    ...(workplaceSupportPack?.evidenceToGather ?? []),
     ...(strategicNextStepPlan?.missingInformation ?? []),
     ...(decisionResult?.evidenceNeeded ?? []),
     ...(opportunity?.missingInformation ?? []),
@@ -465,38 +490,85 @@ export const buildResultViewModel = ({
       fromMissingEvidence(
         value,
         index,
-        benefitsActionPack?.evidenceMissing.includes(value) ? "benefits_action_pack" : "main_result",
+        benefitsActionPack?.evidenceMissing.includes(value)
+          ? "benefits_action_pack"
+          : workplaceSupportPack?.evidenceToGather.includes(value)
+            ? "workplace_support_pack"
+            : "main_result",
       ),
     ),
   );
   const questionsToAnswer = cleanStringItems([
     ...(benefitsActionPack?.questionsToAnswer.map((question) => question.question) ?? []),
+    ...(workplaceSupportPack?.questionsToAsk ?? []),
     ...(decisionResult?.questionsToAnswer ?? []),
   ]);
   const risks = cleanStringItems([
     ...(benefitsActionPack?.risks ?? []),
+    ...(workplaceSupportPack?.riskWarnings ?? []),
     ...(decisionResult?.risks ?? []),
     ...(strategicNextStepPlan?.movesToAvoid ?? []),
   ]);
   const cannotKnow = cleanStringItems([
     ...(benefitsActionPack?.cannotKnow ?? []),
+    ...(workplaceSupportPack?.cannotKnow ?? []),
     ...(strategicNextStepPlan?.cannotKnow ?? []),
     ...(decisionResult?.cannotKnow ?? []),
   ], fallbackCannotKnow);
   const uncertainty = cleanStringItems([
     ...(benefitsActionPack?.uncertainty ?? []),
+    ...(workplaceSupportPack
+      ? [
+          "Workplace information may depend on the full message, policies, contract, history, and advice from a suitable person.",
+        ]
+      : []),
     ...(strategicNextStepPlan?.uncertainty ?? []),
     ...(decisionResult?.uncertainty ?? []),
   ], fallbackUncertainty);
   const safetyNotes = cleanStringItems([
     RESULT_NO_CONTACT_SAFETY_NOTE,
+    workplaceSupportPack ? "This is preparation only, not legal or employment advice." : undefined,
+    workplaceSupportPack ? "AdminAvenger helps prepare. You stay in control." : undefined,
+    workplaceSupportPack?.preparationOnlyWarning,
+    ...(workplaceSupportPack?.signposting ?? []),
     ...(strategicNextStepPlan?.safetyNotes ?? []),
     ...(benefitsActionPack?.safetyNotes ?? []),
     ...(decisionResult?.safetyNotes ?? []),
   ], RESULT_NO_CONTACT_SAFETY_NOTE);
-  const draftOrChecklist = buildDraftView(benefitsActionPack, decisionResult);
+  const draftOrChecklist = buildDraftView(benefitsActionPack, decisionResult, workplaceSupportPack);
   const sections = [
     makeSection("summary", "Summary", [summary], "main_result", "summary"),
+    workplaceSupportPack
+      ? makeSection(
+          "workplace-preparation",
+          "Workplace preparation",
+          [
+            "This is preparation only, not legal or employment advice.",
+            "AdminAvenger helps prepare. You stay in control.",
+            ...workplaceSupportPack.safeNextSteps,
+          ],
+          "workplace_support_pack",
+          "summary",
+        )
+      : undefined,
+    workplaceSupportPack
+      ? makeSection(
+          "workplace-what-this-appears-to-be-about",
+          "What this appears to be about",
+          [workplaceSupportPack.summary],
+          "workplace_support_pack",
+          "summary",
+        )
+      : undefined,
+    workplaceSupportPack
+      ? makeSection(
+          "workplace-key-facts-to-check",
+          "Key facts to check",
+          workplaceSupportPack.keyFactsToCheck,
+          "workplace_support_pack",
+          "summary",
+        )
+      : undefined,
     bestNextMove
       ? makeSection(
           "best-next-move",
@@ -528,6 +600,24 @@ export const buildResultViewModel = ({
       "summary",
     ),
     makeSection("questions", "Questions to answer", questionsToAnswer, "benefits_action_pack", "summary"),
+    workplaceSupportPack
+      ? makeSection(
+          "workplace-questions-to-ask",
+          "Questions to ask",
+          workplaceSupportPack.questionsToAsk,
+          "workplace_support_pack",
+          "summary",
+        )
+      : undefined,
+    workplaceSupportPack
+      ? makeSection(
+          "workplace-ask-someone-suitable",
+          "Ask someone suitable",
+          workplaceSupportPack.signposting,
+          "workplace_support_pack",
+          "summary",
+        )
+      : undefined,
     draftOrChecklist
       ? makeSection("draft-or-checklist", draftOrChecklist.title, [draftOrChecklist.body], "draft", "summary")
       : undefined,
@@ -538,12 +628,27 @@ export const buildResultViewModel = ({
     makeSection("risks", "Risks to be aware of", risks, "main_result", "detail"),
     makeSection("cannot-know", "What AdminAvenger cannot know", cannotKnow, "main_result", "detail"),
     makeSection("uncertainty", "Uncertainty", uncertainty, "main_result", "detail"),
+    workplaceSupportPack
+      ? makeSection(
+          "workplace-preparation-only-notes",
+          "Preparation-only notes",
+          workplaceSupportPack.draftBoundaryNotes,
+          "workplace_support_pack",
+          "detail",
+        )
+      : undefined,
   ].filter((section): section is ResultSectionView => Boolean(section));
   const summaryView: ResultSummaryView = {
     title,
     summary,
     statusLabel: primaryStatusLabel,
-    source: opportunity ? "main_result" : benefitsActionPack ? "benefits_action_pack" : "case",
+    source: opportunity
+      ? "main_result"
+      : benefitsActionPack
+        ? "benefits_action_pack"
+        : workplaceSupportPack
+          ? "workplace_support_pack"
+          : "case",
   };
   const safetyView: ResultSafetyView = {
     notes: safetyNotes,

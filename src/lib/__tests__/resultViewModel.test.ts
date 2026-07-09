@@ -10,6 +10,7 @@ import {
   validateResultViewModelSafety,
 } from "../resultViewModel";
 import { buildStrategicNextStepPlan } from "../strategicNextStep";
+import { buildWorkplaceSupportPack } from "../workplaceSupportPack";
 
 const makeDecision = (
   documentType: DecisionDocumentType,
@@ -64,6 +65,31 @@ const expectUniqueText = (items: string[]) => {
   const keys = items.map(normaliseResultText);
 
   expect(new Set(keys).size).toBe(keys.length);
+};
+
+const expectNoWorkplaceForbiddenWording = (text: string) => {
+  const normalised = normaliseResultText(text);
+
+  for (const phrase of [
+    "employer broke the law",
+    "you will win",
+    "unfair dismissal proven",
+    "discrimination proven",
+    "valid claim",
+    "invalid claim",
+    "case strength",
+    "success chance",
+    "win chance",
+    "tribunal prediction",
+    "compensation owed",
+    "you are owed",
+    "resign now",
+    "refuse the meeting",
+    "sign the agreement",
+    "do not sign the agreement",
+  ]) {
+    expect(normalised).not.toContain(normaliseResultText(phrase));
+  }
 };
 
 describe("ResultViewModel", () => {
@@ -238,6 +264,152 @@ You can ask us to look at this decision again.`);
     expect(model.uncertainty).toContain(
       "Some details may be missing, unclear, or need checking against the original document.",
     );
+    expect(validateResultViewModelSafety(model).safe).toBe(true);
+  });
+
+  it("accepts an optional workplaceSupportPack without requiring other inputs", () => {
+    const workplaceSupportPack = buildWorkplaceSupportPack({
+      text: `Example Works HR
+Reference: REF-EXAMPLE-WORK-001
+
+You are invited to a disciplinary meeting on 14 September 2026 about an allegation of misconduct.
+You may bring a workplace companion and should review the investigation notes.`,
+    });
+    const model = buildResultViewModel({ workplaceSupportPack });
+    const flattened = flattenResultViewModelText(model);
+    const normalised = normaliseResultText(flattened);
+
+    expect(model.title).toBe("Disciplinary meeting preparation");
+    expect(model.summaryView.source).toBe("workplace_support_pack");
+    expect(model.sections.map((section) => section.title)).toEqual(
+      expect.arrayContaining([
+        "Workplace preparation",
+        "What this appears to be about",
+        "Key facts to check",
+        "Questions to ask",
+        "Ask someone suitable",
+      ]),
+    );
+    expect(normalised).toContain("this is preparation only, not legal or employment advice");
+    expect(normalised).toContain("adminavenger helps prepare. you stay in control");
+    expect(normalised).toContain("acas");
+    expect(validateResultViewModelSafety(model).safe).toBe(true);
+    expectNoWorkplaceForbiddenWording(flattened);
+  });
+
+  it("maps a disciplinary invite pack to preparation sections safely", () => {
+    const workplaceSupportPack = buildWorkplaceSupportPack({
+      text: `Example Works HR
+Reference: REF-EXAMPLE-WORK-002
+
+You are invited to a disciplinary hearing on 20 September 2026.
+Please bring any relevant documents and contact HR if you need clarification.`,
+    });
+    const model = buildResultViewModel({ workplaceSupportPack });
+    const flattened = flattenResultViewModelText(model);
+
+    expect(model.evidenceToGather.some((item) => item.source === "workplace_support_pack")).toBe(true);
+    expect(model.questionsToAnswer.length).toBeGreaterThan(0);
+    expect(model.draftOrChecklist?.title).toBe("Workplace preparation checklist");
+    expect(flattened).toContain("Question to ask:");
+    expect(validateResultViewModelSafety(model).safe).toBe(true);
+    expectNoWorkplaceForbiddenWording(flattened);
+  });
+
+  it("keeps wage and pay issue amounts out of owed-money wording", () => {
+    const workplaceSupportPack = buildWorkplaceSupportPack({
+      text: `Example Works Payroll
+Reference: REF-EXAMPLE-WORK-003
+
+Your payslip shows a deduction of GBP 75.00 for the September pay period.
+Please contact payroll if you have questions about wages or holiday pay.`,
+    });
+    const model = buildResultViewModel({ workplaceSupportPack });
+    const flattened = flattenResultViewModelText(model);
+    const normalised = normaliseResultText(flattened);
+
+    expect(model.title).toBe("Pay issue preparation");
+    expect(normalised).toContain("display-only");
+    expect(normalised).toContain("not counted as a saving or recovery");
+    expect(model.moneyMentioned).toEqual([]);
+    expect(normalised).not.toContain("money is owed");
+    expect(normalised).not.toContain("you are owed");
+    expect(validateResultViewModelSafety(model).safe).toBe(true);
+    expectNoWorkplaceForbiddenWording(flattened);
+  });
+
+  it("keeps settlement agreement signposting without a draft response or deal assessment", () => {
+    const workplaceSupportPack = buildWorkplaceSupportPack({
+      text: `Example Works HR
+Reference: REF-EXAMPLE-WORK-004
+
+The attached settlement agreement is sent without prejudice.
+It mentions a COT3 route and asks Alex Example to reply by 30 September 2026.`,
+    });
+    const model = buildResultViewModel({ workplaceSupportPack });
+    const flattened = flattenResultViewModelText(model);
+    const normalised = normaliseResultText(flattened);
+
+    expect(workplaceSupportPack.documentType).toBe("settlement_agreement_signpost");
+    expect(model.draftOrChecklist).toBeUndefined();
+    expect(normalised).toContain("do not sign anything based on adminavenger output");
+    expect(normalised).toContain("qualified adviser");
+    expect(normalised).not.toContain("good deal");
+    expect(normalised).not.toContain("bad deal");
+    expect(normalised).not.toContain("compensation owed");
+    expect(validateResultViewModelSafety(model).safe).toBe(true);
+    expectNoWorkplaceForbiddenWording(flattened);
+  });
+
+  it("preserves resignation warning neutrally and signposts human support", () => {
+    const workplaceSupportPack = buildWorkplaceSupportPack({
+      text: `Example Works message
+Reference: REF-EXAMPLE-WORK-005
+
+I am thinking about resignation after a contract change and may resign or quit next week.
+I want to organise questions before I speak to someone trusted.`,
+    });
+    const model = buildResultViewModel({ workplaceSupportPack });
+    const flattened = flattenResultViewModelText(model);
+    const normalised = normaliseResultText(flattened);
+
+    expect(normalised).toContain("resignation decisions can have serious consequences");
+    expect(normalised).toContain("acas");
+    expect(normalised).not.toContain("you should resign");
+    expect(normalised).not.toContain("you should not resign");
+    expect(normalised).not.toContain("resign now");
+    expect(validateResultViewModelSafety(model).safe).toBe(true);
+    expectNoWorkplaceForbiddenWording(flattened);
+  });
+
+  it("keeps unknown workplace pack conservative", () => {
+    const workplaceSupportPack = buildWorkplaceSupportPack({
+      text: `Example Works message
+Reference: REF-EXAMPLE-WORK-006
+
+Please read the attached workplace update and bring any questions to your manager.
+The message is short and does not explain the process.`,
+    });
+    const model = buildResultViewModel({ workplaceSupportPack });
+    const flattened = flattenResultViewModelText(model);
+    const normalised = normaliseResultText(flattened);
+
+    expect(workplaceSupportPack.documentType).toBe("workplace_unknown");
+    expect(model.title).toBe("Workplace admin preparation");
+    expect(normalised).toContain("not clear");
+    expect(normalised).toContain("check the sender, date, reference");
+    expect(validateResultViewModelSafety(model).safe).toBe(true);
+    expectNoWorkplaceForbiddenWording(flattened);
+  });
+
+  it("keeps existing non-workplace flows unchanged when no workplaceSupportPack is provided", () => {
+    const decision = makeDecision("benefits_uc_statement");
+    const model = buildModelForDecision(decision);
+    const flattened = flattenResultViewModelText(model);
+
+    expect(model.sections.map((section) => section.id)).not.toContain("workplace-preparation");
+    expect(model.summaryView.source).not.toBe("workplace_support_pack");
+    expect(flattened).not.toContain("Workplace preparation");
     expect(validateResultViewModelSafety(model).safe).toBe(true);
   });
 });

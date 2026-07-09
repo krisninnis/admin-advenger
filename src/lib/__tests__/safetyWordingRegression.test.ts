@@ -16,6 +16,7 @@ import {
 } from "../safetyWording";
 import { buildStrategicNextStepPlan } from "../strategicNextStep";
 import type { DecisionDocumentType, DecisionResult } from "../decisionEngine/types";
+import { buildWorkplaceSupportPack } from "../workplaceSupportPack";
 
 type SafetyFixture = {
   name: string;
@@ -342,5 +343,43 @@ describe("generated safety wording regression", () => {
     expect(normaliseSafetyText(parking.combinedText)).not.toContain("you do not owe this");
     expect(normaliseSafetyText(ucStatement.strategicText)).not.toContain("game theory");
     expect(normaliseSafetyText(ucStatement.benefitsText)).not.toContain("money saved");
+  });
+
+  it("Workplace Support Pack ResultViewModel output keeps preparation-only boundaries", () => {
+    const workplaceTexts = [
+      `Example Works HR
+Reference: REF-EXAMPLE-WORK-SAFE-001
+
+You are invited to a disciplinary meeting on 14 September 2026 about an allegation of misconduct.
+You may bring a workplace companion and should review the investigation notes.`,
+      `Example Works Payroll
+Reference: REF-EXAMPLE-WORK-SAFE-002
+
+Your payslip shows a deduction of GBP 75.00 for the September pay period.
+Please contact payroll if you have questions about wages or holiday pay.`,
+      `Example Works HR
+Reference: REF-EXAMPLE-WORK-SAFE-003
+
+The attached settlement agreement is sent without prejudice.
+It mentions a COT3 route and asks Alex Example to reply by 30 September 2026.`,
+    ];
+
+    for (const text of workplaceTexts) {
+      const workplaceSupportPack = buildWorkplaceSupportPack({ text });
+      const resultViewModel = buildResultViewModel({ workplaceSupportPack });
+      const resultViewText = collectTextFromResultViewModel(resultViewModel);
+      const normalised = normaliseSafetyText(resultViewText);
+
+      expectNoForbiddenOutput(resultViewText, `workplace ${workplaceSupportPack.documentType}`);
+      expect(hasSafetyTheme(resultViewText, "no_contact")).toBe(true);
+      expect(hasSafetyTheme(resultViewText, "human_decides")).toBe(true);
+      expect(hasSafetyTheme(resultViewText, "cannot_know")).toBe(true);
+      expect(normalised).toContain("preparation");
+      expect(normalised).toContain("not legal or employment advice");
+      expect(normalised).toContain("acas");
+      expect(normalised).not.toContain("compensation owed");
+      expect(normalised).not.toContain("tribunal prediction");
+      expect(normalised).not.toContain("employer broke the law");
+    }
   });
 });

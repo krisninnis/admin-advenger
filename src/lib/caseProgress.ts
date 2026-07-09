@@ -4,6 +4,7 @@ import { isBenefitsDocumentType } from "./benefitsActionPack";
 import type { DecisionDocumentType, DecisionResult } from "./decisionEngine/types";
 import type { ResultViewModel } from "./resultViewModel";
 import type { StrategicNextStepPlan } from "./strategicNextStep";
+import type { WorkplaceSupportDocumentType, WorkplaceSupportPack } from "./workplaceSupportPack";
 
 // Case Progress Tracker v1
 //
@@ -52,6 +53,7 @@ export type BuildCaseProgressInput = {
   adviserExportPack?: AdviserExportPack;
   benefitsActionPack?: BenefitsActionPack | null;
   strategicNextStepPlan?: StrategicNextStepPlan;
+  workplaceSupportPack?: WorkplaceSupportPack;
 };
 
 export const CASE_PROGRESS_HEADING = "Preparation progress";
@@ -65,7 +67,13 @@ export const CASE_PROGRESS_CONTROL_NOTE = "AdminAvenger helps prepare. You stay 
 // These families only decide which checklist wording is shown. They never
 // feed into any score of how strong, valid, or likely to succeed the case is.
 
-type CaseProgressFamily = "benefits_decision" | "benefits_general" | "legal_debt" | "unknown" | "generic";
+type CaseProgressFamily =
+  | "benefits_decision"
+  | "benefits_general"
+  | "legal_debt"
+  | "workplace"
+  | "unknown"
+  | "generic";
 
 const PIP_DECISION_STYLE_TYPES = new Set<DecisionDocumentType>([
   "benefits_decision",
@@ -83,7 +91,14 @@ const LEGAL_DEBT_TYPES = new Set<DecisionDocumentType>([
   "consumer_dispute",
 ]);
 
-const detectFamily = (decisionResult?: DecisionResult): CaseProgressFamily => {
+const detectFamily = (
+  decisionResult?: DecisionResult,
+  workplaceSupportPack?: WorkplaceSupportPack,
+): CaseProgressFamily => {
+  if (workplaceSupportPack) {
+    return "workplace";
+  }
+
   if (!decisionResult) {
     return "generic";
   }
@@ -252,6 +267,290 @@ const buildTrustedCheckItem = (description: string): CaseProgressItem =>
     "AdminAvenger cannot check this for you. Ask someone you trust if you are unsure.",
   );
 
+// --- Workplace helpers ------------------------------------------------------
+
+const workplaceHumanReviewRoute =
+  "Ask ACAS, a union rep, solicitor, Citizens Advice, or another qualified adviser before relying on any next step.";
+
+const workplaceSignpostNote =
+  "Ask ACAS, a union rep, HR, Citizens Advice, an adviser, solicitor where appropriate, or someone trusted if you are unsure.";
+
+const workplaceMeetingTypes = new Set<WorkplaceSupportDocumentType>([
+  "disciplinary_invite",
+  "workplace_investigation_invite",
+  "capability_meeting",
+  "sickness_absence_meeting",
+]);
+
+const workplaceDismissalOrRedundancyTypes = new Set<WorkplaceSupportDocumentType>([
+  "dismissal_letter",
+  "redundancy_consultation",
+]);
+
+const textFromWorkplacePack = (pack: WorkplaceSupportPack) =>
+  [
+    pack.title,
+    pack.summary,
+    ...pack.keyFactsToCheck,
+    ...pack.evidenceToGather,
+    ...pack.questionsToAsk,
+    ...pack.cannotKnow,
+    ...pack.riskWarnings,
+    ...pack.signposting,
+  ].join("\n");
+
+const workplacePackHas = (pack: WorkplaceSupportPack, pattern: RegExp) =>
+  pattern.test(textFromWorkplacePack(pack));
+
+const hasResignationRisk = (pack: WorkplaceSupportPack) =>
+  pack.riskWarnings.some((warning) => /resignation|constructive dismissal|resign|quitting/i.test(warning));
+
+const buildWorkplaceDateItem = (pack: WorkplaceSupportPack): CaseProgressItem => {
+  const hasDateTimeOrLocation = workplacePackHas(pack, /date|time|location|meeting/i);
+
+  return buildItem(
+    "workplace-date-time-location",
+    "Date, time, or location checked",
+    hasDateTimeOrLocation
+      ? "A date, time, location, or meeting detail is listed for checking. Check it against the original workplace letter or message."
+      : "No date, time, or location has been prepared yet. Check the original workplace letter or message.",
+    hasDateTimeOrLocation ? "partial" : "missing",
+    "result",
+    "Check against the original letter/message before relying on it.",
+  );
+};
+
+const buildWorkplaceContactItem = (pack: WorkplaceSupportPack): CaseProgressItem => {
+  const hasContact = workplacePackHas(pack, /employer|hr|manager|payroll|contact|acas|union|adviser|citizens advice/i);
+
+  return buildItem(
+    "workplace-contact-details",
+    "Employer, HR, or contact details checked",
+    hasContact
+      ? "A workplace contact or support route is listed for checking against the original message."
+      : "No workplace contact detail has been prepared yet. Check the original message for who to contact.",
+    hasContact ? "partial" : "missing",
+    "result",
+    "Check contact details against the original workplace letter/message.",
+  );
+};
+
+const buildWorkplacePolicyItem = (pack: WorkplaceSupportPack): CaseProgressItem => {
+  const hasPolicyReference = workplacePackHas(pack, /policy|contract|handbook|written terms/i);
+
+  return buildItem(
+    "workplace-policy-reference",
+    "Policy, contract, or handbook reference checked",
+    hasPolicyReference
+      ? "A policy, contract, handbook, or written-terms item is listed for checking if it is available."
+      : "No policy, contract, or handbook reference is listed for this workplace pack.",
+    hasPolicyReference ? "partial" : "not_needed",
+    "result",
+  );
+};
+
+const buildWorkplaceEvidenceChecklistItem = (pack: WorkplaceSupportPack): CaseProgressItem =>
+  buildItem(
+    "workplace-evidence-checklist",
+    "Workplace evidence checklist prepared",
+    pack.evidenceToGather.length > 0
+      ? `${pack.evidenceToGather.length} evidence item${pack.evidenceToGather.length === 1 ? "" : "s"} listed to gather or check.`
+      : "No workplace evidence checklist has been prepared yet.",
+    pack.evidenceToGather.length > 0 ? "complete" : "missing",
+    "result",
+    "This is an evidence checklist, not an outcome prediction.",
+  );
+
+const buildWorkplaceQuestionsItem = (pack: WorkplaceSupportPack): CaseProgressItem =>
+  buildItem(
+    "workplace-questions-prepared",
+    "Questions prepared for HR, ACAS, union, or adviser",
+    pack.questionsToAsk.length > 0
+      ? `${pack.questionsToAsk.length} question${pack.questionsToAsk.length === 1 ? "" : "s"} prepared for review.`
+      : "No questions have been prepared yet.",
+    pack.questionsToAsk.length > 0 ? "complete" : "missing",
+    "result",
+    workplaceSignpostNote,
+  );
+
+const buildWorkplaceTimelineItem = (pack: WorkplaceSupportPack): CaseProgressItem => {
+  const timelineRelevant = workplacePackHas(pack, /timeline|events|incident|what happened|examples/i);
+
+  return buildItem(
+    "workplace-timeline",
+    "Timeline written down",
+    timelineRelevant
+      ? "A timeline or examples are listed as preparation. Write them down in date order before relying on them."
+      : "Write down what happened in date order if it helps someone understand the workplace issue.",
+    timelineRelevant ? "partial" : "missing",
+    "user",
+  );
+};
+
+const buildWorkplaceSupportOptionItem = (): CaseProgressItem =>
+  buildItem(
+    "workplace-support-option",
+    "Support or advice option checked",
+    workplaceSignpostNote,
+    "missing",
+    "user",
+    "AdminAvenger helps prepare. You stay in control.",
+  );
+
+const buildWorkplaceMeetingDetailsItems = (pack: WorkplaceSupportPack): CaseProgressItem[] => [
+  buildItem(
+    "workplace-meeting-details",
+    "Meeting details checked",
+    "Meeting date, time, place, attendees, or contact details are preparation items to check against the original message.",
+    workplacePackHas(pack, /meeting|date|time|location|attend/i) ? "partial" : "missing",
+    "result",
+    "Check against the original letter/message.",
+  ),
+  buildItem(
+    "workplace-meeting-reason",
+    "Reason for meeting noted",
+    "The reason, issue, allegation, absence, capability, or investigation topic should be noted in the user's own words.",
+    workplacePackHas(pack, /reason|issue|allegation|absence|capability|investigation|purpose|performance/i)
+      ? "partial"
+      : "missing",
+    "result",
+  ),
+  buildWorkplaceSupportOptionItem(),
+];
+
+const buildWorkplacePayItems = (): CaseProgressItem[] => [
+  buildItem(
+    "workplace-pay-evidence",
+    "Payslips, rota, hours, and messages gathered",
+    "Payslips, rota, hours, bank payment records, and messages are useful evidence to gather. Any amount is only something to check against records.",
+    "partial",
+    "result",
+    "Amounts are display-only and are not counted as saved or recovered.",
+  ),
+];
+
+const buildWorkplaceHumanAdviceItem = (): CaseProgressItem =>
+  buildItem(
+    "workplace-human-advice-route",
+    "Human advice route identified",
+    workplaceHumanReviewRoute,
+    "complete",
+    "result",
+    "This is preparation only and does not predict the outcome.",
+  );
+
+const buildWorkplaceIncidentItems = (): CaseProgressItem[] => [
+  buildItem(
+    "workplace-incident-timeline",
+    "Timeline and examples written down",
+    "Write a clear timeline and record examples from messages, screenshots, notes, or memory.",
+    "missing",
+    "user",
+    "This does not prove what happened. It helps organise information to discuss safely.",
+  ),
+  buildItem(
+    "workplace-incident-evidence",
+    "Messages, screenshots, or notes gathered",
+    "Gather messages, screenshots, notes, witness names, or location details if they exist and are safe to keep.",
+    "partial",
+    "result",
+  ),
+  buildWorkplaceSupportOptionItem(),
+];
+
+const buildSettlementAgreementItems = (
+  input: BuildCaseProgressInput,
+  pack: WorkplaceSupportPack,
+): CaseProgressItem[] => [
+  buildOriginalSourceItem("Original workplace letter or message available"),
+  buildWorkplaceDateItem(pack),
+  buildWorkplaceContactItem(pack),
+  buildWorkplaceQuestionsItem(pack),
+  buildWorkplaceHumanAdviceItem(),
+  buildItem(
+    "workplace-reviewed-with-adviser",
+    "Document reviewed with a suitable human adviser",
+    "Mark this complete only after a suitable human adviser has reviewed the document with you.",
+    "missing",
+    "user",
+    "AdminAvenger cannot review this for you.",
+  ),
+  buildAdviserPackItem(input.adviserExportPack),
+];
+
+const buildWorkplaceItems = (input: BuildCaseProgressInput): CaseProgressItem[] => {
+  const { resultViewModel, workplaceSupportPack } = input;
+
+  if (!workplaceSupportPack) {
+    return buildGenericItems(input);
+  }
+
+  if (workplaceSupportPack.documentType === "settlement_agreement_signpost") {
+    const settlementItems = buildSettlementAgreementItems(input, workplaceSupportPack);
+
+    return hasResignationRisk(workplaceSupportPack)
+      ? [
+          ...settlementItems,
+          buildItem(
+            "workplace-resignation-human-advice",
+            "Human advice before resignation decision",
+            "Get advice before making a resignation decision.",
+            "missing",
+            "user",
+            "AdminAvenger does not tell you whether to leave or stay in work.",
+          ),
+        ]
+      : settlementItems;
+  }
+
+  const items: CaseProgressItem[] = [
+    buildOriginalSourceItem("Original workplace letter or message available"),
+    buildWorkplaceDateItem(workplaceSupportPack),
+    buildWorkplaceContactItem(workplaceSupportPack),
+    buildWorkplacePolicyItem(workplaceSupportPack),
+    buildWorkplaceEvidenceChecklistItem(workplaceSupportPack),
+    buildWorkplaceTimelineItem(workplaceSupportPack),
+    buildWorkplaceQuestionsItem(workplaceSupportPack),
+  ];
+
+  if (workplaceMeetingTypes.has(workplaceSupportPack.documentType)) {
+    items.push(...buildWorkplaceMeetingDetailsItems(workplaceSupportPack));
+  }
+
+  if (workplaceSupportPack.documentType === "wage_deduction_or_pay_issue") {
+    items.push(...buildWorkplacePayItems());
+  }
+
+  if (workplaceDismissalOrRedundancyTypes.has(workplaceSupportPack.documentType)) {
+    items.push(buildWorkplaceHumanAdviceItem());
+  }
+
+  if (workplaceSupportPack.documentType === "bullying_or_harassment_record_prep") {
+    items.push(...buildWorkplaceIncidentItems());
+  }
+
+  if (hasResignationRisk(workplaceSupportPack)) {
+    items.push(
+      buildItem(
+        "workplace-resignation-human-advice",
+        "Human advice before resignation decision",
+        "Get advice before making a resignation decision.",
+        "missing",
+        "user",
+        "AdminAvenger does not tell you whether to leave or stay in work.",
+      ),
+    );
+  }
+
+  items.push(
+    buildDraftReviewedItem(resultViewModel),
+    buildAdviserPackItem(input.adviserExportPack),
+    buildTrustedCheckItem(workplaceSignpostNote),
+  );
+
+  return items;
+};
+
 // --- Family-specific checklists ---------------------------------------------
 
 const buildPipDecisionItems = (input: BuildCaseProgressInput): CaseProgressItem[] => {
@@ -379,6 +678,7 @@ const familyBuilders: Record<CaseProgressFamily, (input: BuildCaseProgressInput)
   benefits_decision: buildPipDecisionItems,
   benefits_general: buildBenefitsGeneralItems,
   legal_debt: buildLegalDebtItems,
+  workplace: buildWorkplaceItems,
   unknown: buildUnknownItems,
   generic: buildGenericItems,
 };
@@ -386,7 +686,7 @@ const familyBuilders: Record<CaseProgressFamily, (input: BuildCaseProgressInput)
 // --- Public API --------------------------------------------------------------
 
 export const buildCaseProgress = (input: BuildCaseProgressInput): CaseProgressSummary => {
-  const family = detectFamily(input.decisionResult);
+  const family = detectFamily(input.decisionResult, input.workplaceSupportPack);
   const items = familyBuilders[family](input);
 
   const completeCount = items.filter((entry) => entry.status === "complete").length;

@@ -10,6 +10,7 @@ import { analyseDecisionProblem } from "../decisionEngine/decisionEngine";
 import { buildResultViewModel } from "../resultViewModel";
 import { findForbiddenSafetyPhrases, normaliseSafetyText } from "../safetyWording";
 import { buildStrategicNextStepPlan } from "../strategicNextStep";
+import { buildWorkplaceSupportPack } from "../workplaceSupportPack";
 
 const PIP_DECISION_TEXT = `Personal Independence Payment decision
 To: Jordan Sample
@@ -59,6 +60,43 @@ Please see the attached update.
 We will write again if more information is needed.
 This page does not show the sender, amount, decision, or action requested.`;
 
+const DISCIPLINARY_TEXT = `Example Works HR
+Reference: REF-EXAMPLE-WORK-001
+
+You are invited to a disciplinary meeting on 14 September 2026 about an allegation of misconduct.
+The meeting will be chaired by Morgan Sample. You may bring a workplace companion.
+Please review the investigation notes before the meeting.`;
+
+const PAY_TEXT = `Example Works Payroll
+Reference: REF-EXAMPLE-WORK-006
+
+Your payslip shows a deduction of GBP 75.00 for the September pay period.
+Please contact payroll if you have questions about wages, overtime, or holiday pay.`;
+
+const SETTLEMENT_TEXT = `Example Works HR
+Reference: REF-EXAMPLE-WORK-012
+
+The attached settlement agreement is sent without prejudice.
+It mentions a COT3 route and asks Alex Example to reply by 30 September 2026.`;
+
+const RESIGNATION_TEXT = `Example Works message
+Reference: REF-EXAMPLE-WORK-013
+
+I am thinking about resignation after a contract change and may resign or quit next week.
+I want to organise questions before I speak to someone trusted.`;
+
+const BULLYING_TEXT = `Example workplace notes
+Reference: REF-EXAMPLE-WORK-009
+
+I want to prepare a record of bullying and harassment incidents in the team chat.
+There were messages on 4 September 2026 and a witness called Jordan Sample.`;
+
+const UNKNOWN_WORKPLACE_TEXT = `Example Works message
+Reference: REF-EXAMPLE-WORK-011
+
+Please read the attached workplace update and bring any questions to your manager.
+The message is short and does not explain the process.`;
+
 const buildArtifacts = (text: string) => {
   const decisionResult = analyseDecisionProblem(text);
   const benefitsActionPack = buildBenefitsActionPack(decisionResult);
@@ -76,6 +114,16 @@ const buildArtifacts = (text: string) => {
   });
 
   return { decisionResult, benefitsActionPack, strategicNextStepPlan, resultViewModel, adviserExportPack };
+};
+
+const buildWorkplaceArtifacts = (text: string) => {
+  const workplaceSupportPack = buildWorkplaceSupportPack({ text });
+  const resultViewModel = buildResultViewModel({ workplaceSupportPack });
+  const summary = buildCaseProgress({ resultViewModel, workplaceSupportPack });
+  const flatText = flattenCaseProgressText(summary);
+  const normalised = normaliseSafetyText(flatText);
+
+  return { workplaceSupportPack, resultViewModel, summary, flatText, normalised };
 };
 
 const FORBIDDEN_SUBSTRINGS = [
@@ -97,6 +145,18 @@ const FORBIDDEN_SUBSTRINGS = [
   "sent automatically",
   "submitted automatically",
   "game theory",
+  "win chance",
+  "success chance",
+  "employer broke the law",
+  "unfair dismissal proven",
+  "discrimination proven",
+  "harassment is proven",
+  "compensation owed",
+  "tribunal prediction",
+  "you should resign",
+  "refuse the meeting",
+  "sign the agreement",
+  "do not sign the agreement",
 ];
 
 const expectNoForbiddenWording = (summary: CaseProgressSummary) => {
@@ -235,5 +295,142 @@ describe("buildCaseProgress", () => {
       expect(item.label.trim()).not.toBe("");
       expect(item.description.trim()).not.toBe("");
     }
+  });
+
+  it("accepts an optional workplaceSupportPack input", () => {
+    const { workplaceSupportPack, summary, normalised } = buildWorkplaceArtifacts(DISCIPLINARY_TEXT);
+
+    expect(workplaceSupportPack.documentType).toBe("disciplinary_invite");
+    expect(summary.items.map((item) => item.id)).toContain("workplace-evidence-checklist");
+    expect(normalised).toContain("workplace");
+    expect(normalised).toContain("preparation");
+    expectNoForbiddenWording(summary);
+  });
+
+  it("disciplinary invite creates workplace preparation items safely", () => {
+    const { summary, normalised } = buildWorkplaceArtifacts(DISCIPLINARY_TEXT);
+    const ids = summary.items.map((item) => item.id);
+
+    expect(ids).toEqual(
+      expect.arrayContaining([
+        "original-source",
+        "workplace-date-time-location",
+        "workplace-questions-prepared",
+        "workplace-meeting-details",
+        "workplace-meeting-reason",
+        "workplace-support-option",
+      ]),
+    );
+    expect(normalised).toContain("check against the original letter/message");
+    expect(normalised).toContain("questions prepared");
+    expectNoForbiddenWording(summary);
+  });
+
+  it("pay or wage issue treats money as something to check only", () => {
+    const { workplaceSupportPack, summary, normalised } = buildWorkplaceArtifacts(PAY_TEXT);
+
+    expect(workplaceSupportPack.documentType).toBe("wage_deduction_or_pay_issue");
+    expect(summary.items.map((item) => item.id)).toContain("workplace-pay-evidence");
+    expect(normalised).toContain("any amount is only something to check");
+    expect(normalised).toContain("amounts are display-only");
+    expect(normalised).not.toContain("money saved");
+    expect(normalised).not.toContain("money recovered");
+    expect(normalised).not.toContain("you are owed");
+    expectNoForbiddenWording(summary);
+  });
+
+  it("settlement agreement pack creates human-review items without signing advice", () => {
+    const { workplaceSupportPack, summary, normalised } = buildWorkplaceArtifacts(SETTLEMENT_TEXT);
+
+    expect(workplaceSupportPack.documentType).toBe("settlement_agreement_signpost");
+    expect(summary.items.map((item) => item.id)).toEqual(
+      expect.arrayContaining(["workplace-human-advice-route", "workplace-reviewed-with-adviser"]),
+    );
+    expect(normalised).toContain(
+      normaliseSafetyText(
+        "Ask ACAS, a union rep, solicitor, Citizens Advice, or another qualified adviser before relying on any next step.",
+      ),
+    );
+    expect(normalised).toContain("document reviewed with a suitable human adviser");
+    expect(normalised).not.toContain("sign the agreement");
+    expect(normalised).not.toContain("do not sign");
+    expect(normalised).not.toContain("compensation owed");
+    expectNoForbiddenWording(summary);
+  });
+
+  it("resignation warning creates a neutral human-advice item", () => {
+    const { summary, normalised } = buildWorkplaceArtifacts(RESIGNATION_TEXT);
+
+    expect(summary.items.map((item) => item.id)).toContain("workplace-resignation-human-advice");
+    expect(normalised).toContain("get advice before making a resignation decision");
+    expect(normalised).not.toContain("you should resign");
+    expect(normalised).not.toContain("you should not resign");
+    expect(normalised).not.toContain("resign now");
+    expectNoForbiddenWording(summary);
+  });
+
+  it("bullying or harassment prep avoids proof language", () => {
+    const { workplaceSupportPack, summary, normalised } = buildWorkplaceArtifacts(BULLYING_TEXT);
+
+    expect(workplaceSupportPack.documentType).toBe("bullying_or_harassment_record_prep");
+    expect(summary.items.map((item) => item.id)).toEqual(
+      expect.arrayContaining(["workplace-incident-timeline", "workplace-incident-evidence"]),
+    );
+    expect(normalised).toContain("timeline");
+    expect(normalised).not.toContain("discrimination proven");
+    expect(normalised).not.toContain("harassment is proven");
+    expectNoForbiddenWording(summary);
+  });
+
+  it("unknown workplace pack stays conservative", () => {
+    const { workplaceSupportPack, summary, normalised } = buildWorkplaceArtifacts(UNKNOWN_WORKPLACE_TEXT);
+
+    expect(workplaceSupportPack.documentType).toBe("workplace_unknown");
+    expect(summary.items.map((item) => item.id)).toEqual(
+      expect.arrayContaining([
+        "original-source",
+        "workplace-date-time-location",
+        "workplace-contact-details",
+        "workplace-evidence-checklist",
+        "workplace-questions-prepared",
+        "trusted-check",
+      ]),
+    );
+    expect(normalised).toContain("someone trusted");
+    expectNoForbiddenWording(summary);
+  });
+
+  it("has no forbidden workplace wording across workplace progress outputs", () => {
+    const workplaceTexts = [
+      DISCIPLINARY_TEXT,
+      PAY_TEXT,
+      SETTLEMENT_TEXT,
+      RESIGNATION_TEXT,
+      BULLYING_TEXT,
+      UNKNOWN_WORKPLACE_TEXT,
+    ];
+
+    for (const text of workplaceTexts) {
+      const { summary } = buildWorkplaceArtifacts(text);
+
+      expectNoForbiddenWording(summary);
+    }
+  });
+
+  it("keeps existing non-workplace progress unchanged when no workplaceSupportPack is supplied", () => {
+    const artifacts = buildArtifacts(DEBT_TEXT);
+    const summary = buildCaseProgress(artifacts);
+
+    expect(summary.items.map((item) => item.id)).toEqual([
+      "original-source",
+      "key-date",
+      "money-reference",
+      "evidence-gathered",
+      "draft-reviewed",
+      "adviser-pack",
+      "trusted-check",
+    ]);
+    expect(summary.items.some((item) => item.id.startsWith("workplace-"))).toBe(false);
+    expectNoForbiddenWording(summary);
   });
 });

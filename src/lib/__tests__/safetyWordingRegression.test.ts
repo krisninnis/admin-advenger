@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildAdviserExportPack } from "../adviserExportPack";
 import { buildBenefitsActionPack } from "../benefitsActionPack";
+import { buildCaseProgress, flattenCaseProgressText } from "../caseProgress";
 import { analyseDecisionProblem } from "../decisionEngine/decisionEngine";
 import { buildResultViewModel } from "../resultViewModel";
 import {
@@ -367,19 +368,29 @@ It mentions a COT3 route and asks Alex Example to reply by 30 September 2026.`,
     for (const text of workplaceTexts) {
       const workplaceSupportPack = buildWorkplaceSupportPack({ text });
       const resultViewModel = buildResultViewModel({ workplaceSupportPack });
+      const caseProgress = buildCaseProgress({ resultViewModel, workplaceSupportPack });
       const resultViewText = collectTextFromResultViewModel(resultViewModel);
+      const caseProgressText = flattenCaseProgressText(caseProgress);
       const normalised = normaliseSafetyText(resultViewText);
+      const progressNormalised = normaliseSafetyText(caseProgressText);
 
       expectNoForbiddenOutput(resultViewText, `workplace ${workplaceSupportPack.documentType}`);
+      expectNoForbiddenOutput(caseProgressText, `workplace case progress ${workplaceSupportPack.documentType}`);
       expect(hasSafetyTheme(resultViewText, "no_contact")).toBe(true);
       expect(hasSafetyTheme(resultViewText, "human_decides")).toBe(true);
       expect(hasSafetyTheme(resultViewText, "cannot_know")).toBe(true);
       expect(normalised).toContain("preparation");
+      expect(progressNormalised).toContain("preparation");
+      expect(progressNormalised).toContain("does not predict the outcome");
       expect(normalised).toContain("not legal or employment advice");
       expect(normalised).toContain("acas");
+      expect(progressNormalised).toContain("acas");
       expect(normalised).not.toContain("compensation owed");
       expect(normalised).not.toContain("tribunal prediction");
       expect(normalised).not.toContain("employer broke the law");
+      expect(progressNormalised).not.toContain("compensation owed");
+      expect(progressNormalised).not.toContain("tribunal prediction");
+      expect(progressNormalised).not.toContain("employer broke the law");
     }
   });
 });

@@ -180,10 +180,11 @@ The attached settlement agreement is sent without prejudice.
 It mentions a COT3 route and asks Alex Example to reply by 30 September 2026.`);
 
     expect(pack.documentType).toBe("settlement_agreement_signpost");
-    expect(normalised).toContain("do not sign anything based on adminavenger output");
+    expect(normalised).toContain("do not rely on adminavenger for a signing decision");
     expect(normalised).toContain("qualified adviser");
     expect(normalised).not.toContain("good deal");
     expect(normalised).not.toContain("bad deal");
+    expect(normalised).not.toContain("do not sign");
     expect(normalised).not.toContain("accept the offer");
     expect(normalised).not.toContain("reject the offer");
   });

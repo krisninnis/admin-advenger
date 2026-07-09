@@ -25,12 +25,17 @@ import {
   buildAdviserExportPack,
   getAdviserExportFilename,
   renderAdviserExportMarkdown,
+  type AdviserExportPack,
 } from "../lib/adviserExportPack";
 import { downloadAdviserExportMarkdown } from "../lib/adviserExportDownload";
 import { buildBenefitsActionPack } from "../lib/benefitsActionPack";
 import { deriveOpportunityCard, describeConfidence } from "../lib/opportunityCards";
-import { buildResultViewModel } from "../lib/resultViewModel";
+import { buildResultViewModel, type ResultViewModel } from "../lib/resultViewModel";
 import { buildStrategicNextStepPlan } from "../lib/strategicNextStep";
+import {
+  buildWorkplaceSupportPack,
+  type WorkplaceSupportPack,
+} from "../lib/workplaceSupportPack";
 import {
   createPhotoIntakeMetadata,
   getImageDimensions,
@@ -119,6 +124,12 @@ export type HomeAnalysisResult = {
   item: AdminItem;
   findings: AdminFinding[];
   cases: AdminCase[];
+};
+
+type WorkplaceBetaResult = {
+  workplaceSupportPack: WorkplaceSupportPack;
+  resultViewModel: ResultViewModel;
+  adviserExportPack: AdviserExportPack;
 };
 
 type HomeViewProps = {
@@ -500,6 +511,8 @@ export function HomeView({
   const [showDetailed, setShowDetailed] = useState(false);
   const [showEmailSafety, setShowEmailSafety] = useState(false);
   const [showGuidedNextStep, setShowGuidedNextStep] = useState(false);
+  const [workplaceBetaEnabled, setWorkplaceBetaEnabled] = useState(false);
+  const [workplaceBetaResult, setWorkplaceBetaResult] = useState<WorkplaceBetaResult | undefined>();
   const [showPhotoCapturePanel, setShowPhotoCapturePanel] = useState(false);
   // An image chosen from the "Upload a file" area (or the "+" upload menu) is
   // handed to PhotoCapturePanel so it opens on the "Adjust document area" step,
@@ -581,7 +594,7 @@ export function HomeView({
         adminCase: primaryCase,
       })
     : undefined;
-  const resultViewModel = primaryCase
+  const normalResultViewModel = primaryCase
     ? buildResultViewModel({
         decisionResult: primaryCase.decisionResult,
         benefitsActionPack,
@@ -590,15 +603,26 @@ export function HomeView({
         adminCase: primaryCase,
       })
     : undefined;
-  const adviserExportPack =
-    primaryCase?.decisionResult && resultViewModel
+  const normalAdviserExportPack =
+    primaryCase?.decisionResult && normalResultViewModel
       ? buildAdviserExportPack({
           decisionResult: primaryCase.decisionResult,
-          resultViewModel,
+          resultViewModel: normalResultViewModel,
           benefitsActionPack,
           strategicNextStepPlan,
         })
       : undefined;
+  const workplaceSupportPack = workplaceBetaResult?.workplaceSupportPack;
+  const isWorkplaceBetaResultActive = Boolean(workplaceBetaResult);
+  const isSettlementWorkplaceResult =
+    workplaceSupportPack?.documentType === "settlement_agreement_signpost";
+  const hasWorkplaceResignationRisk = Boolean(
+    workplaceSupportPack?.riskWarnings.some((warning) =>
+      /resignation|constructive dismissal|resign|quitting|walking out/i.test(warning),
+    ),
+  );
+  const resultViewModel = workplaceBetaResult?.resultViewModel ?? normalResultViewModel;
+  const adviserExportPack = workplaceBetaResult?.adviserExportPack ?? normalAdviserExportPack;
   const guidedMode =
     primaryCase && primaryOpportunity
       ? getGuidedCaseMode(primaryCase, primaryOpportunity)
@@ -758,6 +782,7 @@ export function HomeView({
     setAiExtraction(undefined);
     setShowDetailed(false);
     setShowEmailSafety(false);
+    setWorkplaceBetaResult(undefined);
     setInputResetKey((current) => current + 1);
     setAttachedFiles([]);
     setIsDraggingOverAttachment(false);
@@ -782,6 +807,7 @@ export function HomeView({
     setAiFallbackHint("");
     setAiExtraction(undefined);
     setShowEmailSafety(false);
+    setWorkplaceBetaResult(undefined);
     setAttachedFiles([]);
     setIsDraggingOverAttachment(false);
     onClearResult();
@@ -846,6 +872,7 @@ export function HomeView({
     setAiExtraction(undefined);
     setShowDetailed(false);
     setShowEmailSafety(false);
+    setWorkplaceBetaResult(undefined);
     onClearResult();
 
     if (selectedInput === "image" && rawText.trim().length === 0) {
@@ -876,6 +903,28 @@ export function HomeView({
     }
 
     if (isChecking || isAiReading || isReadingPhoto || isReadingAttachments) {
+      return;
+    }
+
+    if (workplaceBetaEnabled) {
+      const workplacePack = buildWorkplaceSupportPack({ text: textToCheck });
+      const workplaceResultViewModel = buildResultViewModel({
+        workplaceSupportPack: workplacePack,
+      });
+      const workplaceAdviserExportPack = buildAdviserExportPack({
+        resultViewModel: workplaceResultViewModel,
+        workplaceSupportPack: workplacePack,
+      });
+
+      setInputMessage("");
+      setAiError("");
+      setAiFallbackHint("");
+      setAiStatus("idle");
+      setWorkplaceBetaResult({
+        workplaceSupportPack: workplacePack,
+        resultViewModel: workplaceResultViewModel,
+        adviserExportPack: workplaceAdviserExportPack,
+      });
       return;
     }
 
@@ -1915,6 +1964,32 @@ export function HomeView({
         </div>
 
         {selectedInput !== "image" ? (
+          <div className="mt-5 rounded-lg border border-indigo-300/20 bg-indigo-300/[0.07] p-4">
+            <label className="flex cursor-pointer items-start gap-3">
+              <input
+                type="checkbox"
+                checked={workplaceBetaEnabled}
+                onChange={(event) => {
+                  setWorkplaceBetaEnabled(event.target.checked);
+
+                  if (!event.target.checked) {
+                    setWorkplaceBetaResult(undefined);
+                  }
+                }}
+                className="mt-1 h-5 w-5 rounded border-white/20 bg-slate-950 text-emerald-300 focus:ring-2 focus:ring-emerald-300/40"
+              />
+              <span>
+                <span className="block text-sm font-bold text-white">Workplace support beta</span>
+                <span className="mt-1 block text-sm leading-6 text-indigo-50/85">
+                  Use this for workplace letters or messages when you want a preparation
+                  checklist. This is not legal or employment advice.
+                </span>
+              </span>
+            </label>
+          </div>
+        ) : null}
+
+        {selectedInput !== "image" ? (
           <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_auto]">
             <button
               type="button"
@@ -1981,17 +2056,57 @@ export function HomeView({
 
       {aiExtraction ? <AiExtractedFactsPanel extraction={aiExtraction} /> : null}
 
+      {workplaceSupportPack ? (
+        <section className="rounded-xl border border-indigo-300/25 bg-indigo-300/[0.08] p-4 shadow-xl shadow-slate-950/20 sm:p-5">
+          <p className="text-sm font-bold uppercase tracking-widest text-indigo-200">
+            Workplace support beta
+          </p>
+          <div className="mt-3 grid gap-3 text-sm leading-6 text-indigo-50/90">
+            <p>This is preparation only, not legal or employment advice.</p>
+            <p>AdminAvenger helps prepare. You stay in control.</p>
+            <p>
+              Ask ACAS, a union rep, HR, Citizens Advice, an adviser, solicitor
+              where appropriate, or someone trusted if you are unsure.
+            </p>
+            {isSettlementWorkplaceResult ? (
+              <p className="rounded-lg border border-amber-300/30 bg-amber-300/10 px-4 py-3 text-amber-50">
+                Settlement agreements can have serious consequences. Do not rely on
+                AdminAvenger to decide what to do with a settlement agreement. Ask
+                ACAS, a union rep, solicitor, Citizens Advice, or another qualified
+                adviser before relying on any next step.
+              </p>
+            ) : null}
+            {hasWorkplaceResignationRisk ? (
+              <p className="rounded-lg border border-amber-300/30 bg-amber-300/10 px-4 py-3 text-amber-50">
+                Get advice before making a resignation decision.
+              </p>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
+
       {resultViewModel ? (
         <ResultCaseSheet
           model={resultViewModel}
-          decisionResult={primaryCase?.decisionResult}
-          benefitsActionPack={benefitsActionPack}
-          strategicNextStepPlan={strategicNextStepPlan}
+          decisionResult={isWorkplaceBetaResultActive ? undefined : primaryCase?.decisionResult}
+          benefitsActionPack={isWorkplaceBetaResultActive ? null : benefitsActionPack}
+          strategicNextStepPlan={isWorkplaceBetaResultActive ? undefined : strategicNextStepPlan}
           adviserExportPack={adviserExportPack}
-          primaryAction={simplePrimaryAction}
-          secondaryActions={simpleSecondaryActions}
+          workplaceSupportPack={workplaceSupportPack}
+          primaryAction={isWorkplaceBetaResultActive ? undefined : simplePrimaryAction}
+          secondaryActions={
+            isWorkplaceBetaResultActive
+              ? [
+                  {
+                    label: "Check another message",
+                    onClick: clearInput,
+                    emphasis: "quiet",
+                  },
+                ]
+              : simpleSecondaryActions
+          }
           guidedNextStepButton={
-            guidedNextStep
+            !isWorkplaceBetaResultActive && guidedNextStep
               ? {
                   label: guidedNextStep.primaryAction.label,
                   onClick: () => setShowGuidedNextStep(true),
@@ -2004,7 +2119,7 @@ export function HomeView({
         />
       ) : null}
 
-      {showDetailed && primaryOpportunity ? (
+      {!isWorkplaceBetaResultActive && showDetailed && primaryOpportunity ? (
         <section className="rounded-lg border border-white/10 bg-slate-950/55 p-4 sm:p-5">
           <p className="text-sm font-bold uppercase tracking-widest text-slate-400">
             Supporting detail
@@ -2017,7 +2132,7 @@ export function HomeView({
         </section>
       ) : null}
 
-      {showGuidedNextStep && guidedNextStep ? (
+      {!isWorkplaceBetaResultActive && showGuidedNextStep && guidedNextStep ? (
         <GuidedNextStepPanel
           guidedNextStep={guidedNextStep}
           onClose={() => setShowGuidedNextStep(false)}
@@ -2048,7 +2163,7 @@ export function HomeView({
         />
       ) : null}
 
-      {result && primaryCase && hasClearCase && showDetailed ? (
+      {!isWorkplaceBetaResultActive && result && primaryCase && hasClearCase && showDetailed ? (
         <section className="rounded-lg border border-emerald-300/25 bg-white/[0.055] p-5 shadow-xl shadow-slate-950/15 sm:p-6">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>

@@ -516,7 +516,7 @@ const templates: Record<WorkplaceSupportDocumentType, PackTemplate> = {
       "What you should do with the document.",
     ],
     safeNextSteps: [
-      "Do not sign anything based on AdminAvenger output. Ask ACAS, a union rep, solicitor, Citizens Advice, or another qualified adviser.",
+      "Do not rely on AdminAvenger for a signing decision. Ask ACAS, a union rep, solicitor, Citizens Advice, or another qualified adviser.",
       "Use this pack only to gather questions and documents for a qualified human review.",
     ],
     riskWarnings: [

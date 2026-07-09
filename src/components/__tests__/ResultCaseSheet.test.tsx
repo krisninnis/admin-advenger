@@ -34,6 +34,10 @@ const renderCaseSheet = (text: string) => {
   const html = renderToStaticMarkup(
     <ResultCaseSheet
       model={resultViewModel}
+      decisionResult={decisionResult}
+      benefitsActionPack={benefitsActionPack}
+      strategicNextStepPlan={strategicNextStepPlan}
+      adviserExportPack={adviserExportPack}
       primaryAction={{ label: "Save this check", onClick: () => undefined, emphasis: "primary" }}
       onDownloadAdviserPack={() => undefined}
       supportingDetailsOpen={false}
@@ -190,6 +194,88 @@ Your payment this month: GBP 843.45`);
       if (fixture.expectedMoneyMentions.length > 0) {
         expect(text).toContain("display-only");
         expect(text).toContain("not counted as a saving or recovery");
+      }
+    }
+  });
+
+  it('renders "Preparation progress" as part of the composed result', () => {
+    const { html } = renderCaseSheet(`Universal Credit statement
+Assessment period: 1 June 2026 to 30 June 2026
+Payment date: 7 July 2026
+Your payment this month: GBP 843.45`);
+
+    expect(html).toContain("Preparation progress");
+    expect(html).toContain("does not predict the outcome");
+    expect(findForbiddenSafetyPhrases(html)).toEqual([]);
+  });
+
+  it("shows preparation progress safely for a PIP decision / Mandatory Reconsideration style result", () => {
+    const { html, decisionResult } = renderCaseSheet(`Personal Independence Payment decision
+To: Jordan Sample
+Reference: REF-EXAMPLE-PIP-004
+
+We have looked at your claim and decided you are not entitled to PIP.
+The date of this decision is 4 July 2026.
+You can ask us to look at this decision again.
+The letter mentions daily living and mobility activities.`);
+    const text = normaliseGoldenText(html);
+
+    expect(decisionResult.documentType).toBe("benefits_decision");
+    expect(html).toContain("Preparation progress");
+    expect(text).toContain("activities or points identified");
+    expect(text).toContain("real examples added");
+    expect(findForbiddenSafetyPhrases(html)).toEqual([]);
+  });
+
+  it("keeps preparation progress safe for the unknown fallback", () => {
+    const { html, decisionResult } = renderCaseSheet(`Official update
+Reference: REF-EXAMPLE-GEN-016
+Please see the attached update. We will write again if more information is needed.`);
+    const text = normaliseGoldenText(html);
+
+    expect(decisionResult.documentType).toBe("unknown_admin_dispute");
+    expect(html).toContain("Preparation progress");
+    expect(text).toContain("sender or source checked");
+    expect(findForbiddenSafetyPhrases(html)).toEqual([]);
+  });
+
+  it("never renders forbidden case-progress wording", () => {
+    const fixtureIds = [
+      "benefits-uc-sanction-001",
+      "benefits-pip-refusal-001",
+      "debt-collection-001",
+      "parking-legal-looking-001",
+      "suspicious-message-001",
+      "unknown-official-letter-001",
+    ];
+
+    for (const fixtureId of fixtureIds) {
+      const fixture = goldenLetterFixtures.find((item) => item.id === fixtureId);
+
+      if (!fixture) {
+        throw new Error(`Missing golden fixture ${fixtureId}`);
+      }
+
+      const run = runGoldenLetterFixture(fixture);
+      const html = renderToStaticMarkup(
+        <ResultCaseSheet
+          model={run.resultViewModel}
+          decisionResult={run.decisionResult}
+          benefitsActionPack={run.benefitsActionPack}
+          strategicNextStepPlan={run.strategicNextStepPlan}
+          adviserExportPack={run.adviserExportPack}
+          onDownloadAdviserPack={() => undefined}
+          supportingDetailsOpen={false}
+          onToggleSupportingDetails={() => undefined}
+        />,
+      );
+      const lower = html.toLowerCase();
+
+      expect(findForbiddenSafetyPhrases(html)).toEqual([]);
+      expect(html).toContain("Preparation progress");
+
+      for (const word of ["win", "chance", "success", "case strength", "valid claim", "invalid claim"]) {
+        expect(lower).not.toMatch(new RegExp(`\\b${word}\\b`));
       }
     }
   });

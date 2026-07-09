@@ -1984,6 +1984,10 @@ export function HomeView({
       {resultViewModel ? (
         <ResultCaseSheet
           model={resultViewModel}
+          decisionResult={primaryCase?.decisionResult}
+          benefitsActionPack={benefitsActionPack}
+          strategicNextStepPlan={strategicNextStepPlan}
+          adviserExportPack={adviserExportPack}
           primaryAction={simplePrimaryAction}
           secondaryActions={simpleSecondaryActions}
           guidedNextStepButton={

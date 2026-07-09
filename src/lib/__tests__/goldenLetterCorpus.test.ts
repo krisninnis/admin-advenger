@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { buildCaseProgress, flattenCaseProgressText } from "../caseProgress";
 import {
   assertExpectedTerms,
   assertGoldenSafety,
@@ -7,7 +8,7 @@ import {
   normaliseGoldenText,
   runGoldenLetterFixture,
 } from "../goldenLetters";
-import { hasSafetyTheme, normaliseSafetyText } from "../safetyWording";
+import { findForbiddenSafetyPhrases, hasSafetyTheme, normaliseSafetyText } from "../safetyWording";
 
 const requiredFixtureIds = [
   "benefits-uc-statement-001",
@@ -283,6 +284,62 @@ describe("golden letter corpus Adviser Export Pack integration", () => {
       expect(draft.body).toBeTruthy();
     } else {
       expect(draft.noDraftLine).toBe("No draft was included in this pack.");
+    }
+  });
+});
+
+describe("golden letter corpus Case Progress Tracker smoke coverage", () => {
+  const caseProgressFixtureIds = [
+    "benefits-uc-sanction-001", // UC sanction
+    "benefits-pip-refusal-001", // PIP decision
+    "benefits-uc-deductions-001", // UC deductions
+    "parking-legal-looking-001", // parking / legal-looking debt
+    "debt-collection-001", // debt collection
+    "consumer-refund-refusal-001", // consumer dispute
+    "suspicious-message-001", // suspicious message
+    "unknown-official-letter-001", // unknown fallback
+  ] as const;
+
+  it.each(caseProgressFixtureIds)("%s builds a safe, preparation-only Case Progress summary", (fixtureId) => {
+    const fixture = goldenLetterFixtures.find((item) => item.id === fixtureId);
+
+    if (!fixture) {
+      throw new Error(`Missing golden fixture ${fixtureId}`);
+    }
+
+    const run = runGoldenLetterFixture(fixture);
+    const summary = buildCaseProgress({
+      resultViewModel: run.resultViewModel,
+      decisionResult: run.decisionResult,
+      benefitsActionPack: run.benefitsActionPack,
+      strategicNextStepPlan: run.strategicNextStepPlan,
+      adviserExportPack: run.adviserExportPack,
+    });
+    const text = flattenCaseProgressText(summary);
+
+    // No forbidden safety wording anywhere in the generated checklist.
+    expect(findForbiddenSafetyPhrases(text)).toEqual([]);
+
+    // Preparation completeness only - never outcome likelihood, case
+    // strength, or money recovered/saved/owed.
+    expect(summary.percentComplete).toBeGreaterThanOrEqual(0);
+    expect(summary.percentComplete).toBeLessThanOrEqual(100);
+    expect(summary.label).toMatch(/of \d+ preparation steps complete|no preparation steps apply yet/i);
+
+    const normalised = normaliseSafetyText(text);
+    for (const forbidden of [
+      "win chance",
+      "success score",
+      "case strength",
+      "appeal strength",
+      "legal strength",
+      "entitlement score",
+      "you qualify",
+      "money saved",
+      "money recovered",
+      "you are owed",
+    ]) {
+      expect(normalised).not.toContain(forbidden);
     }
   });
 });

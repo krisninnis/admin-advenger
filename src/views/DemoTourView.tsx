@@ -284,6 +284,10 @@ export function DemoTourView({
       {resultViewModel ? (
         <ResultCaseSheet
           model={resultViewModel}
+          decisionResult={primaryCase?.decisionResult}
+          benefitsActionPack={benefitsActionPack}
+          strategicNextStepPlan={strategicNextStepPlan}
+          adviserExportPack={adviserExportPack}
           secondaryActions={[restartAction]}
           onDownloadAdviserPack={adviserExportPack ? handleDownloadAdviserPack : undefined}
           supportingDetailsOpen={showSupportingDetail}

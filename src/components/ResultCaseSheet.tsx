@@ -1,10 +1,16 @@
 import { useMemo, useState, type ReactNode } from "react";
+import type { AdviserExportPack } from "../lib/adviserExportPack";
+import type { BenefitsActionPack } from "../lib/benefitsActionPack";
+import { buildCaseProgress } from "../lib/caseProgress";
+import type { DecisionResult } from "../lib/decisionEngine/types";
 import type {
   ResultDateView,
   ResultEvidenceView,
   ResultMoneyView,
   ResultViewModel,
 } from "../lib/resultViewModel";
+import type { StrategicNextStepPlan } from "../lib/strategicNextStep";
+import { CaseProgressCard } from "./CaseProgressCard";
 import { CopyButton } from "./CopyButton";
 
 export type ResultCaseSheetAction = {
@@ -15,6 +21,15 @@ export type ResultCaseSheetAction = {
 
 type ResultCaseSheetProps = {
   model: ResultViewModel;
+  // Optional extra context used only to build the preparation-progress
+  // checklist (src/lib/caseProgress.ts). None of this changes decision-engine
+  // behaviour, OCR/photo behaviour, or routing/classification - it only lets
+  // the checklist wording match the document family already computed
+  // upstream.
+  decisionResult?: DecisionResult;
+  benefitsActionPack?: BenefitsActionPack | null;
+  strategicNextStepPlan?: StrategicNextStepPlan;
+  adviserExportPack?: AdviserExportPack;
   primaryAction?: ResultCaseSheetAction;
   secondaryActions?: ResultCaseSheetAction[];
   guidedNextStepButton?: ResultCaseSheetAction;
@@ -280,6 +295,10 @@ function TextList({
 
 export function ResultCaseSheet({
   model,
+  decisionResult,
+  benefitsActionPack,
+  strategicNextStepPlan,
+  adviserExportPack,
   primaryAction,
   secondaryActions = [],
   guidedNextStepButton,
@@ -290,6 +309,17 @@ export function ResultCaseSheet({
   const references = useMemo(
     () => model.evidenceFound.filter(hasReferenceSignal).slice(0, 3),
     [model.evidenceFound],
+  );
+  const caseProgress = useMemo(
+    () =>
+      buildCaseProgress({
+        resultViewModel: model,
+        decisionResult,
+        benefitsActionPack,
+        strategicNextStepPlan,
+        adviserExportPack,
+      }),
+    [model, decisionResult, benefitsActionPack, strategicNextStepPlan, adviserExportPack],
   );
   const checkFirstItems = uniqueTextItems([
     ...model.keyDates.slice(0, 2).map((date) => `${date.label}: ${date.value}`),
@@ -444,6 +474,10 @@ export function ResultCaseSheet({
             </button>
           ) : null}
         </Section>
+      </div>
+
+      <div className="mt-5">
+        <CaseProgressCard summary={caseProgress} />
       </div>
 
       <div className="mt-5 rounded-lg border border-white/10 bg-slate-950/55 p-4">

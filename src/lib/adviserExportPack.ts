@@ -20,6 +20,7 @@ import {
   normaliseSafetyText,
 } from "./safetyWording";
 import type { StrategicNextStepPlan } from "./strategicNextStep";
+import type { WorkplaceSupportDocumentType, WorkplaceSupportPack } from "./workplaceSupportPack";
 
 // Adviser Export Pack v1 - the print/export-friendly result for a person to
 // bring to an adviser or support worker, or to keep for themselves.
@@ -51,7 +52,7 @@ export type AdviserExportPackDraft = {
 };
 
 export type AdviserExportPack = {
-  documentType: DecisionDocumentType;
+  documentType: DecisionDocumentType | WorkplaceSupportDocumentType;
   title: string;
   whatThisAppearsToBe: string;
   whyThisMatters: string;
@@ -67,13 +68,15 @@ export type AdviserExportPack = {
   risks: string[];
   draft: AdviserExportPackDraft;
   safetyNotes: string[];
+  workplaceSupportPack?: WorkplaceSupportPack;
 };
 
 export type BuildAdviserExportPackInput = {
-  decisionResult: DecisionResult;
+  decisionResult?: DecisionResult;
   resultViewModel: ResultViewModel;
   benefitsActionPack?: BenefitsActionPack | null;
   strategicNextStepPlan?: StrategicNextStepPlan;
+  workplaceSupportPack?: WorkplaceSupportPack;
 };
 
 // --- Required safety lines (Section 6 of the fix request) -----------------
@@ -111,6 +114,18 @@ export const ADVISER_PACK_FILENAME = "adminavenger-adviser-pack.md";
 
 export const ADVISER_PACK_GENERATED_LINE =
   "Generated: Date not stored in this pack. This Markdown is created locally from the current result.";
+
+export const ADVISER_PACK_WORKPLACE_PREPARATION_NOTE =
+  "This is preparation only, not legal or employment advice.";
+
+export const ADVISER_PACK_WORKPLACE_SIGNPOSTING_NOTE =
+  "Ask ACAS, a union rep, HR, Citizens Advice, an adviser, solicitor where appropriate, or someone trusted if you are unsure.";
+
+export const ADVISER_PACK_SETTLEMENT_REVIEW_NOTE =
+  "Do not rely on AdminAvenger to decide what to do with a settlement agreement. Ask ACAS, a union rep, solicitor, Citizens Advice, or another qualified adviser.";
+
+export const ADVISER_PACK_RESIGNATION_REVIEW_NOTE =
+  "Get advice before making a resignation decision.";
 
 const REQUIRED_ADVISER_PACK_SAFETY_NOTES = [
   ADVISER_PACK_PREPARATION_ONLY_NOTE,
@@ -201,6 +216,12 @@ const buildWhyThisMatters = (decisionResult: DecisionResult): string => {
   return stake ? `${base} This may matter because: ${stake}` : base;
 };
 
+const buildWorkplaceWhyThisMatters = (workplaceSupportPack: WorkplaceSupportPack): string =>
+  safeText(
+    `${workplaceSupportPack.summary} It may matter because workplace messages can affect work, pay, health, safety, or next steps, so the details should be checked against the original letter/message before deciding what to do.`,
+    "This workplace message is worth checking carefully before you decide what to do.",
+  );
+
 // Translates AdminAvenger's own read-confidence into a plain sentence. Never
 // shows the raw level word or a percentage, and never rendered as case
 // strength - `confidence` is about how sure AdminAvenger is of its
@@ -221,12 +242,30 @@ const buildConfidence = (decisionResult: DecisionResult): AdviserExportPackConfi
   };
 };
 
+const buildWorkplaceConfidence = (workplaceSupportPack: WorkplaceSupportPack): AdviserExportPackConfidence => ({
+  level: workplaceSupportPack.documentType === "workplace_unknown" ? "low" : "medium",
+  statement:
+    workplaceSupportPack.documentType === "workplace_unknown"
+      ? "This is less clear from what was provided, so treat this workplace preparation read with extra care."
+      : "This appears to be a workplace preparation pack, but the original message and full context still need checking.",
+});
+
 const buildRouteToCheck = (
-  decisionResult: DecisionResult,
+  decisionResult: DecisionResult | undefined,
   resultViewModel: ResultViewModel,
+  workplaceSupportPack?: WorkplaceSupportPack,
 ): string[] => {
+  if (workplaceSupportPack?.documentType === "settlement_agreement_signpost") {
+    return uniqueSafe([
+      ADVISER_PACK_SETTLEMENT_REVIEW_NOTE,
+      "Use this pack only to gather questions and documents for a qualified human review.",
+      ADVISER_PACK_ROUTE_CHECK_LETTER_LINE,
+    ]);
+  }
+
   const items = uniqueSafe([
-    ...decisionResult.nextSteps,
+    ...(workplaceSupportPack?.safeNextSteps ?? []),
+    ...(decisionResult?.nextSteps ?? []),
     resultViewModel.bestNextMove?.description,
   ]);
 
@@ -254,23 +293,59 @@ const buildDraft = (resultViewModel: ResultViewModel): AdviserExportPackDraft =>
   };
 };
 
+const hasResignationRisk = (workplaceSupportPack: WorkplaceSupportPack) =>
+  workplaceSupportPack.riskWarnings.some((warning) =>
+    /resignation|constructive dismissal|resign|quitting|walking out/i.test(warning),
+  );
+
+const buildWorkplaceSafetyNotes = (workplaceSupportPack?: WorkplaceSupportPack) => {
+  if (!workplaceSupportPack) {
+    return [];
+  }
+
+  return uniqueSafe([
+    ADVISER_PACK_WORKPLACE_PREPARATION_NOTE,
+    ADVISER_PACK_CONTROL_NOTE,
+    ADVISER_PACK_WORKPLACE_SIGNPOSTING_NOTE,
+    workplaceSupportPack.documentType === "settlement_agreement_signpost"
+      ? ADVISER_PACK_SETTLEMENT_REVIEW_NOTE
+      : undefined,
+    hasResignationRisk(workplaceSupportPack) ? ADVISER_PACK_RESIGNATION_REVIEW_NOTE : undefined,
+    workplaceSupportPack.documentType === "wage_deduction_or_pay_issue"
+      ? "Pay or wage amounts in this pack are facts to check only. They are not counted as saved or recovered."
+      : undefined,
+  ]);
+};
+
 export const buildAdviserExportPack = ({
   decisionResult,
   resultViewModel,
   benefitsActionPack,
   strategicNextStepPlan,
+  workplaceSupportPack,
 }: BuildAdviserExportPackInput): AdviserExportPack => ({
-  documentType: decisionResult.documentType,
+  documentType: decisionResult?.documentType ?? workplaceSupportPack?.documentType ?? "unknown_admin_dispute",
   title: resultViewModel.title,
   whatThisAppearsToBe: resultViewModel.summary,
-  whyThisMatters: buildWhyThisMatters(decisionResult),
-  confidence: buildConfidence(decisionResult),
+  whyThisMatters: decisionResult
+    ? buildWhyThisMatters(decisionResult)
+    : workplaceSupportPack
+      ? buildWorkplaceWhyThisMatters(workplaceSupportPack)
+      : "This document is worth checking carefully before you decide what to do.",
+  confidence: decisionResult
+    ? buildConfidence(decisionResult)
+    : workplaceSupportPack
+      ? buildWorkplaceConfidence(workplaceSupportPack)
+      : {
+          level: "low",
+          statement: "This is less clear from what was provided, so treat this read with extra care.",
+        },
   // Reused directly from ResultViewModel/DecisionResult rather than
   // re-derived, so this section can never silently drop items the engine
   // already produced.
   uncertainty: resultViewModel.uncertainty,
   cannotKnow: resultViewModel.cannotKnow,
-  routeToCheck: buildRouteToCheck(decisionResult, resultViewModel),
+  routeToCheck: buildRouteToCheck(decisionResult, resultViewModel, workplaceSupportPack),
   keyDates: resultViewModel.keyDates,
   moneyMentioned: resultViewModel.moneyMentioned,
   evidenceFound: resultViewModel.evidenceFound,
@@ -283,7 +358,9 @@ export const buildAdviserExportPack = ({
     ...resultViewModel.safetyNotes,
     ...(benefitsActionPack?.safetyNotes ?? []),
     ...(strategicNextStepPlan?.safetyNotes ?? []),
+    ...buildWorkplaceSafetyNotes(workplaceSupportPack),
   ]),
+  workplaceSupportPack,
 });
 
 // Flattens every user-facing string on an AdviserExportPack into one block of
@@ -310,6 +387,22 @@ export const flattenAdviserExportPackText = (pack: AdviserExportPack): string =>
     pack.draft.noDraftLine ?? "",
     pack.draft.reviewWarning,
     ...pack.safetyNotes,
+    pack.workplaceSupportPack?.title ?? "",
+    pack.workplaceSupportPack?.summary ?? "",
+    ...(pack.workplaceSupportPack?.keyFactsToCheck ?? []),
+    ...(pack.workplaceSupportPack?.evidenceToGather ?? []),
+    ...(pack.workplaceSupportPack?.questionsToAsk ?? []),
+    ...(pack.workplaceSupportPack?.cannotKnow ?? []),
+    ...(pack.workplaceSupportPack?.riskWarnings ?? []),
+    ...(pack.workplaceSupportPack?.signposting ?? []),
+    pack.workplaceSupportPack ? ADVISER_PACK_WORKPLACE_PREPARATION_NOTE : "",
+    pack.workplaceSupportPack ? ADVISER_PACK_WORKPLACE_SIGNPOSTING_NOTE : "",
+    pack.workplaceSupportPack?.documentType === "settlement_agreement_signpost"
+      ? ADVISER_PACK_SETTLEMENT_REVIEW_NOTE
+      : "",
+    pack.workplaceSupportPack && hasResignationRisk(pack.workplaceSupportPack)
+      ? ADVISER_PACK_RESIGNATION_REVIEW_NOTE
+      : "",
   ].join("\n");
 
 const cleanMarkdownText = (value: string | undefined, fallback: string) =>
@@ -342,6 +435,64 @@ const renderMoneyLine = (line: ResultMoneyView) =>
 
 const renderEvidenceLine = (item: ResultEvidenceView) =>
   `${cleanMarkdownLine(item.label, "Evidence")}: ${cleanMarkdownLine(item.value, "Check the original letter")}`;
+
+const buildWorkplacePreparationNotes = (pack: WorkplaceSupportPack) =>
+  uniqueSafe([
+    ADVISER_PACK_WORKPLACE_PREPARATION_NOTE,
+    ADVISER_PACK_CONTROL_NOTE,
+    "Use this pack for questions, meeting preparation notes, evidence lists, timeline prompts, and calm clarification only.",
+    "This pack is not for tribunal paperwork, legal threat letters, resignation wording, payment demands, or accusation-heavy messages.",
+    pack.documentType === "wage_deduction_or_pay_issue"
+      ? "Pay or wage amounts are facts to check only. They are not counted as saved or recovered."
+      : undefined,
+    pack.documentType === "settlement_agreement_signpost"
+      ? ADVISER_PACK_SETTLEMENT_REVIEW_NOTE
+      : undefined,
+    hasResignationRisk(pack) ? ADVISER_PACK_RESIGNATION_REVIEW_NOTE : undefined,
+  ]);
+
+const renderWorkplaceSection = (pack: WorkplaceSupportPack | undefined) => {
+  if (!pack) {
+    return undefined;
+  }
+
+  const humanSupport = uniqueSafe([
+    ADVISER_PACK_WORKPLACE_SIGNPOSTING_NOTE,
+    ...pack.signposting,
+    pack.documentType === "settlement_agreement_signpost"
+      ? ADVISER_PACK_SETTLEMENT_REVIEW_NOTE
+      : undefined,
+    hasResignationRisk(pack) ? ADVISER_PACK_RESIGNATION_REVIEW_NOTE : undefined,
+  ]);
+
+  return renderSection(
+    "Workplace preparation pack",
+    [
+      "### What this appears to be about",
+      cleanMarkdownText(pack.title, "Workplace preparation pack"),
+      "",
+      cleanMarkdownText(pack.summary, "This appears to be workplace-related preparation."),
+      "",
+      "### Key facts to check",
+      renderList(pack.keyFactsToCheck, "No key facts were listed in this workplace pack."),
+      "",
+      "### Evidence to gather",
+      renderList(pack.evidenceToGather, "No workplace evidence items were listed in this pack."),
+      "",
+      "### Questions to ask",
+      renderList(pack.questionsToAsk, "No workplace questions were listed in this pack."),
+      "",
+      "### What AdminAvenger cannot know",
+      renderList(pack.cannotKnow, "No workplace cannot-know items were listed in this pack."),
+      "",
+      "### Preparation-only notes",
+      renderList(buildWorkplacePreparationNotes(pack), ADVISER_PACK_WORKPLACE_PREPARATION_NOTE),
+      "",
+      "### Human support/signposting",
+      renderList(humanSupport, ADVISER_PACK_WORKPLACE_SIGNPOSTING_NOTE),
+    ].join("\n"),
+  );
+};
 
 const getGeneratedLine = (pack: AdviserExportPack) => {
   const maybeGeneratedAt = (pack as AdviserExportPack & { generatedAt?: unknown }).generatedAt;
@@ -384,6 +535,7 @@ export const renderAdviserExportMarkdown = (pack: AdviserExportPack): string => 
     renderSection("Confidence", cleanMarkdownText(pack.confidence.statement, "Check this result against the original letter.")),
     renderSection("Uncertainty", renderList(pack.uncertainty, "No uncertainty was listed in this pack.")),
     renderSection("What may happen next / route to check", renderList(pack.routeToCheck, ADVISER_PACK_ROUTE_CHECK_LETTER_LINE)),
+    renderWorkplaceSection(pack.workplaceSupportPack),
     renderSection("Key dates to check", renderList(pack.keyDates.map(renderDateLine), "No key dates were listed in this pack.")),
     renderSection("Money mentioned, display-only", renderList(pack.moneyMentioned.map(renderMoneyLine), "No money was listed in this pack.")),
     renderSection("Evidence/documents to bring", evidenceSections),
@@ -398,7 +550,7 @@ export const renderAdviserExportMarkdown = (pack: AdviserExportPack): string => 
       "Nothing has been sent or submitted by AdminAvenger.",
       ADVISER_PACK_NOT_ADVICE_NOTE,
     ].join("\n"),
-  ];
+  ].filter((section): section is string => Boolean(section));
 
   return `${sections.join("\n\n")}\n`;
 };

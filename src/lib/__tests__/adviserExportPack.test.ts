@@ -12,6 +12,7 @@ import { goldenLetterFixtures, runGoldenLetterFixture } from "../goldenLetters";
 import { buildResultViewModel } from "../resultViewModel";
 import { findForbiddenSafetyPhrases, normaliseSafetyText } from "../safetyWording";
 import { buildStrategicNextStepPlan } from "../strategicNextStep";
+import { buildWorkplaceSupportPack } from "../workplaceSupportPack";
 
 const ucSanctionText = `Universal Credit sanction decision
 To: Jordan Sample
@@ -35,6 +36,51 @@ const buildUcSanctionPack = () => {
   });
 
   return { decisionResult, benefitsActionPack, strategicNextStepPlan, resultViewModel, adviserExportPack };
+};
+
+const workplaceForbiddenPhrases = [
+  "employer broke the law",
+  "you will win",
+  "unfair dismissal proven",
+  "discrimination proven",
+  "harassment is proven",
+  "valid claim",
+  "invalid claim",
+  "case strength",
+  "success chance",
+  "win chance",
+  "tribunal prediction",
+  "compensation owed",
+  "you are owed",
+  "money saved",
+  "money recovered",
+  "resign now",
+  "refuse the meeting",
+  "sign the agreement",
+  "do not sign the agreement",
+];
+
+const buildWorkplaceAdviserPack = (text: string) => {
+  const workplaceSupportPack = buildWorkplaceSupportPack({ text });
+  const resultViewModel = buildResultViewModel({ workplaceSupportPack });
+  const adviserExportPack = buildAdviserExportPack({
+    resultViewModel,
+    workplaceSupportPack,
+  });
+  const markdown = renderAdviserExportMarkdown(adviserExportPack);
+  const normalised = normaliseSafetyText(markdown);
+
+  return { workplaceSupportPack, resultViewModel, adviserExportPack, markdown, normalised };
+};
+
+const expectNoForbiddenWorkplaceMarkdown = (markdown: string) => {
+  const normalised = normaliseSafetyText(markdown);
+
+  for (const phrase of workplaceForbiddenPhrases) {
+    expect(normalised).not.toContain(normaliseSafetyText(phrase));
+  }
+
+  expect(findForbiddenSafetyPhrases(markdown)).toEqual([]);
 };
 
 describe("Adviser Export Pack v1 - UC sanction", () => {
@@ -258,5 +304,151 @@ describe("Adviser Export Pack v1 - golden corpus Markdown", () => {
     expect(markdown).toContain("Nothing has been sent or submitted by AdminAvenger.");
     expect(findForbiddenSafetyPhrases(markdown)).toEqual([]);
     expect(normaliseSafetyText(markdown)).not.toContain("case strength");
+  });
+});
+
+describe("Adviser Export Pack v1 - workplace support", () => {
+  const disciplinaryText = `Example Works HR
+Reference: REF-EXAMPLE-WORK-001
+
+You are invited to a disciplinary meeting on 14 September 2026 about an allegation of misconduct.
+The meeting will be chaired by Morgan Sample. You may bring a workplace companion.
+Please review the investigation notes before the meeting.`;
+
+  const payText = `Example Works Payroll
+Reference: REF-EXAMPLE-WORK-006
+
+Your payslip shows a deduction of GBP 75.00 for the September pay period.
+Please contact payroll if you have questions about wages, overtime, or holiday pay.`;
+
+  const settlementText = `Example Works HR
+Reference: REF-EXAMPLE-WORK-012
+
+The attached settlement agreement is sent without prejudice.
+It mentions a COT3 route and asks Alex Example to reply by 30 September 2026.`;
+
+  const resignationText = `Example Works message
+Reference: REF-EXAMPLE-WORK-013
+
+I am thinking about resignation after a contract change and may resign or quit next week.
+I want to organise questions before I speak to someone trusted.`;
+
+  const bullyingText = `Example workplace notes
+Reference: REF-EXAMPLE-WORK-009
+
+I want to prepare a record of bullying and harassment incidents in the team chat.
+There were messages on 4 September 2026 and a witness called Jordan Sample.`;
+
+  const unknownWorkplaceText = `Example Works message
+Reference: REF-EXAMPLE-WORK-011
+
+Please read the attached workplace update and bring any questions to your manager.
+The message is short and does not explain the process.`;
+
+  it("accepts optional workplaceSupportPack input", () => {
+    const { adviserExportPack, workplaceSupportPack, markdown } = buildWorkplaceAdviserPack(disciplinaryText);
+
+    expect(workplaceSupportPack.documentType).toBe("disciplinary_invite");
+    expect(adviserExportPack.documentType).toBe("disciplinary_invite");
+    expect(adviserExportPack.workplaceSupportPack).toBe(workplaceSupportPack);
+    expect(markdown).toContain("## Workplace preparation pack");
+    expectNoForbiddenWorkplaceMarkdown(markdown);
+  });
+
+  it("disciplinary invite export includes workplace preparation sections safely", () => {
+    const { markdown, normalised } = buildWorkplaceAdviserPack(disciplinaryText);
+
+    expect(markdown).toContain("### What this appears to be about");
+    expect(markdown).toContain("### Key facts to check");
+    expect(markdown).toContain("### Evidence to gather");
+    expect(markdown).toContain("### Questions to ask");
+    expect(markdown).toContain("### Human support/signposting");
+    expect(normalised).toContain("this is preparation only, not legal or employment advice");
+    expect(normalised).toContain("adminavenger helps prepare. you stay in control.");
+    expect(normalised).toContain("acas");
+    expectNoForbiddenWorkplaceMarkdown(markdown);
+  });
+
+  it("wage or pay export does not say money is owed, saved, or recovered", () => {
+    const { workplaceSupportPack, markdown, normalised } = buildWorkplaceAdviserPack(payText);
+
+    expect(workplaceSupportPack.documentType).toBe("wage_deduction_or_pay_issue");
+    expect(normalised).toContain("pay or wage amounts are facts to check only");
+    expect(normalised).not.toContain("money saved");
+    expect(normalised).not.toContain("money recovered");
+    expect(normalised).not.toContain("you are owed");
+    expect(normalised).not.toContain("compensation owed");
+    expectNoForbiddenWorkplaceMarkdown(markdown);
+  });
+
+  it("settlement agreement export includes human-review warning and no signing advice", () => {
+    const { workplaceSupportPack, adviserExportPack, markdown, normalised } =
+      buildWorkplaceAdviserPack(settlementText);
+
+    expect(workplaceSupportPack.documentType).toBe("settlement_agreement_signpost");
+    expect(adviserExportPack.draft.included).toBe(false);
+    expect(markdown).toContain(ADVISER_PACK_NO_DRAFT_LINE);
+    expect(normalised).toContain("do not rely on adminavenger to decide what to do with a settlement agreement");
+    expect(normalised).toContain("qualified adviser");
+    expect(normalised).not.toContain("good deal");
+    expect(normalised).not.toContain("bad deal");
+    expect(normalised).not.toContain("sign the agreement");
+    expect(normalised).not.toContain("do not sign the agreement");
+    expect(normalised).not.toContain("compensation owed");
+    expectNoForbiddenWorkplaceMarkdown(markdown);
+  });
+
+  it("resignation warning remains neutral and signposted", () => {
+    const { markdown, normalised } = buildWorkplaceAdviserPack(resignationText);
+
+    expect(normalised).toContain("get advice before making a resignation decision");
+    expect(normalised).not.toContain("you should resign");
+    expect(normalised).not.toContain("you should not resign");
+    expect(normalised).not.toContain("resign now");
+    expectNoForbiddenWorkplaceMarkdown(markdown);
+  });
+
+  it("bullying or harassment prep does not say discrimination or harassment is proven", () => {
+    const { workplaceSupportPack, markdown, normalised } = buildWorkplaceAdviserPack(bullyingText);
+
+    expect(workplaceSupportPack.documentType).toBe("bullying_or_harassment_record_prep");
+    expect(normalised).toContain("timeline");
+    expect(normalised).toContain("screenshots");
+    expect(normalised).not.toContain("discrimination proven");
+    expect(normalised).not.toContain("harassment is proven");
+    expectNoForbiddenWorkplaceMarkdown(markdown);
+  });
+
+  it("unknown workplace pack remains conservative", () => {
+    const { workplaceSupportPack, markdown, normalised } = buildWorkplaceAdviserPack(unknownWorkplaceText);
+
+    expect(workplaceSupportPack.documentType).toBe("workplace_unknown");
+    expect(normalised).toContain("workplace admin preparation");
+    expect(normalised).toContain("not clear");
+    expect(normalised).toContain("someone trusted");
+    expectNoForbiddenWorkplaceMarkdown(markdown);
+  });
+
+  it("has no forbidden workplace wording across workplace adviser exports", () => {
+    for (const text of [
+      disciplinaryText,
+      payText,
+      settlementText,
+      resignationText,
+      bullyingText,
+      unknownWorkplaceText,
+    ]) {
+      const { markdown } = buildWorkplaceAdviserPack(text);
+
+      expectNoForbiddenWorkplaceMarkdown(markdown);
+    }
+  });
+
+  it("keeps existing non-workplace adviser export unchanged when no workplaceSupportPack is supplied", () => {
+    const { adviserExportPack } = buildUcSanctionPack();
+
+    expect(adviserExportPack.workplaceSupportPack).toBeUndefined();
+    expect(renderAdviserExportMarkdown(adviserExportPack)).not.toContain("## Workplace preparation pack");
+    expect(adviserExportPack.documentType).toBe("benefits_uc_sanction");
   });
 });

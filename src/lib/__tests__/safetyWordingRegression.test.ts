@@ -369,13 +369,20 @@ It mentions a COT3 route and asks Alex Example to reply by 30 September 2026.`,
       const workplaceSupportPack = buildWorkplaceSupportPack({ text });
       const resultViewModel = buildResultViewModel({ workplaceSupportPack });
       const caseProgress = buildCaseProgress({ resultViewModel, workplaceSupportPack });
+      const adviserExportPack = buildAdviserExportPack({
+        resultViewModel,
+        workplaceSupportPack,
+      });
       const resultViewText = collectTextFromResultViewModel(resultViewModel);
       const caseProgressText = flattenCaseProgressText(caseProgress);
+      const adviserPackText = collectTextFromAdviserExportPack(adviserExportPack);
       const normalised = normaliseSafetyText(resultViewText);
       const progressNormalised = normaliseSafetyText(caseProgressText);
+      const adviserNormalised = normaliseSafetyText(adviserPackText);
 
       expectNoForbiddenOutput(resultViewText, `workplace ${workplaceSupportPack.documentType}`);
       expectNoForbiddenOutput(caseProgressText, `workplace case progress ${workplaceSupportPack.documentType}`);
+      expectNoForbiddenOutput(adviserPackText, `workplace adviser export ${workplaceSupportPack.documentType}`);
       expect(hasSafetyTheme(resultViewText, "no_contact")).toBe(true);
       expect(hasSafetyTheme(resultViewText, "human_decides")).toBe(true);
       expect(hasSafetyTheme(resultViewText, "cannot_know")).toBe(true);
@@ -385,12 +392,18 @@ It mentions a COT3 route and asks Alex Example to reply by 30 September 2026.`,
       expect(normalised).toContain("not legal or employment advice");
       expect(normalised).toContain("acas");
       expect(progressNormalised).toContain("acas");
+      expect(adviserNormalised).toContain("preparation");
+      expect(adviserNormalised).toContain("acas");
+      expect(adviserNormalised).toContain("adminavenger helps prepare. you stay in control");
       expect(normalised).not.toContain("compensation owed");
       expect(normalised).not.toContain("tribunal prediction");
       expect(normalised).not.toContain("employer broke the law");
       expect(progressNormalised).not.toContain("compensation owed");
       expect(progressNormalised).not.toContain("tribunal prediction");
       expect(progressNormalised).not.toContain("employer broke the law");
+      expect(adviserNormalised).not.toContain("compensation owed");
+      expect(adviserNormalised).not.toContain("tribunal prediction");
+      expect(adviserNormalised).not.toContain("employer broke the law");
     }
   });
 });

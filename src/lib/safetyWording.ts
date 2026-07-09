@@ -348,6 +348,14 @@ export const collectTextFromAdviserExportPack = (pack: AdviserExportPack) =>
     pack.draft.noDraftLine,
     pack.draft.reviewWarning,
     ...pack.safetyNotes,
+    pack.workplaceSupportPack?.title,
+    pack.workplaceSupportPack?.summary,
+    ...(pack.workplaceSupportPack?.keyFactsToCheck ?? []),
+    ...(pack.workplaceSupportPack?.evidenceToGather ?? []),
+    ...(pack.workplaceSupportPack?.questionsToAsk ?? []),
+    ...(pack.workplaceSupportPack?.cannotKnow ?? []),
+    ...(pack.workplaceSupportPack?.riskWarnings ?? []),
+    ...(pack.workplaceSupportPack?.signposting ?? []),
   ]);
 
 export const collectTextFromResultViewModel = (viewModel: ResultViewModel) =>

@@ -10,6 +10,7 @@ import { analyseDecisionProblem } from "../decisionEngine/decisionEngine";
 import { buildResultViewModel } from "../resultViewModel";
 import { findForbiddenSafetyPhrases, normaliseSafetyText } from "../safetyWording";
 import { buildStrategicNextStepPlan } from "../strategicNextStep";
+import { buildCommunityHelperPack } from "../communityHelperPack";
 import { buildWorkplaceSupportPack } from "../workplaceSupportPack";
 
 const PIP_DECISION_TEXT = `Personal Independence Payment decision
@@ -97,6 +98,18 @@ Reference: REF-EXAMPLE-WORK-011
 Please read the attached workplace update and bring any questions to your manager.
 The message is short and does not explain the process.`;
 
+const COMMUNITY_MISSED_LETTERS_TEXT =
+  "My uncle missed several letters and missed the deadline for an appointment.";
+
+const COMMUNITY_OT_TEXT =
+  "We need to prepare notes for an occupational therapist visit because Mum struggles with letters, daily routine, stairs, bathing, and explaining what happens at home.";
+
+const COMMUNITY_URGENT_TEXT =
+  "I am worried someone may be in immediate danger at home and there are concerns about abuse and neglect.";
+
+const COMMUNITY_FINANCIAL_TEXT =
+  "My friend is vulnerable and confused about bank card use, bills, missing payments, and someone else controlling money.";
+
 const buildArtifacts = (text: string) => {
   const decisionResult = analyseDecisionProblem(text);
   const benefitsActionPack = buildBenefitsActionPack(decisionResult);
@@ -124,6 +137,20 @@ const buildWorkplaceArtifacts = (text: string) => {
   const normalised = normaliseSafetyText(flatText);
 
   return { workplaceSupportPack, resultViewModel, summary, flatText, normalised };
+};
+
+
+const buildCommunityHelperArtifacts = (
+  text: string,
+  role?: Parameters<typeof buildCommunityHelperPack>[0]["role"],
+) => {
+  const communityHelperPack = buildCommunityHelperPack({ text, role });
+  const resultViewModel = buildResultViewModel({ communityHelperPack });
+  const summary = buildCaseProgress({ resultViewModel, communityHelperPack });
+  const flatText = flattenCaseProgressText(summary);
+  const normalised = normaliseSafetyText(flatText);
+
+  return { communityHelperPack, resultViewModel, summary, flatText, normalised };
 };
 
 const FORBIDDEN_SUBSTRINGS = [
@@ -414,6 +441,110 @@ describe("buildCaseProgress", () => {
       const { summary } = buildWorkplaceArtifacts(text);
 
       expectNoForbiddenWording(summary);
+    }
+  });
+
+
+  it("accepts an optional communityHelperPack input", () => {
+    const { communityHelperPack, summary, normalised } = buildCommunityHelperArtifacts(
+      COMMUNITY_MISSED_LETTERS_TEXT,
+      "helping_someone",
+    );
+    const ids = summary.items.map((item) => item.id);
+
+    expect(communityHelperPack.situationType).toBe("missed_letters_or_deadlines");
+    expect(ids).toEqual(
+      expect.arrayContaining([
+        "community-helper-situation-type",
+        "community-helper-daily-impact",
+        "community-helper-key-facts",
+        "community-helper-evidence-context",
+        "community-helper-questions-prepared",
+        "community-helper-consent-control",
+        "community-helper-support-route",
+      ]),
+    );
+    expect(normalised).toContain("community helper");
+    expect(normalised).toContain("preparation");
+    expect(normalised).toContain("does not predict the outcome");
+    expectNoForbiddenWording(summary);
+  });
+
+  it("community helper missed letters progress stays preparation-only", () => {
+    const { summary, normalised } = buildCommunityHelperArtifacts(COMMUNITY_MISSED_LETTERS_TEXT, "helping_someone");
+
+    expect(summary.label).toMatch(/of \d+ preparation steps complete|no preparation steps apply yet/i);
+    expect(normalised).toContain("evidence/context checklist prepared");
+    expect(normalised).toContain("questions prepared");
+    expect(normalised).not.toContain("eligibility score");
+    expect(normalised).not.toContain("risk score");
+    expectNoForbiddenWording(summary);
+  });
+
+  it("OT or support visit progress does not recommend equipment or adaptations", () => {
+    const { communityHelperPack, summary, normalised } = buildCommunityHelperArtifacts(
+      COMMUNITY_OT_TEXT,
+      "helping_someone",
+    );
+
+    expect(communityHelperPack.situationType).toBe("ot_or_support_visit_preparation");
+    expect(summary.items.map((item) => item.id)).toEqual(
+      expect.arrayContaining([
+        "community-helper-key-facts",
+        "community-helper-evidence-context",
+        "community-helper-questions-prepared",
+      ]),
+    );
+    expect(normalised).not.toContain("needs this equipment");
+    expect(normalised).not.toContain("needs this adaptation");
+    expect(normalised).not.toContain("council must provide");
+    expectNoForbiddenWording(summary);
+  });
+
+  it("urgent safeguarding-like progress signposts without deciding safeguarding", () => {
+    const { communityHelperPack, summary, normalised } = buildCommunityHelperArtifacts(
+      COMMUNITY_URGENT_TEXT,
+      "helping_someone",
+    );
+
+    expect(communityHelperPack.situationType).toBe("urgent_safeguarding_like_signpost");
+    expect(summary.items.map((item) => item.id)).toContain("community-helper-urgent-route");
+    expect(normalised).toContain("emergency services");
+    expect(normalised).toContain("adminavenger cannot decide safeguarding concerns");
+    expect(normalised).not.toContain("safeguarding issue confirmed");
+    expect(normalised).not.toContain("risk score");
+    expectNoForbiddenWording(summary);
+  });
+
+  it("financial admin concern progress stays factual and non-accusatory", () => {
+    const { communityHelperPack, summary, normalised } = buildCommunityHelperArtifacts(
+      COMMUNITY_FINANCIAL_TEXT,
+      "helping_someone",
+    );
+
+    expect(communityHelperPack.situationType).toBe("vulnerability_financial_admin_concern");
+    expect(summary.items.map((item) => item.id)).toContain("community-helper-financial-facts");
+    expect(normalised).toContain("financial admin facts separated from assumptions");
+    expect(normalised).not.toContain("financial abuse proven");
+    expect(normalised).not.toContain("money owed");
+    expect(normalised).not.toContain("money saved");
+    expect(normalised).not.toContain("money recovered");
+    expectNoForbiddenWording(summary);
+  });
+
+  it("has no forbidden community helper wording across community progress outputs", () => {
+    const communityFixtures = [
+      COMMUNITY_MISSED_LETTERS_TEXT,
+      COMMUNITY_OT_TEXT,
+      COMMUNITY_URGENT_TEXT,
+      COMMUNITY_FINANCIAL_TEXT,
+    ];
+
+    for (const text of communityFixtures) {
+      const { summary } = buildCommunityHelperArtifacts(text, "helping_someone");
+
+      expectNoForbiddenWording(summary);
+      expect(findForbiddenSafetyPhrases(flattenCaseProgressText(summary))).toEqual([]);
     }
   });
 

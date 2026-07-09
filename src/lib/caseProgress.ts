@@ -1,5 +1,6 @@
 import type { AdviserExportPack } from "./adviserExportPack";
 import type { BenefitsActionPack } from "./benefitsActionPack";
+import type { CommunityHelperPack, CommunityHelperSituationType } from "./communityHelperPack";
 import { isBenefitsDocumentType } from "./benefitsActionPack";
 import type { DecisionDocumentType, DecisionResult } from "./decisionEngine/types";
 import type { ResultViewModel } from "./resultViewModel";
@@ -54,6 +55,7 @@ export type BuildCaseProgressInput = {
   benefitsActionPack?: BenefitsActionPack | null;
   strategicNextStepPlan?: StrategicNextStepPlan;
   workplaceSupportPack?: WorkplaceSupportPack;
+  communityHelperPack?: CommunityHelperPack;
 };
 
 export const CASE_PROGRESS_HEADING = "Preparation progress";
@@ -72,6 +74,7 @@ type CaseProgressFamily =
   | "benefits_general"
   | "legal_debt"
   | "workplace"
+  | "community_helper"
   | "unknown"
   | "generic";
 
@@ -94,9 +97,14 @@ const LEGAL_DEBT_TYPES = new Set<DecisionDocumentType>([
 const detectFamily = (
   decisionResult?: DecisionResult,
   workplaceSupportPack?: WorkplaceSupportPack,
+  communityHelperPack?: CommunityHelperPack,
 ): CaseProgressFamily => {
   if (workplaceSupportPack) {
     return "workplace";
+  }
+
+  if (communityHelperPack) {
+    return "community_helper";
   }
 
   if (!decisionResult) {
@@ -551,6 +559,156 @@ const buildWorkplaceItems = (input: BuildCaseProgressInput): CaseProgressItem[] 
   return items;
 };
 
+
+const communityHelperSignpostNote =
+  "Ask a support worker, OT, housing officer, adviser, GP or clinician, social worker, safeguarding professional if urgent, or another trusted person if you are unsure.";
+
+const communityHelperUrgentTypes = new Set<CommunityHelperSituationType>([
+  "urgent_safeguarding_like_signpost",
+]);
+
+const communityHelperFinancialConcernTypes = new Set<CommunityHelperSituationType>([
+  "vulnerability_financial_admin_concern",
+]);
+
+const buildCommunityHelperSituationItem = (pack: CommunityHelperPack): CaseProgressItem =>
+  buildItem(
+    "community-helper-situation-type",
+    "Community helper situation noted",
+    `Community helper pack type: ${pack.title}. This only controls checklist wording and is not an assessment.`,
+    "complete",
+    "result",
+    "This is preparation only, not a professional assessment.",
+  );
+
+const buildCommunityHelperDailyImpactItem = (pack: CommunityHelperPack): CaseProgressItem => {
+  const count = pack.dailyLifeImpact.length + pack.adminBarriers.length + pack.communicationBarriers.length;
+
+  return buildItem(
+    "community-helper-daily-impact",
+    "Daily-life/admin impact prepared",
+    count > 0
+      ? `${count} daily-life, admin, or communication point${count === 1 ? "" : "s"} listed for review.`
+      : "No daily-life, admin, or communication impact has been prepared yet.",
+    count > 0 ? "complete" : "missing",
+    "result",
+    "This organises information only. It does not assess care needs.",
+  );
+};
+
+const buildCommunityHelperKeyFactsItem = (pack: CommunityHelperPack): CaseProgressItem =>
+  buildItem(
+    "community-helper-key-facts",
+    "Key facts to check prepared",
+    pack.keyFactsToCheck.length > 0
+      ? `${pack.keyFactsToCheck.length} key fact${pack.keyFactsToCheck.length === 1 ? "" : "s"} listed to check against documents or memory.`
+      : "No key facts have been prepared yet.",
+    pack.keyFactsToCheck.length > 0 ? "complete" : "missing",
+    "result",
+    "Check facts against the original letters, notes, or documents.",
+  );
+
+const buildCommunityHelperEvidenceChecklistItem = (pack: CommunityHelperPack): CaseProgressItem =>
+  buildItem(
+    "community-helper-evidence-context",
+    "Evidence/context checklist prepared",
+    pack.evidenceToGather.length > 0
+      ? `${pack.evidenceToGather.length} evidence or context item${pack.evidenceToGather.length === 1 ? "" : "s"} listed to gather or check.`
+      : "No evidence or context checklist has been prepared yet.",
+    pack.evidenceToGather.length > 0 ? "complete" : "missing",
+    "result",
+    "This is a checklist only. It does not prove what happened.",
+  );
+
+const buildCommunityHelperQuestionsItem = (pack: CommunityHelperPack): CaseProgressItem =>
+  buildItem(
+    "community-helper-questions-prepared",
+    "Questions prepared",
+    pack.questionsToAsk.length > 0
+      ? `${pack.questionsToAsk.length} question${pack.questionsToAsk.length === 1 ? "" : "s"} prepared for review.`
+      : "No questions have been prepared yet.",
+    pack.questionsToAsk.length > 0 ? "complete" : "missing",
+    "result",
+    "Questions are preparation material. You decide whether to use or share them.",
+  );
+
+const buildCommunityHelperConsentControlItem = (pack: CommunityHelperPack): CaseProgressItem =>
+  buildItem(
+    "community-helper-consent-control",
+    "Consent and control notes to review",
+    pack.consentAndControlNotes.length > 0
+      ? "Consent and control notes are prepared. Review them before anything is saved, shared, or discussed with someone else."
+      : "No consent and control notes have been prepared yet.",
+    pack.consentAndControlNotes.length > 0 ? "partial" : "missing",
+    "user",
+    "Keep the person involved where possible. AdminAvenger does not give authority to act for someone.",
+  );
+
+const buildCommunityHelperSupportRouteItem = (pack: CommunityHelperPack): CaseProgressItem =>
+  buildItem(
+    "community-helper-support-route",
+    "Suitable person or professional route identified",
+    pack.signposting.length > 0 ? communityHelperSignpostNote : "No suitable person or professional route has been identified yet.",
+    pack.signposting.length > 0 ? "partial" : "missing",
+    "user",
+    "Ask a suitable human if the situation is serious, urgent, unclear, or affects safety, money, housing, health, or care.",
+  );
+
+const buildCommunityHelperUrgentItem = (): CaseProgressItem =>
+  buildItem(
+    "community-helper-urgent-route",
+    "Urgent support route reviewed",
+    "If someone may be in immediate danger, contact emergency services or the relevant local safeguarding service. AdminAvenger cannot decide safeguarding concerns.",
+    "missing",
+    "user",
+    "This is not a safeguarding decision.",
+  );
+
+const buildCommunityHelperFinancialFactsItem = (): CaseProgressItem =>
+  buildItem(
+    "community-helper-financial-facts",
+    "Financial admin facts separated from assumptions",
+    "Write down only what has been observed, dates, letters, messages, and account records if appropriate. This does not decide wrongdoing or missing money.",
+    "partial",
+    "user",
+    "Keep this factual and ask a suitable trusted person or professional if you are unsure.",
+  );
+
+const buildCommunityHelperItems = (input: BuildCaseProgressInput): CaseProgressItem[] => {
+  const { resultViewModel, communityHelperPack } = input;
+
+  if (!communityHelperPack) {
+    return buildGenericItems(input);
+  }
+
+  const items: CaseProgressItem[] = [
+    buildOriginalSourceItem("Original message, letter, or notes available"),
+    buildCommunityHelperSituationItem(communityHelperPack),
+    buildCommunityHelperDailyImpactItem(communityHelperPack),
+    buildCommunityHelperKeyFactsItem(communityHelperPack),
+    buildCommunityHelperEvidenceChecklistItem(communityHelperPack),
+    buildCommunityHelperQuestionsItem(communityHelperPack),
+    buildCommunityHelperConsentControlItem(communityHelperPack),
+    buildCommunityHelperSupportRouteItem(communityHelperPack),
+  ];
+
+  if (communityHelperUrgentTypes.has(communityHelperPack.situationType)) {
+    items.push(buildCommunityHelperUrgentItem());
+  }
+
+  if (communityHelperFinancialConcernTypes.has(communityHelperPack.situationType)) {
+    items.push(buildCommunityHelperFinancialFactsItem());
+  }
+
+  items.push(
+    buildDraftReviewedItem(resultViewModel),
+    buildAdviserPackItem(input.adviserExportPack),
+    buildTrustedCheckItem(communityHelperSignpostNote),
+  );
+
+  return items;
+};
+
 // --- Family-specific checklists ---------------------------------------------
 
 const buildPipDecisionItems = (input: BuildCaseProgressInput): CaseProgressItem[] => {
@@ -679,6 +837,7 @@ const familyBuilders: Record<CaseProgressFamily, (input: BuildCaseProgressInput)
   benefits_general: buildBenefitsGeneralItems,
   legal_debt: buildLegalDebtItems,
   workplace: buildWorkplaceItems,
+  community_helper: buildCommunityHelperItems,
   unknown: buildUnknownItems,
   generic: buildGenericItems,
 };
@@ -686,7 +845,7 @@ const familyBuilders: Record<CaseProgressFamily, (input: BuildCaseProgressInput)
 // --- Public API --------------------------------------------------------------
 
 export const buildCaseProgress = (input: BuildCaseProgressInput): CaseProgressSummary => {
-  const family = detectFamily(input.decisionResult, input.workplaceSupportPack);
+  const family = detectFamily(input.decisionResult, input.workplaceSupportPack, input.communityHelperPack);
   const items = familyBuilders[family](input);
 
   const completeCount = items.filter((entry) => entry.status === "complete").length;

@@ -14,7 +14,11 @@ import {
 } from "../lib/adviserExportPack";
 import { downloadAdviserExportMarkdown } from "../lib/adviserExportDownload";
 import { buildBenefitsActionPack } from "../lib/benefitsActionPack";
-import { buildCommunityHelperPack, type CommunityHelperPack } from "../lib/communityHelperPack";
+import {
+  buildCommunityHelperPack,
+  type CommunityHelperPack,
+  type CommunityHelperRole,
+} from "../lib/communityHelperPack";
 import { communityHelperDemoScenarios, type CommunityHelperDemoScenario } from "../lib/communityHelperDemoScenarios";
 import {
   demoScenarios,
@@ -101,6 +105,31 @@ type CommunityDemoResult = {
   adviserExportPack: ReturnType<typeof buildAdviserExportPack>;
 };
 
+// Community Helper Controlled Intake v1 - a second, separate, and
+// explicitly opt-in way to prepare a Community Helper pack: from text a
+// person chooses to type or paste themselves, instead of a fixed synthetic
+// scenario. Still reachable only through this same gated Demo/tour
+// community area (never from HomeView's normal "Check a message" flow),
+// still manual text only (no file, photo, camera, or OCR control anywhere
+// in this panel), and still only ever builds a pack when the person
+// explicitly clicks "Prepare community support notes" - never
+// automatically and never on every keystroke. See
+// docs/product/community-helper-controlled-intake-v1.md.
+type ControlledIntakeResult = {
+  communityHelperPack: CommunityHelperPack;
+  resultViewModel: ResultViewModel;
+  adviserExportPack: ReturnType<typeof buildAdviserExportPack>;
+};
+
+const communityHelperControlledIntakeRoleOptions: Array<{
+  value: CommunityHelperRole;
+  label: string;
+}> = [
+  { value: "for_myself", label: "For myself" },
+  { value: "helping_someone", label: "Helping someone else" },
+  { value: "supporting_people_at_work", label: "Supporting people through my work" },
+];
+
 export function DemoTourView({
   result,
   activeDemoScenarioId,
@@ -114,6 +143,9 @@ export function DemoTourView({
   const [selectedScenarioId, setSelectedScenarioId] = useState(standardDemoScenarios[0]?.id ?? "");
   const [workplaceDemoResult, setWorkplaceDemoResult] = useState<WorkplaceDemoResult>();
   const [communityDemoResult, setCommunityDemoResult] = useState<CommunityDemoResult>();
+  const [controlledIntakeText, setControlledIntakeText] = useState("");
+  const [controlledIntakeRole, setControlledIntakeRole] = useState<CommunityHelperRole>("helping_someone");
+  const [controlledIntakeResult, setControlledIntakeResult] = useState<ControlledIntakeResult>();
   const [showSupportingDetail, setShowSupportingDetail] = useState(false);
   const selectedScenario =
     standardDemoScenarios.find((scenario) => scenario.id === selectedScenarioId) ??
@@ -160,20 +192,35 @@ export function DemoTourView({
         })
       : undefined;
   const workplaceSupportPack = workplaceDemoResult?.workplaceSupportPack;
-  const communityHelperPack = communityDemoResult?.communityHelperPack;
+  const communityHelperPack =
+    communityDemoResult?.communityHelperPack ?? controlledIntakeResult?.communityHelperPack;
   const activeCommunityScenario = communityDemoResult
     ? communityHelperDemoScenarios.find((scenario) => scenario.id === communityDemoResult.scenarioId)
     : undefined;
+  // Community Helper Controlled Intake v1 - true only once the user has
+  // explicitly clicked "Prepare community support notes" and no synthetic
+  // demo scenario result is currently showing. Used only to choose result
+  // banner wording ("Controlled beta" vs "Synthetic demo") - it never
+  // changes which builders run or what data is shown.
+  const isControlledIntakeResultActive = Boolean(controlledIntakeResult) && !communityDemoResult;
   const resultViewModel =
-    workplaceDemoResult?.resultViewModel ?? communityDemoResult?.resultViewModel ?? standardResultViewModel;
+    workplaceDemoResult?.resultViewModel ??
+    communityDemoResult?.resultViewModel ??
+    controlledIntakeResult?.resultViewModel ??
+    standardResultViewModel;
   const adviserExportPack =
-    workplaceDemoResult?.adviserExportPack ?? communityDemoResult?.adviserExportPack ?? standardAdviserExportPack;
+    workplaceDemoResult?.adviserExportPack ??
+    communityDemoResult?.adviserExportPack ??
+    controlledIntakeResult?.adviserExportPack ??
+    standardAdviserExportPack;
   const restartAction: ResultCaseSheetAction = {
     label: "Try another demo",
     onClick: () => {
       onClearResult();
       setWorkplaceDemoResult(undefined);
       setCommunityDemoResult(undefined);
+      setControlledIntakeResult(undefined);
+      setControlledIntakeText("");
       onActiveDemoScenarioChange(undefined);
       setShowSupportingDetail(false);
     },
@@ -257,6 +304,57 @@ export function DemoTourView({
       adviserExportPack,
     });
     onActiveDemoScenarioChange(scenario.id);
+  };
+
+  // Community Helper Controlled Intake v1 - the only place in this file
+  // that builds a Community Helper pack from text the user has typed or
+  // pasted themselves, rather than a fixed synthetic scenario. Only ever
+  // runs when the user explicitly clicks "Prepare community support notes"
+  // below - never on every keystroke, never automatically on page load or
+  // navigation. Exactly mirrors handleRunCommunityDemo's own pipeline
+  // (buildCommunityHelperPack -> buildResultViewModel ->
+  // buildAdviserExportPack): nothing in this function calls
+  // analyseAdminItem, touches the decision-engine classifier, or reads
+  // OCR, a photo, or an uploaded/attached file - the only input is the
+  // plain text already sitting in the controlledIntakeText state below.
+  const handleRunControlledIntake = () => {
+    const text = controlledIntakeText.trim();
+
+    if (!text || isChecking) {
+      return;
+    }
+
+    onClearResult();
+    setWorkplaceDemoResult(undefined);
+    setCommunityDemoResult(undefined);
+    setShowSupportingDetail(false);
+
+    const communityHelperPack = buildCommunityHelperPack({
+      text,
+      role: controlledIntakeRole,
+    });
+    const resultViewModel = buildResultViewModel({ communityHelperPack });
+    const adviserExportPack = buildAdviserExportPack({
+      resultViewModel,
+      communityHelperPack,
+    });
+
+    setControlledIntakeResult({ communityHelperPack, resultViewModel, adviserExportPack });
+    onActiveDemoScenarioChange(undefined);
+  };
+
+  // "Clear" - resets the pasted text and, if a controlled intake result is
+  // currently showing, clears that result too. Never clears a synthetic
+  // demo or workplace demo result - each entry point only ever clears its
+  // own state.
+  const handleClearControlledIntake = () => {
+    setControlledIntakeText("");
+    setControlledIntakeResult(undefined);
+
+    if (isControlledIntakeResultActive) {
+      onClearResult();
+      setShowSupportingDetail(false);
+    }
   };
 
   const handleDownloadAdviserPack = () => {
@@ -450,22 +548,110 @@ export function DemoTourView({
         </div>
       </section>
 
+      <section className="rounded-lg border border-violet-300/20 bg-violet-300/[0.05] p-4 sm:p-5">
+        {/*
+          Community Helper Controlled Intake v1 - a second, separate, and
+          explicitly opt-in way to prepare a Community Helper pack: from
+          text a person chooses to type or paste themselves, not a fixed
+          synthetic scenario. Still reachable only through this same gated
+          Demo/tour community area (never from HomeView's normal "Check a
+          message" flow), still manual text only (no file, photo, camera,
+          or OCR control anywhere in this panel), and still only ever runs
+          when the person explicitly clicks "Prepare community support
+          notes" below.
+        */}
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h3 className="text-lg font-bold text-white">
+              Prepare notes from text I choose to paste
+            </h3>
+            <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-300">
+              Community support preparation. Manual text only - there is no photo, file, or document upload here.
+            </p>
+          </div>
+          <span className="rounded-full border border-violet-300/25 bg-slate-950/60 px-3 py-1 text-xs font-bold uppercase tracking-wider text-violet-100">
+            Controlled beta
+          </span>
+        </div>
+
+        <div className="mt-4 rounded-lg border border-white/10 bg-slate-950/45 p-3 text-sm leading-6 text-violet-50/90">
+          <p>Preparation only. AdminAvenger helps prepare. You stay in control.</p>
+          <p className="mt-2">This is not legal, care, medical, benefits, or safeguarding advice.</p>
+          <p className="mt-2">
+            AdminAvenger cannot decide care needs, safeguarding, diagnosis, capacity, eligibility, equipment, or adaptations.
+          </p>
+          <p className="mt-2 text-amber-100">If urgent or someone may be unsafe, contact an appropriate person or service directly.</p>
+        </div>
+
+        <fieldset className="mt-4">
+          <legend className="text-sm font-semibold text-slate-200">Who is this for?</legend>
+          <div className="mt-2 flex flex-wrap gap-3">
+            {communityHelperControlledIntakeRoleOptions.map((option) => (
+              <label
+                key={option.value}
+                className="flex items-center gap-2 rounded-lg border border-white/10 bg-slate-950/45 px-3 py-2 text-sm text-slate-200"
+              >
+                <input
+                  type="radio"
+                  name="controlled-intake-role"
+                  value={option.value}
+                  checked={controlledIntakeRole === option.value}
+                  onChange={() => setControlledIntakeRole(option.value)}
+                />
+                {option.label}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+
+        <label className="mt-4 block text-sm font-semibold text-slate-200" htmlFor="controlled-intake-text">
+          Text to prepare from
+          <textarea
+            id="controlled-intake-text"
+            value={controlledIntakeText}
+            onChange={(event) => setControlledIntakeText(event.target.value)}
+            rows={6}
+            placeholder="Paste or type text here. Nothing is sent, saved, or shared until you choose to."
+            className="mt-2 w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-3 text-sm text-white outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-300/20"
+          />
+        </label>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={handleRunControlledIntake}
+            disabled={!controlledIntakeText.trim() || isChecking}
+            className="min-h-11 rounded-lg border border-violet-300 bg-violet-300 px-4 py-3 text-sm font-bold text-slate-950 transition hover:bg-violet-200 focus:outline-none focus:ring-2 focus:ring-violet-200 focus:ring-offset-2 focus:ring-offset-slate-950 disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-700 disabled:text-slate-400"
+          >
+            Prepare community support notes
+          </button>
+          <button
+            type="button"
+            onClick={handleClearControlledIntake}
+            className="min-h-11 rounded-lg border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-slate-200 transition hover:border-white/20 hover:text-white focus:outline-none focus:ring-2 focus:ring-violet-300/40"
+          >
+            Clear
+          </button>
+        </div>
+      </section>
+
       {resultViewModel && communityHelperPack ? (
         <section className="rounded-lg border border-violet-300/20 bg-violet-300/[0.07] p-4">
           <div className="flex flex-wrap items-center gap-2">
             <span className="rounded-full border border-violet-300/25 bg-slate-950/60 px-3 py-1 text-xs font-bold uppercase tracking-wider text-violet-100">
-              Synthetic demo
+              {isControlledIntakeResultActive ? "Controlled beta" : "Synthetic demo"}
             </span>
             <span className="text-sm font-semibold text-white">
-              {activeCommunityScenario?.title}
+              {isControlledIntakeResultActive ? "Prepared from text you pasted" : activeCommunityScenario?.title}
             </span>
           </div>
           <p className="mt-2 text-sm leading-6 text-violet-50/85">
-            This result was created from a synthetic example, not a real
-            person or document.
+            {isControlledIntakeResultActive
+              ? "This result was prepared from text you chose to paste, in this browser only. Nothing has been sent, saved, or shared."
+              : "This result was created from a synthetic example, not a real person or document."}
           </p>
           <div className="mt-3 rounded-lg border border-white/10 bg-slate-950/45 p-3 text-sm leading-6 text-violet-50">
-            <p>This is preparation only, not a professional assessment.</p>
+            <p>Community support preparation. This is preparation only, not a professional assessment.</p>
             <p>
               AdminAvenger cannot decide care needs, safeguarding, diagnosis,
               capacity, eligibility, equipment, or adaptations.

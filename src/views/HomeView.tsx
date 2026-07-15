@@ -65,6 +65,7 @@ import {
   buildAttachedFilesCombinedText,
   combineTypedTextWithAttachments,
   createAttachedFile,
+  getFilesFromDroppedDataTransfer,
   hasReadableAttachedText,
   type AttachedFile,
 } from "../lib/documentAttachmentIntake";
@@ -1434,7 +1435,7 @@ export function HomeView({
   // attachment pipeline as a chosen/captured file.
   const handleAttachmentDrop = (event: DragEvent<HTMLDivElement>) => {
     setIsDraggingOverAttachment(false);
-    const droppedFiles = event.dataTransfer?.files ? Array.from(event.dataTransfer.files) : [];
+    const droppedFiles = getFilesFromDroppedDataTransfer(event.dataTransfer);
     void handleAttachmentFilesSelected(droppedFiles);
   };
 

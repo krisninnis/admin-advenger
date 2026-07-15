@@ -68,6 +68,12 @@ describe("Document Attachment Intake v1 - HomeView wiring", () => {
     expect(homeViewSource).toContain("pdf_extract");
     expect(homeViewSource).toContain("handleAttachmentFilesSelected([file])");
   });
+
+  it("routes dropped files through the same local attachment pipeline, including DOCX", () => {
+    expect(homeViewSource).toContain("getFilesFromDroppedDataTransfer(event.dataTransfer)");
+    expect(homeViewSource).toContain("handleAttachmentFilesSelected(droppedFiles)");
+    expect(homeViewSource).toContain("extractDocxText(entry.file)");
+  });
 });
 
 describe("Document Attachment Intake v1 - DocumentAttachmentArea structure", () => {
@@ -165,7 +171,7 @@ describe("Document Attachment Intake v1 - required visible copy", () => {
     expect(ATTACHMENT_HEADING).toBe("Attach document photos");
     expect(ATTACHMENT_CHOOSE_BUTTON_LABEL).toBe("Choose photos or files");
     expect(ATTACHMENT_TAKE_PHOTO_BUTTON_LABEL).toBe("Take photo");
-    expect(ATTACHMENT_DRAG_DROP_LABEL).toBe("Drag document photos or text files here");
+    expect(ATTACHMENT_DRAG_DROP_LABEL).toBe("Drag document photos, text files, Word documents, or PDFs here");
     expect(ATTACHMENT_LOCAL_ONLY_NOTE).toBe(
       "Files are read in this browser. AdminAvenger does not upload them or send them anywhere.",
     );

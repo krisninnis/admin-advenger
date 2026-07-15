@@ -12,6 +12,7 @@ import {
   classifyAttachedFileKind,
   combineTypedTextWithAttachments,
   createAttachedFile,
+  getFilesFromDroppedDataTransfer,
   hasReadableAttachedText,
   type AttachedFile,
 } from "../documentAttachmentIntake";
@@ -85,6 +86,42 @@ describe("createAttachedFile", () => {
     const second = createAttachedFile(makeFile("b.txt"));
 
     expect(first.id).not.toBe(second.id);
+  });
+});
+
+describe("getFilesFromDroppedDataTransfer", () => {
+  it("keeps a DOCX dropped through dataTransfer.files so it reaches local document intake", () => {
+    const docx = makeFile(
+      "contract.docx",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    );
+
+    expect(getFilesFromDroppedDataTransfer({ files: [docx] })).toEqual([docx]);
+    expect(classifyAttachedFileKind(getFilesFromDroppedDataTransfer({ files: [docx] })[0])).toBe("docx");
+  });
+
+  it("falls back to dataTransfer.items for DOCX drag/drop sources with an empty files list", () => {
+    const docx = makeFile("contract.docx");
+    const item = {
+      kind: "file",
+      getAsFile: () => docx,
+    } as unknown as DataTransferItem;
+
+    expect(getFilesFromDroppedDataTransfer({ files: [], items: [item] })).toEqual([docx]);
+    expect(createAttachedFile(getFilesFromDroppedDataTransfer({ files: [], items: [item] })[0], "drop-docx")).toMatchObject({
+      kind: "docx",
+      status: "waiting",
+    });
+  });
+
+  it("ignores non-file drag/drop items and safely returns an empty list", () => {
+    const item = {
+      kind: "string",
+      getAsFile: () => null,
+    } as unknown as DataTransferItem;
+
+    expect(getFilesFromDroppedDataTransfer({ files: [], items: [item] })).toEqual([]);
+    expect(getFilesFromDroppedDataTransfer(null)).toEqual([]);
   });
 });
 
@@ -270,7 +307,7 @@ describe("Document Attachment Intake v1 copy", () => {
     expect(ATTACHMENT_HEADING).toBe("Attach document photos");
     expect(ATTACHMENT_CHOOSE_BUTTON_LABEL).toBe("Choose photos or files");
     expect(ATTACHMENT_TAKE_PHOTO_BUTTON_LABEL).toBe("Take photo");
-    expect(ATTACHMENT_DRAG_DROP_LABEL).toBe("Drag document photos or text files here");
+    expect(ATTACHMENT_DRAG_DROP_LABEL).toBe("Drag document photos, text files, Word documents, or PDFs here");
     expect(ATTACHMENT_LOCAL_ONLY_NOTE).toContain("does not upload them");
     expect(ATTACHMENT_OCR_CAUTION_NOTE.toLowerCase()).toContain("check");
     expect(ATTACHMENT_OCR_CAUTION_NOTE.toLowerCase()).toContain("file text extraction");

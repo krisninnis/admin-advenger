@@ -268,7 +268,9 @@ describe("Community Helper Controlled Intake v1", () => {
 
     expect(panelSource.length).toBeGreaterThan(0);
     expect(panelSource).not.toMatch(/type="file"|accept=|capture=|<input\s+type="file"/i);
-    expect(panelSource).not.toMatch(/readTextFromImage|extractPdfText|extractDocxText|PhotoCapturePanel|DocumentAttachmentArea/);
+    expect(panelSource).not.toMatch(
+      /readTextFromImage|extractPdfText|extractDocxText|PhotoCapturePanel|DocumentAttachmentArea|onDrop|getFilesFromDroppedDataTransfer|drag/i,
+    );
     expect(panelSource).toContain("<textarea");
   });
 
@@ -448,7 +450,7 @@ describe("Community Helper Controlled Intake v1", () => {
 
   it("does not touch OCR/file/photo/document intake modules or components anywhere in DemoTourView.tsx", () => {
     expect(demoTourViewSource).not.toMatch(
-      /readTextFromImage|extractPdfText|extractDocxText|PhotoCapturePanel|DocumentAttachmentArea|photoOcr|photoCapture|documentAttachmentIntake|documentFileText/,
+      /readTextFromImage|extractPdfText|extractDocxText|PhotoCapturePanel|DocumentAttachmentArea|photoOcr|photoCapture|documentAttachmentIntake|documentFileText|getFilesFromDroppedDataTransfer/,
     );
   });
 });

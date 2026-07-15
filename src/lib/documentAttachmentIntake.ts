@@ -108,6 +108,32 @@ export const createAttachedFile = (file: File, id: string = createAttachmentId()
   };
 };
 
+type DroppedFileDataTransfer = {
+  files?: FileList | File[] | null;
+  items?: DataTransferItemList | DataTransferItem[] | null;
+};
+
+// Drag/drop bugfix v1 - some browsers/desktop drag sources expose a dropped
+// DOCX through dataTransfer.items even when dataTransfer.files is empty.
+// Normalise both shapes into plain File objects, then HomeView can feed them
+// into the exact same local attachment path as the file picker.
+export const getFilesFromDroppedDataTransfer = (
+  dataTransfer?: DroppedFileDataTransfer | null,
+): File[] => {
+  const files = dataTransfer?.files ? Array.from(dataTransfer.files) : [];
+
+  if (files.length > 0) {
+    return files;
+  }
+
+  const items = dataTransfer?.items ? Array.from(dataTransfer.items) : [];
+
+  return items
+    .filter((item) => item.kind === "file")
+    .map((item) => item.getAsFile())
+    .filter((file): file is File => Boolean(file));
+};
+
 // Combines every successfully read attachment's text, in the order the files
 // were attached, using the same combineOcrTexts helper already used for the
 // "Add close-up photo" flow. Images are labelled "Document photo 1",
@@ -196,7 +222,7 @@ export const ATTACHMENT_TAKE_PHOTO_BUTTON_LABEL = "Take photo";
 export const ATTACHMENT_TAKE_PHOTO_HELPER =
   "On supported phones, this opens the camera. You can still choose an existing photo instead.";
 
-export const ATTACHMENT_DRAG_DROP_LABEL = "Drag document photos or text files here";
+export const ATTACHMENT_DRAG_DROP_LABEL = "Drag document photos, text files, Word documents, or PDFs here";
 
 export const ATTACHMENT_DRAG_ACTIVE_LABEL = "Drop your files to attach them";
 

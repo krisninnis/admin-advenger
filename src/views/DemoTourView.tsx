@@ -215,7 +215,7 @@ export function DemoTourView({
   // Community Helper Controlled Intake v1 - true only once the user has
   // explicitly clicked "Prepare community support notes" and no synthetic
   // demo scenario result is currently showing. Used only to choose result
-  // banner wording ("Controlled beta" vs "Synthetic demo") - it never
+  // banner wording ("Public beta" vs "Synthetic demo") - it never
   // changes which builders run or what data is shown.
   const isControlledIntakeResultActive = Boolean(controlledIntakeResult) && !communityDemoResult;
   const resultViewModel =
@@ -587,11 +587,12 @@ export function DemoTourView({
             </p>
           </div>
           <span className="rounded-full border border-violet-300/25 bg-slate-950/60 px-3 py-1 text-xs font-bold uppercase tracking-wider text-violet-100">
-            Controlled beta
+            Public beta
           </span>
         </div>
 
         <div className="mt-4 rounded-lg border border-white/10 bg-slate-950/45 p-4 text-sm leading-6 text-violet-50/90">
+          <p className="font-semibold text-white">Controlled public beta. Manual text only.</p>
           <p>Preparation only. AdminAvenger helps prepare. You stay in control.</p>
           <p className="mt-2">Manual text only. Nothing is sent, saved, or shared automatically.</p>
           <p className="mt-2">This is not legal, care, medical, benefits, or safeguarding advice.</p>
@@ -681,7 +682,7 @@ export function DemoTourView({
         <section className="rounded-lg border border-violet-300/20 bg-violet-300/[0.07] p-4">
           <div className="flex flex-wrap items-center gap-2">
             <span className="rounded-full border border-violet-300/25 bg-slate-950/60 px-3 py-1 text-xs font-bold uppercase tracking-wider text-violet-100">
-              {isControlledIntakeResultActive ? "Controlled beta" : "Synthetic demo"}
+              {isControlledIntakeResultActive ? "Public beta" : "Synthetic demo"}
             </span>
             <span className="text-sm font-semibold text-white">
               {isControlledIntakeResultActive ? "Prepared from text you pasted" : activeCommunityScenario?.title}
@@ -689,7 +690,7 @@ export function DemoTourView({
           </div>
           <p className="mt-2 text-sm leading-6 text-violet-50/85">
             {isControlledIntakeResultActive
-              ? "This result was prepared from text you chose to paste, in this browser only. Nothing has been sent, saved, or shared."
+              ? "Public beta result prepared from text you chose to paste, in this browser only. Manual text only. Nothing has been sent, saved, or shared."
               : "This result was created from a synthetic example, not a real person or document."}
           </p>
           <div className="mt-3 rounded-lg border border-white/10 bg-slate-950/45 p-3 text-sm leading-6 text-violet-50">

@@ -145,9 +145,9 @@ export const assessCommunityHelperPublicBetaReadiness = (
 
   // 1. Remains secondary/gated from Home.
   const homeHasGatedEntry =
-    homeViewSource.includes("Beta / demo") &&
+    homeViewSource.includes("Controlled public beta") &&
     homeViewSource.includes("Community support prep") &&
-    homeViewSource.includes("Open the demo");
+    homeViewSource.includes("Open controlled beta");
 
   checks.push({
     id: "home_gated_secondary",
@@ -156,7 +156,7 @@ export const assessCommunityHelperPublicBetaReadiness = (
       "HomeView shows a small, clearly labelled beta/demo entry rather than making Community Helper the default intake.",
     status: homeHasGatedEntry ? "pass" : "fail",
     detail: homeHasGatedEntry
-      ? "Gated 'Community support prep' beta/demo card found on HomeView."
+      ? "Gated 'Community support prep' controlled public beta card found on HomeView."
       : "Gated Community Helper card not found on HomeView.",
   });
 

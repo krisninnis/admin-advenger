@@ -26,7 +26,7 @@ const forbiddenCommunityHelperPhrases = [
 
 describe("HomeView gated community helper beta", () => {
   it("renders an explicit Community support prep beta/demo entry with preparation-only helper copy", () => {
-    expect(homeViewSource).toContain("Beta / demo");
+    expect(homeViewSource).toContain("Controlled public beta");
     expect(homeViewSource).toContain("Community support prep");
     expect(homeViewSource).toContain(
       "For carers, support workers, family helpers, or trusted people preparing",
@@ -34,7 +34,8 @@ describe("HomeView gated community helper beta", () => {
     expect(homeViewSource).toContain(
       "Preparation only. AdminAvenger helps prepare. You stay in control.",
     );
-    expect(homeViewSource).toContain("Open the demo");
+    expect(homeViewSource).toContain("Open controlled beta");
+    expect(homeViewSource).toContain("It does not analyse the message above");
   });
 
   it("only navigates to the existing Demo/tour community helper section - it does not build a pack itself", () => {

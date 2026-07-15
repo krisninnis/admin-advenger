@@ -133,7 +133,8 @@ const buildControlledIntakeResult = (
 describe("Community Helper Controlled Intake v1", () => {
   it("adds an explicit, clearly-labelled controlled intake entry on the gated Demo/tour page", () => {
     expect(demoTourViewSource).toContain("Prepare notes from text I choose to paste");
-    expect(demoTourViewSource).toContain("Controlled beta");
+    expect(demoTourViewSource).toContain("Public beta");
+    expect(demoTourViewSource).toContain("Controlled public beta. Manual text only.");
     expect(demoTourViewSource).toContain("Manual text only");
     expect(demoTourViewSource).toContain("Community support prep");
     expect(demoTourViewSource).toContain("Preparation only");
@@ -287,12 +288,12 @@ describe("Community Helper Controlled Intake v1", () => {
     expectNoForbiddenControlledIntakeWording(normalised);
   });
 
-  it("labels a controlled-intake result as 'Controlled beta', distinct from the 'Synthetic demo' scenario label", () => {
+  it("labels a controlled-intake result as 'Public beta', distinct from the 'Synthetic demo' scenario label", () => {
     expect(demoTourViewSource).toContain("isControlledIntakeResultActive");
-    expect(demoTourViewSource).toContain('"Controlled beta" : "Synthetic demo"');
+    expect(demoTourViewSource).toContain('"Public beta" : "Synthetic demo"');
     expect(demoTourViewSource).toContain("Prepared from text you pasted");
     expect(demoTourViewSource).toContain(
-      "This result was prepared from text you chose to paste, in this browser only. Nothing has been sent, saved, or shared.",
+      "Public beta result prepared from text you chose to paste, in this browser only. Manual text only. Nothing has been sent, saved, or shared.",
     );
   });
 

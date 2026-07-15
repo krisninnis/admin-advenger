@@ -66,9 +66,10 @@ describe("Community Helper Public Beta Prep v1 readiness", () => {
     expect(report.totalCount).toBe(10);
   });
 
-  it("includes the Public beta is being prepared carefully wording on the gated Home card", () => {
-    expect(homeViewSource).toContain("Public beta is being prepared carefully.");
-    expect(homeViewSource).toContain("This demo uses synthetic examples");
+  it("includes controlled public beta wording on the gated Home card", () => {
+    expect(homeViewSource).toContain("Controlled public beta");
+    expect(homeViewSource).toContain("Open controlled beta");
+    expect(homeViewSource).toContain("It does not analyse the message above");
   });
 
   it("keeps Community Helper secondary/gated from Home", () => {
@@ -184,8 +185,8 @@ describe("Community Helper Public Beta Prep v1 readiness", () => {
     // would pick up a real regression.
     const unsafeInput = {
       homeViewSource: homeViewSource.replace(
-        "Open the demo",
-        "Open the demo (risk score, you qualify)",
+        "Open controlled beta",
+        "Open controlled beta (risk score, you qualify)",
       ),
       demoTourViewSource,
     };

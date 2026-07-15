@@ -2452,7 +2452,7 @@ export function HomeView({
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-xs font-bold uppercase tracking-widest text-violet-300">
-              Beta / demo
+              Controlled public beta
             </p>
             <p className="mt-1 text-sm font-bold text-white">Community support prep</p>
             <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-400">
@@ -2460,8 +2460,8 @@ export function HomeView({
               notes. Preparation only. AdminAvenger helps prepare. You stay in control.
             </p>
             <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500">
-              Public beta is being prepared carefully. This demo uses synthetic examples
-              only.
+              Opens a gated manual-text beta. It does not analyse the message above
+              or connect to file, photo, or OCR intake.
             </p>
           </div>
           <button
@@ -2469,7 +2469,7 @@ export function HomeView({
             onClick={onOpenCommunityHelperDemo}
             className="min-h-10 shrink-0 rounded-lg border border-violet-300/40 bg-violet-300/10 px-4 py-2 text-sm font-bold text-violet-100 transition hover:border-violet-300/70 hover:bg-violet-300/20 focus:outline-none focus:ring-2 focus:ring-violet-300/40"
           >
-            Open the demo
+            Open controlled beta
           </button>
         </div>
       </section>

@@ -115,6 +115,31 @@ const getControlledIntakeResultBannerSource = () => {
   return start === -1 ? "" : demoTourViewSource.slice(start, end === -1 ? undefined : end);
 };
 
+const getControlledIntakeFeedbackPanelSource = () => {
+  const marker = "Help improve this beta";
+  const markerIndex = demoTourViewSource.indexOf(marker);
+  const start = markerIndex === -1 ? -1 : demoTourViewSource.lastIndexOf("<section", markerIndex);
+  const end = markerIndex === -1 ? -1 : demoTourViewSource.indexOf("</section>", markerIndex);
+
+  return start === -1 ? "" : demoTourViewSource.slice(start, end === -1 ? undefined : end);
+};
+
+const getControlledIntakeFeedbackSaveHandlerSource = () => {
+  const match = demoTourViewSource.match(
+    /const handleSaveControlledIntakeFeedback = \(\) => \{[\s\S]*?setControlledIntakeFeedbackSaved\(true\);\s*\};/,
+  );
+
+  return match?.[0] ?? "";
+};
+
+const getControlledIntakeFeedbackClearHandlerSource = () => {
+  const match = demoTourViewSource.match(
+    /const handleClearControlledIntakeFeedback = \(\) => \{[\s\S]*?setControlledIntakeFeedbackSaved\(false\);\s*\};/,
+  );
+
+  return match?.[0] ?? "";
+};
+
 const getHomeCommunityHelperCardSource = () => {
   const marker = "Community Helper Home Gated v1";
   const markerIndex = homeViewSource.lastIndexOf(marker);
@@ -286,6 +311,61 @@ describe("Community Helper Controlled Intake v1", () => {
       expect(source, label).not.toHaveLength(0);
       expectNoForbiddenControlledIntakeWording(source);
     }
+  });
+
+  it("shows the feedback panel only after a controlled Community Helper result", () => {
+    const feedbackPanelSource = getControlledIntakeFeedbackPanelSource();
+    const resultBannerIndex = demoTourViewSource.indexOf("Public beta result prepared");
+    const feedbackIndex = demoTourViewSource.indexOf("Help improve this beta");
+
+    expect(feedbackPanelSource).toContain("Help improve this beta");
+    expect(feedbackPanelSource).toContain("This feedback stays on this device");
+    expect(feedbackPanelSource).toContain("Was this useful?");
+    expect(feedbackPanelSource).toContain("What was unclear or missing?");
+    expect(feedbackPanelSource).toContain("Save feedback locally");
+    expect(feedbackPanelSource).toContain("Clear feedback");
+    expect(demoTourViewSource).toContain("{isControlledIntakeResultActive ? (");
+    expect(feedbackIndex).toBeGreaterThan(resultBannerIndex);
+  });
+
+  it("keeps feedback local-only with no analytics, network, API, or storage call", () => {
+    const feedbackPanelSource = getControlledIntakeFeedbackPanelSource();
+    const saveHandlerSource = getControlledIntakeFeedbackSaveHandlerSource();
+    const clearHandlerSource = getControlledIntakeFeedbackClearHandlerSource();
+    const feedbackSource = [feedbackPanelSource, saveHandlerSource, clearHandlerSource].join("\n");
+
+    expect(feedbackPanelSource).toContain("It is not analytics");
+    expect(feedbackPanelSource).toContain("AdminAvenger does not send it anywhere");
+    expect(saveHandlerSource).toContain("setControlledIntakeFeedbackSaved(true)");
+    expect(clearHandlerSource).toContain("setControlledIntakeFeedbackUsefulness(undefined)");
+    expect(clearHandlerSource).toContain('setControlledIntakeFeedbackText("")');
+    expect(clearHandlerSource).toContain("setControlledIntakeFeedbackSaved(false)");
+    expect(feedbackSource).not.toMatch(
+      /fetch|XMLHttpRequest|sendBeacon|navigator\.sendBeacon|localStorage|sessionStorage|\/api/i,
+    );
+  });
+
+  it("feedback choices and typing only update local feedback UI state", () => {
+    const feedbackPanelSource = getControlledIntakeFeedbackPanelSource();
+
+    expect(feedbackPanelSource).toContain("setControlledIntakeFeedbackUsefulness");
+    expect(feedbackPanelSource).toContain("setControlledIntakeFeedbackText");
+    expect(feedbackPanelSource).toContain("setControlledIntakeFeedbackSaved(false)");
+    expect(feedbackPanelSource).not.toContain("handleRunControlledIntake");
+    expect(feedbackPanelSource).not.toContain("buildCommunityHelperPack");
+    expect(feedbackPanelSource).not.toContain("onClearResult");
+    expect(feedbackPanelSource).not.toMatch(/analyseDecisionProblem|analyseAdminItem|decisionEngine|classifier/i);
+  });
+
+  it("keeps safety boundary wording visible in the feedback panel", () => {
+    const feedbackPanelSource = getControlledIntakeFeedbackPanelSource();
+
+    expect(feedbackPanelSource).toContain("Preparation only");
+    expect(feedbackPanelSource).toContain("Manual text only");
+    expect(feedbackPanelSource).toContain("AdminAvenger helps prepare. You stay in control.");
+    expect(feedbackPanelSource).toContain("Nothing is sent, saved, or shared automatically.");
+    expect(feedbackPanelSource).toContain("Not legal, care, medical, benefits, or safeguarding advice.");
+    expectNoForbiddenControlledIntakeWording(feedbackPanelSource);
   });
 
   it("builds a Community Helper output from ordinary pasted manual text, with preparation-only boundary wording", () => {

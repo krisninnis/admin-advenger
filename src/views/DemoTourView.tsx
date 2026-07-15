@@ -121,6 +121,8 @@ type ControlledIntakeResult = {
   adviserExportPack: ReturnType<typeof buildAdviserExportPack>;
 };
 
+type ControlledIntakeFeedbackUsefulness = "useful" | "partly_useful" | "not_useful";
+
 const communityHelperControlledIntakeRoleOptions: Array<{
   value: CommunityHelperRole;
   label: string;
@@ -161,6 +163,10 @@ export function DemoTourView({
   const [controlledIntakeText, setControlledIntakeText] = useState("");
   const [controlledIntakeRole, setControlledIntakeRole] = useState<CommunityHelperRole>("helping_someone");
   const [controlledIntakeResult, setControlledIntakeResult] = useState<ControlledIntakeResult>();
+  const [controlledIntakeFeedbackUsefulness, setControlledIntakeFeedbackUsefulness] =
+    useState<ControlledIntakeFeedbackUsefulness>();
+  const [controlledIntakeFeedbackText, setControlledIntakeFeedbackText] = useState("");
+  const [controlledIntakeFeedbackSaved, setControlledIntakeFeedbackSaved] = useState(false);
   const [showSupportingDetail, setShowSupportingDetail] = useState(false);
   const selectedScenario =
     standardDemoScenarios.find((scenario) => scenario.id === selectedScenarioId) ??
@@ -236,6 +242,9 @@ export function DemoTourView({
       setCommunityDemoResult(undefined);
       setControlledIntakeResult(undefined);
       setControlledIntakeText("");
+      setControlledIntakeFeedbackUsefulness(undefined);
+      setControlledIntakeFeedbackText("");
+      setControlledIntakeFeedbackSaved(false);
       onActiveDemoScenarioChange(undefined);
       setShowSupportingDetail(false);
     },
@@ -343,6 +352,9 @@ export function DemoTourView({
     setWorkplaceDemoResult(undefined);
     setCommunityDemoResult(undefined);
     setShowSupportingDetail(false);
+    setControlledIntakeFeedbackUsefulness(undefined);
+    setControlledIntakeFeedbackText("");
+    setControlledIntakeFeedbackSaved(false);
 
     const communityHelperPack = buildCommunityHelperPack({
       text,
@@ -365,11 +377,28 @@ export function DemoTourView({
   const handleClearControlledIntake = () => {
     setControlledIntakeText("");
     setControlledIntakeResult(undefined);
+    setControlledIntakeFeedbackUsefulness(undefined);
+    setControlledIntakeFeedbackText("");
+    setControlledIntakeFeedbackSaved(false);
 
     if (isControlledIntakeResultActive) {
       onClearResult();
       setShowSupportingDetail(false);
     }
+  };
+
+  // Community Helper usage feedback v1 - local UI state only. This does
+  // not call analytics, network, storage, classifier, OCR, or message
+  // sending paths. It only records whether this beta output felt useful
+  // inside the current browser session.
+  const handleSaveControlledIntakeFeedback = () => {
+    setControlledIntakeFeedbackSaved(true);
+  };
+
+  const handleClearControlledIntakeFeedback = () => {
+    setControlledIntakeFeedbackUsefulness(undefined);
+    setControlledIntakeFeedbackText("");
+    setControlledIntakeFeedbackSaved(false);
   };
 
   const handleDownloadAdviserPack = () => {
@@ -711,6 +740,96 @@ export function DemoTourView({
                 services or the relevant local safeguarding service.
                 AdminAvenger cannot decide safeguarding concerns.
               </p>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
+
+      {isControlledIntakeResultActive ? (
+        <section className="rounded-lg border border-white/10 bg-slate-900/85 p-4 shadow-lg shadow-slate-950/20 sm:p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-bold uppercase tracking-widest text-violet-200">
+                Public beta feedback
+              </p>
+              <h3 className="mt-1 text-lg font-bold text-white">Help improve this beta</h3>
+            </div>
+            <span className="rounded-full border border-violet-300/25 bg-violet-300/10 px-3 py-1 text-xs font-bold text-violet-100">
+              Local only
+            </span>
+          </div>
+          <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-300">
+            This feedback stays on this device unless you choose to copy or share it.
+            It is not analytics, and AdminAvenger does not send it anywhere.
+          </p>
+          <p className="mt-2 max-w-3xl text-xs leading-5 text-slate-400">
+            Preparation only. Manual text only. AdminAvenger helps prepare. You stay in control.
+            Nothing is sent, saved, or shared automatically. Not legal, care, medical, benefits, or safeguarding advice.
+          </p>
+
+          <fieldset className="mt-4">
+            <legend className="text-sm font-semibold text-slate-200">Was this useful?</legend>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {[
+                { value: "useful", label: "Useful" },
+                { value: "partly_useful", label: "Partly useful" },
+                { value: "not_useful", label: "Not useful" },
+              ].map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => {
+                    setControlledIntakeFeedbackUsefulness(
+                      option.value as ControlledIntakeFeedbackUsefulness,
+                    );
+                    setControlledIntakeFeedbackSaved(false);
+                  }}
+                  className={`min-h-10 rounded-full border px-3 py-2 text-xs font-bold transition focus:outline-none focus:ring-2 focus:ring-violet-300/40 ${
+                    controlledIntakeFeedbackUsefulness === option.value
+                      ? "border-violet-200 bg-violet-300 text-slate-950"
+                      : "border-white/10 bg-slate-950 text-slate-200 hover:border-violet-300/40 hover:text-white"
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </fieldset>
+
+          <label className="mt-4 block text-sm font-semibold text-slate-200" htmlFor="controlled-intake-feedback">
+            What was unclear or missing?
+            <textarea
+              id="controlled-intake-feedback"
+              value={controlledIntakeFeedbackText}
+              onChange={(event) => {
+                setControlledIntakeFeedbackText(event.target.value);
+                setControlledIntakeFeedbackSaved(false);
+              }}
+              rows={3}
+              placeholder="Optional: note what would make this output easier to use next time."
+              className="mt-2 w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-3 text-sm text-white outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-300/20"
+            />
+          </label>
+
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={handleSaveControlledIntakeFeedback}
+              className="min-h-10 rounded-lg border border-violet-300 bg-violet-300 px-4 py-2 text-sm font-bold text-slate-950 transition hover:bg-violet-200 focus:outline-none focus:ring-2 focus:ring-violet-200 focus:ring-offset-2 focus:ring-offset-slate-950"
+            >
+              Save feedback locally
+            </button>
+            <button
+              type="button"
+              onClick={handleClearControlledIntakeFeedback}
+              className="min-h-10 rounded-lg border border-white/10 bg-slate-950 px-4 py-2 text-sm font-bold text-slate-200 transition hover:border-white/20 hover:text-white focus:outline-none focus:ring-2 focus:ring-violet-300/40"
+            >
+              Clear feedback
+            </button>
+            {controlledIntakeFeedbackSaved ? (
+              <span className="rounded-full border border-emerald-300/25 bg-emerald-300/10 px-3 py-1 text-xs font-bold text-emerald-100">
+                Saved locally on this device.
+              </span>
             ) : null}
           </div>
         </section>

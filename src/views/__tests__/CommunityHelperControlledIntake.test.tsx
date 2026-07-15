@@ -93,6 +93,14 @@ const getControlledIntakePanelSource = () => {
   return start === -1 ? "" : demoTourViewSource.slice(start, end === -1 ? undefined : end);
 };
 
+const getControlledIntakeExamplesSource = () => {
+  const panelSource = getControlledIntakePanelSource();
+  const start = panelSource.indexOf("Try example wording");
+  const end = panelSource.indexOf("Text to prepare from", start);
+
+  return start === -1 ? "" : panelSource.slice(start, end === -1 ? undefined : end);
+};
+
 const buildControlledIntakeResult = (
   text: string,
   role: "for_myself" | "helping_someone" | "supporting_people_at_work" = "helping_someone",
@@ -130,6 +138,7 @@ describe("Community Helper Controlled Intake v1", () => {
     expect(demoTourViewSource).toContain("Community support prep");
     expect(demoTourViewSource).toContain("Preparation only");
     expect(demoTourViewSource).toContain("AdminAvenger helps prepare. You stay in control.");
+    expect(demoTourViewSource).toContain("Manual text only. Nothing is sent, saved, or shared automatically.");
     expect(demoTourViewSource).toContain(
       "This is not legal, care, medical, benefits, or safeguarding advice.",
     );
@@ -138,6 +147,21 @@ describe("Community Helper Controlled Intake v1", () => {
     );
     expect(demoTourViewSource).toContain("Prepare community support notes");
     expect(demoTourViewSource).toContain("handleRunControlledIntake");
+  });
+
+  it("adds starter example chips that only fill the manual textarea", () => {
+    const examplesSource = getControlledIntakeExamplesSource();
+
+    expect(examplesSource).toContain("Try example wording");
+    expect(demoTourViewSource).toContain("Missed letters/deadlines");
+    expect(demoTourViewSource).toContain("Support visit notes");
+    expect(demoTourViewSource).toContain("Money/admin concern");
+    expect(examplesSource).toContain("communityHelperControlledIntakeExamples.map");
+    expect(examplesSource).toContain("setControlledIntakeText(example.text)");
+    expect(examplesSource).not.toContain("handleRunControlledIntake");
+    expect(examplesSource).not.toContain("buildCommunityHelperPack");
+    expect(examplesSource).not.toContain("setControlledIntakeResult");
+    expect(examplesSource).not.toContain("onClearResult");
   });
 
   it("is only reachable through the existing gated Community Helper Demo/tour route, not from HomeView", () => {
@@ -210,6 +234,7 @@ describe("Community Helper Controlled Intake v1", () => {
     expect(textareaMatch?.[1] ?? "").toContain("setControlledIntakeText");
     expect(textareaMatch?.[1] ?? "").not.toContain("buildCommunityHelperPack");
     expect(demoTourViewSource).toContain("onClick={handleRunControlledIntake}");
+    expect(getControlledIntakeExamplesSource()).not.toContain("onClick={handleRunControlledIntake}");
   });
 
   it("public beta readiness still passes 10/10 against the real, currently-shipped source", () => {

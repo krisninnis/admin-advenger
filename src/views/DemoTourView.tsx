@@ -130,6 +130,21 @@ const communityHelperControlledIntakeRoleOptions: Array<{
   { value: "supporting_people_at_work", label: "Supporting people through my work" },
 ];
 
+const communityHelperControlledIntakeExamples = [
+  {
+    label: "Missed letters/deadlines",
+    text: "I'm helping someone sort out several letters. They missed a reply date on one letter and are not sure which documents matter, who to contact, or what to ask next.",
+  },
+  {
+    label: "Support visit notes",
+    text: "I want to prepare notes for a support visit. The person is struggling with forms, appointments, meals, and keeping track of letters. I want a calm checklist of what to ask and what evidence to gather.",
+  },
+  {
+    label: "Money/admin concern",
+    text: "I'm worried about money and admin for someone I support. There are bank letters, unpaid bills, and confusion about who is managing things. I do not know what has happened, but I want to organise facts and questions safely.",
+  },
+] as const;
+
 export function DemoTourView({
   result,
   activeDemoScenarioId,
@@ -548,7 +563,7 @@ export function DemoTourView({
         </div>
       </section>
 
-      <section className="rounded-lg border border-violet-300/20 bg-violet-300/[0.05] p-4 sm:p-5">
+      <section className="rounded-xl border border-violet-300/20 bg-violet-300/[0.055] p-4 shadow-xl shadow-slate-950/20 sm:p-6">
         {/*
           Community Helper Controlled Intake v1 - a second, separate, and
           explicitly opt-in way to prepare a Community Helper pack: from
@@ -561,12 +576,14 @@ export function DemoTourView({
           notes" below.
         */}
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
+          <div className="max-w-4xl">
             <h3 className="text-lg font-bold text-white">
               Prepare notes from text I choose to paste
             </h3>
             <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-300">
-              Community support preparation. Manual text only - there is no photo, file, or document upload here.
+              Paste a short message, notes, or a summary you choose. AdminAvenger
+              will prepare a support checklist after you press the button below.
+              Manual text only - there is no photo, file, or document upload here.
             </p>
           </div>
           <span className="rounded-full border border-violet-300/25 bg-slate-950/60 px-3 py-1 text-xs font-bold uppercase tracking-wider text-violet-100">
@@ -574,13 +591,34 @@ export function DemoTourView({
           </span>
         </div>
 
-        <div className="mt-4 rounded-lg border border-white/10 bg-slate-950/45 p-3 text-sm leading-6 text-violet-50/90">
+        <div className="mt-4 rounded-lg border border-white/10 bg-slate-950/45 p-4 text-sm leading-6 text-violet-50/90">
           <p>Preparation only. AdminAvenger helps prepare. You stay in control.</p>
+          <p className="mt-2">Manual text only. Nothing is sent, saved, or shared automatically.</p>
           <p className="mt-2">This is not legal, care, medical, benefits, or safeguarding advice.</p>
           <p className="mt-2">
             AdminAvenger cannot decide care needs, safeguarding, diagnosis, capacity, eligibility, equipment, or adaptations.
           </p>
           <p className="mt-2 text-amber-100">If urgent or someone may be unsafe, contact an appropriate person or service directly.</p>
+        </div>
+
+        <div className="mt-4 rounded-lg border border-white/10 bg-slate-950/35 p-4">
+          <p className="text-sm font-semibold text-slate-200">Try example wording</p>
+          <p className="mt-1 text-xs leading-5 text-slate-400">
+            These examples only fill the text box. They do not prepare notes until
+            you click the main button.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {communityHelperControlledIntakeExamples.map((example) => (
+              <button
+                key={example.label}
+                type="button"
+                onClick={() => setControlledIntakeText(example.text)}
+                className="min-h-10 rounded-full border border-violet-300/25 bg-violet-300/10 px-3 py-2 text-xs font-bold text-violet-50 transition hover:border-violet-200 hover:bg-violet-300/15 focus:outline-none focus:ring-2 focus:ring-violet-300/40"
+              >
+                {example.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         <fieldset className="mt-4">
@@ -611,10 +649,14 @@ export function DemoTourView({
             value={controlledIntakeText}
             onChange={(event) => setControlledIntakeText(event.target.value)}
             rows={6}
-            placeholder="Paste or type text here. Nothing is sent, saved, or shared until you choose to."
+            placeholder="Paste or type the text you want to prepare from. You can edit example wording before preparing notes."
             className="mt-2 w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-3 text-sm text-white outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-300/20"
           />
         </label>
+        <p className="mt-2 text-xs leading-5 text-slate-500">
+          Leave out names, addresses, account numbers, or anything you are not
+          comfortable testing with.
+        </p>
 
         <div className="mt-4 flex flex-wrap gap-2">
           <button

@@ -43,6 +43,8 @@ const controlledIntakeForbiddenPhrases = [
   "safeguarding issue confirmed",
   "safeguarding confirmed",
   "lacks capacity",
+  "does not have capacity",
+  "diagnosed as",
   "needs this equipment",
   "needs this adaptation",
   "council must",
@@ -56,6 +58,9 @@ const controlledIntakeForbiddenPhrases = [
   "contacted automatically",
   "submitted automatically",
   "sent automatically",
+  "automatically contact",
+  "automatically submit",
+  "automatically send",
 ];
 
 const expectNoForbiddenControlledIntakeWording = (text: string) => {
@@ -99,6 +104,23 @@ const getControlledIntakeExamplesSource = () => {
   const end = panelSource.indexOf("Text to prepare from", start);
 
   return start === -1 ? "" : panelSource.slice(start, end === -1 ? undefined : end);
+};
+
+const getControlledIntakeResultBannerSource = () => {
+  const marker = "Public beta result prepared";
+  const markerIndex = demoTourViewSource.indexOf(marker);
+  const start = markerIndex === -1 ? -1 : demoTourViewSource.lastIndexOf("<section", markerIndex);
+  const end = markerIndex === -1 ? -1 : demoTourViewSource.indexOf("</section>", markerIndex);
+
+  return start === -1 ? "" : demoTourViewSource.slice(start, end === -1 ? undefined : end);
+};
+
+const getHomeCommunityHelperCardSource = () => {
+  const marker = "Community Helper Home Gated v1";
+  const markerIndex = homeViewSource.lastIndexOf(marker);
+  const end = markerIndex === -1 ? -1 : homeViewSource.indexOf("</section>", markerIndex);
+
+  return markerIndex === -1 ? "" : homeViewSource.slice(markerIndex, end === -1 ? undefined : end);
 };
 
 const buildControlledIntakeResult = (
@@ -246,6 +268,26 @@ describe("Community Helper Controlled Intake v1", () => {
     expect(report.passedCount).toBe(10);
   });
 
+  it("keeps public beta surfaces free of unsafe claims and automatic-action wording", () => {
+    const report = assessCommunityHelperPublicBetaReadiness({ homeViewSource, demoTourViewSource });
+    const surfaces = [
+      ["Home gated card", getHomeCommunityHelperCardSource()],
+      ["Controlled intake panel", getControlledIntakePanelSource()],
+      ["Controlled result banner", getControlledIntakeResultBannerSource()],
+      [
+        "Readiness report wording",
+        report.checks
+          .map((check) => [check.label, check.description, check.detail].join("\n"))
+          .join("\n"),
+      ],
+    ] as const;
+
+    for (const [label, source] of surfaces) {
+      expect(source, label).not.toHaveLength(0);
+      expectNoForbiddenControlledIntakeWording(source);
+    }
+  });
+
   it("builds a Community Helper output from ordinary pasted manual text, with preparation-only boundary wording", () => {
     const { html, markdown, normalised } = buildControlledIntakeResult(
       "I'm helping my mum sort through some letters. She missed a reply-by date on one of them and I'm not sure what to do next.",
@@ -285,6 +327,24 @@ describe("Community Helper Controlled Intake v1", () => {
     expect(normalised).not.toContain("money owed");
     expect(normalised).not.toContain("money saved");
     expect(normalised).not.toContain("money recovered");
+    expectNoForbiddenControlledIntakeWording(normalised);
+  });
+
+  it("keeps capacity, diagnosis, equipment, and adaptation wording as uncertainty - never a decision", () => {
+    const { communityHelperPack, normalised } = buildControlledIntakeResult(
+      "I'm helping someone with letters after a diagnosis. I am worried they might not understand the paperwork and there is talk about equipment or adaptations, but no professional has explained what has been decided.",
+    );
+    const cannotKnowText = normaliseSafetyText(communityHelperPack.cannotKnow.join("\n"));
+
+    expect(cannotKnowText).toContain("diagnosis");
+    expect(cannotKnowText).toContain("equipment");
+    expect(cannotKnowText).toContain("adaptation");
+    expect(normalised).toContain("cannot decide care needs");
+    expect(normalised).not.toContain("lacks capacity");
+    expect(normalised).not.toContain("does not have capacity");
+    expect(normalised).not.toContain("diagnosed as");
+    expect(normalised).not.toContain("needs this equipment");
+    expect(normalised).not.toContain("needs this adaptation");
     expectNoForbiddenControlledIntakeWording(normalised);
   });
 

@@ -135,6 +135,8 @@ describe("Community Helper Public Beta Prep v1 readiness", () => {
         "safeguarding confirmed",
         "capacity decision",
         "lacks capacity",
+        "does not have capacity",
+        "diagnosed as",
         "needs this equipment",
         "needs this adaptation",
         "council must",
@@ -148,6 +150,9 @@ describe("Community Helper Public Beta Prep v1 readiness", () => {
         "contacted automatically",
         "submitted automatically",
         "sent automatically",
+        "automatically contact",
+        "automatically submit",
+        "automatically send",
       ]),
     );
   });
@@ -195,6 +200,38 @@ describe("Community Helper Public Beta Prep v1 readiness", () => {
 
     expect(check?.status).toBe("fail");
     expect(check?.detail).toContain("risk score");
+  });
+
+  it("fails the forbidden-phrase check on synthetic unsafe controlled intake panel copy", () => {
+    const unsafeInput = {
+      homeViewSource,
+      demoTourViewSource: demoTourViewSource.replace(
+        "Manual text only. Nothing is sent, saved, or shared automatically.",
+        "Manual text only. Nothing is sent, saved, or shared automatically. This tool creates an eligibility score.",
+      ),
+    };
+    const report = assessCommunityHelperPublicBetaReadiness(unsafeInput);
+    const check = report.checks.find((item) => item.id === "no_forbidden_phrases");
+
+    expect(check?.status).toBe("fail");
+    expect(check?.detail).toContain("DemoTourView controlled intake panel");
+    expect(check?.detail).toContain("eligibility score");
+  });
+
+  it("fails the forbidden-phrase check on synthetic unsafe controlled result banner copy", () => {
+    const unsafeInput = {
+      homeViewSource,
+      demoTourViewSource: demoTourViewSource.replace(
+        "Public beta result prepared from text you chose to paste",
+        "Public beta result prepared from text you chose to paste. AdminAvenger will automatically send this",
+      ),
+    };
+    const report = assessCommunityHelperPublicBetaReadiness(unsafeInput);
+    const check = report.checks.find((item) => item.id === "no_forbidden_phrases");
+
+    expect(check?.status).toBe("fail");
+    expect(check?.detail).toContain("DemoTourView controlled result banner");
+    expect(check?.detail).toContain("automatically send");
   });
 
   it.each(internalOnlySituationFixtures)(

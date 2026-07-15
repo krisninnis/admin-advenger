@@ -65,6 +65,8 @@ export const PUBLIC_BETA_PREP_FORBIDDEN_PHRASES = [
   "safeguarding confirmed",
   "capacity decision",
   "lacks capacity",
+  "does not have capacity",
+  "diagnosed as",
   "needs this equipment",
   "needs this adaptation",
   "council must",
@@ -78,6 +80,9 @@ export const PUBLIC_BETA_PREP_FORBIDDEN_PHRASES = [
   "contacted automatically",
   "submitted automatically",
   "sent automatically",
+  "automatically contact",
+  "automatically submit",
+  "automatically send",
 ] as const;
 
 const EXPECTED_DEMO_SCENARIO_IDS = [
@@ -335,11 +340,25 @@ export const assessCommunityHelperPublicBetaReadiness = (
       label: "DemoTourView community section",
       text: extractSection(demoTourViewSource, "Try a community support demo", "</section>"),
     },
+    {
+      label: "DemoTourView controlled intake panel",
+      text: extractSection(demoTourViewSource, "Prepare notes from text I choose to paste", "</section>"),
+    },
+    {
+      label: "DemoTourView controlled result banner",
+      text: extractSection(demoTourViewSource, "Public beta result prepared", "</section>"),
+    },
     ...demoPacks.map(({ scenario, pack }) => ({
       label: `Demo scenario: ${scenario.title}`,
       text: flattenCommunityHelperPackText(pack),
     })),
     { label: "Shared adviser export boundary constants", text: sharedBoundaryConstantsText },
+    {
+      label: "Readiness report wording",
+      text: checks
+        .map((check) => [check.label, check.description, check.detail].join("\n"))
+        .join("\n"),
+    },
   ];
   const forbiddenMatches = artifactsToScan.flatMap(({ label, text }) =>
     findLocalForbiddenPhrases(text).map((phrase) => `${label}: "${phrase}"`),
@@ -349,7 +368,7 @@ export const assessCommunityHelperPublicBetaReadiness = (
     id: "no_forbidden_phrases",
     label: "No forbidden phrases appear in Community Helper public-beta-facing artifacts",
     description:
-      "Scans the HomeView gated card, the DemoTourView community section, all 4 demo scenario outputs, and the shared adviser-export boundary constants against the expanded public-beta forbidden-phrase list.",
+      "Scans the HomeView gated card, DemoTourView community section, controlled intake panel, controlled result banner, all 4 demo scenario outputs, readiness wording, and shared adviser-export boundary constants against the expanded public-beta forbidden-phrase list.",
     status: forbiddenMatches.length === 0 ? "pass" : "fail",
     detail:
       forbiddenMatches.length === 0

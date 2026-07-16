@@ -456,6 +456,143 @@ const buildDraftView = (
   };
 };
 
+const noClearCareerEvidenceFallback = "No clear CV evidence found for this requirement yet.";
+const noClearCareerEvidenceText = "no clear cv evidence found";
+
+const isNoClearCareerEvidence = (item: string): boolean =>
+  item.trim().toLowerCase().startsWith(noClearCareerEvidenceText);
+
+const normaliseCareerEvidenceKey = (item: string): string =>
+  item.trim().replace(/\s+/g, " ").toLowerCase();
+
+const buildMappedCareerEvidenceKeys = (careerSupportPack?: CareerSupportPack): Set<string> =>
+  new Set(
+    (careerSupportPack?.requirementEvidenceMap ?? [])
+      .flatMap((item) => item.possibleEvidence)
+      .filter((item) => !isNoClearCareerEvidence(item))
+      .map(normaliseCareerEvidenceKey),
+  );
+
+const keepMappedCareerEvidence = (items: string[], mappedEvidenceKeys: Set<string>): string[] =>
+  items.filter((item) => mappedEvidenceKeys.has(normaliseCareerEvidenceKey(item)));
+
+const containsAnyCareerTerm = (text: string, terms: string[]): boolean => {
+  const lower = text.toLowerCase();
+  return terms.some((term) => lower.includes(term));
+};
+
+const developerRequirementTerms = [
+  "front-end",
+  "frontend",
+  "developer",
+  "html",
+  "css",
+  "javascript",
+  "react",
+  "typescript",
+  "component",
+  "ui",
+  "user interface",
+  "bug",
+  "debug",
+  "fix",
+  "page",
+  "website",
+  "app",
+  "code",
+  "test",
+  "software",
+];
+
+const adminDataRequirementTerms = [
+  "admin",
+  "data",
+  "privacy",
+  "record",
+  "records",
+  "excel",
+  "crm",
+  "gdpr",
+  "confidential",
+  "confidentiality",
+  "spreadsheet",
+  "spreadsheets",
+  "customer information",
+  "compliance",
+];
+
+const adminDataEvidenceTerms = [
+  "managed inboxes",
+  "inboxes",
+  "appointments",
+  "documents",
+  "data protection",
+  "gdpr",
+  "confidential",
+  "confidentiality",
+  "customer information",
+  "data issues",
+  "crm",
+  "excel",
+  "spreadsheet",
+  "spreadsheets",
+  "record keeping",
+  "customer records",
+  "technical/practical problem solving",
+];
+
+const isStandaloneYearEvidence = (item: string): boolean =>
+  /^\s*\d{4}\s*(?:[–-]\s*\d{4})?\s*\.?\s*$/.test(item);
+
+const shouldKeepCareerRequirementEvidence = (requirement: string, evidence: string): boolean => {
+  if (isNoClearCareerEvidence(evidence) || isStandaloneYearEvidence(evidence)) {
+    return false;
+  }
+
+  const isDeveloperRequirement = containsAnyCareerTerm(requirement, developerRequirementTerms);
+  const requirementAsksForAdminData = containsAnyCareerTerm(requirement, adminDataRequirementTerms);
+  const isAdminDataEvidence = containsAnyCareerTerm(evidence, adminDataEvidenceTerms);
+
+  if (isDeveloperRequirement && !requirementAsksForAdminData && isAdminDataEvidence) {
+    return false;
+  }
+
+  return true;
+};
+
+const buildFinalCareerRequirementEvidenceMap = (
+  careerSupportPack?: CareerSupportPack,
+): CareerRequirementEvidenceMapItem[] | undefined => {
+  if (!careerSupportPack?.requirementEvidenceMap) {
+    return careerSupportPack?.requirementEvidenceMap;
+  }
+
+  if (careerSupportPack.documentType !== "cv_job_advert_match") {
+    return careerSupportPack.requirementEvidenceMap;
+  }
+
+  return careerSupportPack.requirementEvidenceMap.map((item) => {
+    const possibleEvidence = item.possibleEvidence.filter((evidence) =>
+      shouldKeepCareerRequirementEvidence(item.requirement, evidence),
+    );
+
+    return {
+      ...item,
+      possibleEvidence: possibleEvidence.length > 0 ? possibleEvidence : [noClearCareerEvidenceFallback],
+    };
+  });
+};
+
+const buildMappedCareerEvidenceKeysFromMap = (
+  requirementEvidenceMap?: CareerRequirementEvidenceMapItem[],
+): Set<string> =>
+  new Set(
+    (requirementEvidenceMap ?? [])
+      .flatMap((item) => item.possibleEvidence)
+      .filter((item) => !isNoClearCareerEvidence(item))
+      .map(normaliseCareerEvidenceKey),
+  );
+
 export const buildResultViewModel = ({
   decisionResult,
   benefitsActionPack,
@@ -467,6 +604,37 @@ export const buildResultViewModel = ({
   adminCase,
 }: BuildResultViewModelInput): ResultViewModel => {
   const isCareerSupportResult = Boolean(careerSupportPack);
+  const isCareerMatchResult = careerSupportPack?.documentType === "cv_job_advert_match";
+  const finalCareerRequirementEvidenceMap = buildFinalCareerRequirementEvidenceMap(careerSupportPack);
+  const mappedCareerEvidenceKeys = isCareerMatchResult
+    ? buildMappedCareerEvidenceKeysFromMap(finalCareerRequirementEvidenceMap)
+    : buildMappedCareerEvidenceKeys(careerSupportPack);
+  const finalCareerCvEvidence =
+    isCareerMatchResult && careerSupportPack
+      ? keepMappedCareerEvidence(careerSupportPack.cvEvidenceThatMayMatch ?? [], mappedCareerEvidenceKeys)
+      : (careerSupportPack?.cvEvidenceThatMayMatch ?? []);
+  const finalCareerStrongEvidence =
+    isCareerMatchResult && careerSupportPack
+      ? keepMappedCareerEvidence(careerSupportPack.strongEvidenceToConsider ?? [], mappedCareerEvidenceKeys)
+      : (careerSupportPack?.strongEvidenceToConsider ?? []);
+  const finalCareerStrengths =
+    isCareerMatchResult ? [] : (careerSupportPack?.strengthsToHighlight ?? []);
+  const finalCareerEvidenceToUse =
+    isCareerMatchResult && careerSupportPack
+      ? keepMappedCareerEvidence(careerSupportPack.evidenceToUse, mappedCareerEvidenceKeys)
+      : (careerSupportPack?.evidenceToUse ?? []);
+  const finalCareerProjects =
+    isCareerMatchResult && careerSupportPack
+      ? keepMappedCareerEvidence(careerSupportPack.projectsToHighlight, mappedCareerEvidenceKeys)
+      : (careerSupportPack?.projectsToHighlight ?? []);
+  const finalCareerExperience =
+    isCareerMatchResult && careerSupportPack
+      ? keepMappedCareerEvidence(careerSupportPack.experienceToFrame, mappedCareerEvidenceKeys)
+      : (careerSupportPack?.experienceToFrame ?? []);
+  const finalCareerEducation =
+    isCareerMatchResult && careerSupportPack
+      ? keepMappedCareerEvidence(careerSupportPack.educationAndTraining, mappedCareerEvidenceKeys)
+      : (careerSupportPack?.educationAndTraining ?? []);
   const bestNextMove = isCareerSupportResult
     ? buildCareerBestNextMove(careerSupportPack)
     : buildBestNextMove(strategicNextStepPlan);
@@ -539,19 +707,19 @@ export const buildResultViewModel = ({
             value: safeText(requirement, "Check advert requirement"),
             source: "career_support_pack" as const,
           })),
-          ...(careerSupportPack.cvEvidenceThatMayMatch ?? []).map((evidence, index) => ({
+          ...finalCareerCvEvidence.map((evidence, index) => ({
             id: `career-match-evidence-${index + 1}`,
             label: "CV evidence that may match",
             value: safeText(evidence, "Check CV evidence"),
             source: "career_support_pack" as const,
           })),
-          ...careerSupportPack.strengthsToHighlight.map((strength, index) => ({
+          ...finalCareerStrengths.map((strength, index) => ({
             id: `career-strength-${index + 1}`,
             label: "Strength to highlight",
             value: safeText(strength, "Check strength"),
             source: "career_support_pack" as const,
           })),
-          ...careerSupportPack.projectsToHighlight.map((project, index) => ({
+          ...finalCareerProjects.map((project, index) => ({
             id: `career-project-${index + 1}`,
             label: "Project or portfolio evidence",
             value: safeText(project, "Check project evidence"),
@@ -669,14 +837,14 @@ export const buildResultViewModel = ({
     ? {
         title: "Career preparation checklist",
         body: cleanStringItems([
-          ...(careerSupportPack.requirementEvidenceMap ?? []).flatMap((item) => [
+          ...(finalCareerRequirementEvidenceMap ?? []).flatMap((item) => [
             `Requirement to compare: ${item.requirement}`,
             ...item.possibleEvidence.map((evidence) => `Possible CV evidence to consider: ${evidence}`),
             `Example to prepare: ${item.exampleToPrepare}`,
             item.verificationNote,
           ]),
           ...(careerSupportPack.requirementsFound ?? []).map((item) => `Advert requirement to review: ${item}`),
-          ...(careerSupportPack.cvEvidenceThatMayMatch ?? []).map((item) => `CV evidence that may match: ${item}`),
+          ...finalCareerCvEvidence.map((item) => `CV evidence that may match: ${item}`),
           ...(careerSupportPack.examplesToPrepare ?? []),
           ...(careerSupportPack.claimsToVerify ?? []),
           ...careerSupportPack.nextPreparationSteps,
@@ -693,7 +861,7 @@ export const buildResultViewModel = ({
       ? makeSection(
           "career-requirement-evidence-map",
           "Requirement-by-requirement evidence map",
-          (careerSupportPack.requirementEvidenceMap ?? []).map((item) => item.requirement),
+          (finalCareerRequirementEvidenceMap ?? []).map((item) => item.requirement),
           "career_support_pack",
           "summary",
         )
@@ -720,7 +888,7 @@ export const buildResultViewModel = ({
       ? makeSection(
           "career-cv-evidence-may-match",
           "CV evidence that may match",
-          careerSupportPack.cvEvidenceThatMayMatch ?? [],
+          finalCareerCvEvidence,
           "career_support_pack",
           "summary",
         )
@@ -729,7 +897,7 @@ export const buildResultViewModel = ({
       ? makeSection(
           "career-strong-evidence-to-consider",
           "Strong evidence to consider using",
-          careerSupportPack.strongEvidenceToConsider ?? [],
+          finalCareerStrongEvidence,
           "career_support_pack",
           "summary",
         )
@@ -774,7 +942,7 @@ export const buildResultViewModel = ({
       ? makeSection(
           "career-strengths",
           "Strengths to highlight",
-          careerSupportPack.strengthsToHighlight,
+          finalCareerStrengths,
           "career_support_pack",
           "summary",
         )
@@ -783,7 +951,7 @@ export const buildResultViewModel = ({
       ? makeSection(
           "career-evidence",
           "Evidence to use",
-          careerSupportPack.evidenceToUse,
+          finalCareerEvidenceToUse,
           "career_support_pack",
           "summary",
         )
@@ -792,7 +960,7 @@ export const buildResultViewModel = ({
       ? makeSection(
           "career-projects",
           "Projects to highlight",
-          careerSupportPack.projectsToHighlight,
+          finalCareerProjects,
           "career_support_pack",
           "summary",
         )
@@ -801,7 +969,7 @@ export const buildResultViewModel = ({
       ? makeSection(
           "career-experience",
           "Experience to frame",
-          careerSupportPack.experienceToFrame,
+          finalCareerExperience,
           "career_support_pack",
           "summary",
         )
@@ -810,7 +978,7 @@ export const buildResultViewModel = ({
       ? makeSection(
           "career-education",
           "Education/training to mention",
-          careerSupportPack.educationAndTraining,
+          finalCareerEducation,
           "career_support_pack",
           "summary",
         )
@@ -1094,7 +1262,7 @@ export const buildResultViewModel = ({
     safetyNotes,
     safetyView,
     draftOrChecklist: effectiveDraftOrChecklist,
-    careerRequirementEvidenceMap: careerSupportPack?.requirementEvidenceMap,
+    careerRequirementEvidenceMap: finalCareerRequirementEvidenceMap,
     sections,
     detailSections,
     showBenefitsActionPack: Boolean(benefitsActionPack),

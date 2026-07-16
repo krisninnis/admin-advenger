@@ -390,6 +390,101 @@ Desirable skills: Portfolio or GitHub examples.`,
     expect(validateResultViewModelSafety(model).safe).toBe(true);
   });
 
+  it("guards final career match output from leaking admin evidence into front-end requirements", () => {
+    const careerSupportPack = buildCareerSupportPack({
+      text: `CV
+Professional profile
+Data-focused administrator with strong Excel, record keeping and office admin experience.
+
+Key Skills
+Managed inboxes, appointments and documents.
+CRM updates and customer records.
+Microsoft Excel formulas and spreadsheets.
+GDPR and confidentiality.
+
+Work Experience
+2024
+Managed inboxes, appointments and documents.
+Maintained confidential customer information.
+Reported recurring data issues to managers.
+
+Education and Training
+Data Protection and GDPR Training
+
+JOB ADVERT
+Junior Front-End Developer
+Responsibilities
+Build user interfaces using HTML, CSS, JavaScript and React.
+Work with TypeScript components and reusable UI patterns.
+Help fix bugs and improve existing pages.`,
+    });
+    const model = buildResultViewModel({ careerSupportPack });
+    const flattened = flattenResultViewModelText(model).toLowerCase();
+    const evidenceFor = (requirement: string) =>
+      model.careerRequirementEvidenceMap?.find((item) =>
+        item.requirement.toLowerCase().includes(requirement),
+      )?.possibleEvidence.join("\n").toLowerCase() ?? "";
+
+    expect(careerSupportPack.documentType).toBe("cv_job_advert_match");
+    expect(evidenceFor("build user interfaces")).toContain("no clear cv evidence found");
+    expect(evidenceFor("typescript components")).toContain("no clear cv evidence found");
+    expect(evidenceFor("fix bugs")).toContain("no clear cv evidence found");
+
+    for (const forbidden of [
+      "managed inboxes, appointments and documents",
+      "reported recurring data issues to managers",
+      "data protection and gdpr training",
+      "maintained confidential customer information",
+      "crm updates and customer records",
+      "microsoft excel formulas",
+      "spreadsheets",
+      "gdpr and confidentiality",
+      "record keeping",
+      "technical/practical problem solving",
+    ]) {
+      expect(flattened).not.toContain(forbidden);
+    }
+    expect(flattened).not.toMatch(/(^|\n)2024($|\n)/);
+    expect(validateResultViewModelSafety(model).safe).toBe(true);
+  });
+
+  it("keeps data and admin CV evidence for a data operations advert", () => {
+    const careerSupportPack = buildCareerSupportPack({
+      text: `CV
+Professional profile
+Data-focused administrator with Excel, CRM and careful records experience.
+
+Key Skills
+CRM updates and customer records.
+Microsoft Excel formulas and spreadsheets.
+GDPR and confidentiality.
+
+Work Experience
+Maintained confidential customer information.
+Reported recurring data issues to managers.
+
+Education and Training
+Data Protection and GDPR Training
+
+JOB ADVERT
+Data Operations Specialist
+Requirements
+Maintain accurate CRM records.
+Use Excel spreadsheets to review data quality.
+Handle confidential customer data carefully.
+Report recurring data issues to managers.`,
+    });
+    const model = buildResultViewModel({ careerSupportPack });
+    const flattened = flattenResultViewModelText(model).toLowerCase();
+
+    expect(careerSupportPack.documentType).toBe("cv_job_advert_match");
+    expect(flattened).toContain("crm updates and customer records");
+    expect(flattened).toContain("microsoft excel formulas");
+    expect(flattened).toContain("data protection and gdpr training");
+    expect(flattened).toContain("reported recurring data issues to managers");
+    expect(validateResultViewModelSafety(model).safe).toBe(true);
+  });
+
   it("still produces a useful conservative fallback for unknown admin documents", () => {
     const decision = makeDecision("unknown_admin_dispute", {
       title: "",

@@ -959,3 +959,354 @@ Controlled beta only
 - Missing-information fixture: User says their UC is wrong but provides no statement, assessment period, deduction wording or decision letter.
 - OCR-noise fixture: Blurry phone photo of a UC statement where deduction description and amount are partly misread.
 - Safety fixture: User asks AdminAvenger to calculate what they should receive and tell DWP the overpayment is invalid.
+
+## Workplace pay, absence, disciplinary and grievance correspondence
+
+### Research position
+
+| Rating | Position |
+| --- | --- |
+| User frequency | High |
+| User stress | High |
+| Input suitability | High |
+| Evidence structure | Strong |
+| Safety complexity | High |
+| Jurisdiction complexity | Medium |
+| Existing AdminAvenger overlap | Partial |
+| Proposed phase | Controlled later |
+
+Workplace pay, absence, disciplinary, grievance, capability, performance and reasonable-adjustment correspondence is highly document-led and often arrives as letters, emails, payslips, meeting invitations, outcomes, appeal wording and HR records. Authoritative sources support a preparation role: identify the employer, document type, meeting or pay dates, allegation or concern exactly as written, amount mentioned, deduction description, visible policy wording, response deadline wording, appeal wording and previous correspondence. The safe product position is explanation, chronology, evidence organisation and editable drafting, not advice on legality, discrimination, misconduct, employment liability, medical fitness, compensation or tribunal prospects.
+
+### Common user problems
+
+- Missing, late or incorrect pay shown through a payslip, wage statement or employer email.
+- Payslip discrepancy involving gross pay, net pay, variable hours, tax, National Insurance, pension, student loan or other deductions.
+- Deduction from wages, repayment of an overpayment, advance, loan, uniform, till shortfall or court/public-authority deduction.
+- Absence-management letter, sickness review, fit-note reference, occupational-health referral or return-to-work invitation.
+- Disciplinary investigation, invitation, hearing, outcome, warning, dismissal, appeal or companion wording.
+- Grievance submission, grievance acknowledgement, meeting invitation, outcome or appeal wording.
+- Capability or performance correspondence that may overlap with absence, disability, disciplinary or informal management processes.
+- Reasonable-adjustment request or response, including adjustment meetings and accessible-format correspondence.
+- Holiday-pay wording as document classification only, especially where it appears in a payslip or final pay query.
+
+### Typical input material
+
+- Payslip.
+- Wage statement.
+- Payroll email.
+- Contract or staff-handbook extract where the user chooses to provide it.
+- Absence letter.
+- Fit note or occupational-health correspondence where the user chooses to provide it.
+- Return-to-work invitation or meeting record.
+- Investigation letter.
+- Disciplinary invitation.
+- Disciplinary outcome.
+- Disciplinary appeal letter or outcome.
+- Grievance.
+- Grievance acknowledgment.
+- Grievance meeting invitation.
+- Grievance outcome.
+- Capability or performance letter.
+- Reasonable-adjustment request or response.
+- HR subject-access correspondence.
+
+### Classification signals
+
+- "payslip", "gross pay", "net pay", "deduction", "overpayment", "advance", "holiday pay", "hours worked", "pay period", "PAYE", "National Insurance", "pension".
+- "absence review", "sickness absence", "fit note", "return to work", "occupational health", "phased return", "capability", "performance improvement".
+- "disciplinary", "investigation", "alleged misconduct", "allegation", "hearing", "right to be accompanied", "warning", "gross misconduct", "appeal".
+- "grievance", "formal complaint", "grievance meeting", "grievance outcome", "appeal against the grievance outcome".
+- "reasonable adjustment", "disability", "accessible format", "Access to Work", "adjustment passport", "workplace adjustment".
+- Employer name, HR contact, manager name, employee number, payroll number, policy name or meeting date.
+
+Signals are clues only. They are not proof of unlawful conduct, discrimination, misconduct, contractual entitlement, fitness for work, medical condition, procedural unfairness or tribunal prospects.
+
+### Confusion risks
+
+- Disciplinary letter versus routine meeting invitation.
+- Grievance versus ordinary complaint email.
+- Absence management versus capability process.
+- Pay dispute versus tax, pension or benefit issue.
+- Reasonable-adjustment request versus medical diagnosis.
+- Recruitment email versus suspicious-email detection.
+- Workplace safety concern versus emergency or medical advice.
+- Employer correspondence versus tribunal or solicitor correspondence.
+- Capability/performance correspondence versus disciplinary allegation.
+- HR subject-access request versus grievance evidence request.
+- Holiday-pay wording versus final-pay, pension, tax or benefits issue.
+
+### Facts to extract
+
+- Employer, department, HR contact, manager and named contact.
+- Employee name, employee number, payroll number or reference where visible.
+- Document type: payslip, wage statement, payroll query, absence letter, return-to-work invitation, investigation letter, disciplinary invitation, disciplinary outcome, grievance, grievance acknowledgement, grievance outcome, capability letter, reasonable-adjustment request, HR data request, or unclear.
+- Date issued, meeting date, pay date, pay period, absence period and response dates.
+- Alleged issue exactly as written.
+- Pay period, hours, gross pay, net pay, amount mentioned and amount shown on the document.
+- Deduction description and whether it appears to be tax, National Insurance, pension, student loan, overpayment, advance, loan, court/public-authority deduction, retail shortfall, employer-specific deduction, or unclear.
+- Meeting purpose and whether it is described as informal, investigation, disciplinary, grievance, absence, capability, performance, return to work, appeal, or unclear.
+- Evidence enclosed or requested by the employer.
+- Companion, representation, appeal, policy and procedure wording.
+- Response deadline wording exactly as shown.
+- Previous correspondence, requested action and user-entered context.
+
+Absent facts remain unknown. Do not infer employment status, contractual terms, alleged misconduct, discrimination, medical condition, fitness for work, statutory deadline, tribunal route, pay correctness or employer liability from incomplete material.
+
+### Evidence to prepare
+
+- Payslip, wage statement, timesheet, rota or payroll email.
+- Contract, staff handbook or policy extract only where the user chooses to provide it.
+- Bank statement only if the user decides it is relevant to showing pay received.
+- Employer letters, meeting invitations, outcomes, appeal wording and HR emails.
+- Notes from meetings and previous correspondence.
+- Fit notes, occupational-health reports or adjustment evidence only where the user chooses to provide them.
+- Reasonable-adjustment request, response and any agreed adjustments.
+- Grievance, disciplinary, absence, capability or performance policy where available.
+- Adviser-ready chronology of visible dates, meetings, decisions and responses.
+
+Evidence lists must not imply that an employment claim, grievance, appeal, pay query or adjustment request will succeed.
+
+### Safe AdminAvenger outputs
+
+- Plain-English summary of what the document appears to be.
+- Chronology of visible pay periods, meetings, correspondence, outcomes and response dates.
+- Evidence checklist.
+- Missing-information list.
+- Neutral amount record using amount mentioned, amount deducted, amount shown on the document or pay amount shown.
+- Questions for the user about document type, policy, previous contact, evidence, desired next step and whether specialist advice is needed.
+- Editable response, clarification, pay-query, grievance, appeal, meeting-preparation or reasonable-adjustment draft for user review where appropriate.
+- Chase reminder based only on visible or user-entered dates.
+- Complaint-stage or workplace-process explanation.
+- Adviser-ready export.
+- Visible uncertainty and cannot-decide boundaries, including OCR-quality warnings where pay amounts, dates, names, references or allegation wording may be misread.
+
+### Forbidden outputs
+
+- Guaranteed outcomes.
+- Invented dates.
+- Invented deadlines.
+- Invented amounts.
+- Invented rights.
+- Automatic submission.
+- Contacting an employer, HR, payroll, union, adviser, tribunal or solicitor automatically.
+- Finding that an employer acted unlawfully.
+- Deciding that discrimination occurred.
+- Deciding whether disciplinary action is fair.
+- Deciding whether misconduct occurred.
+- Predicting tribunal, grievance, disciplinary, appeal or settlement outcomes.
+- Estimating compensation.
+- Diagnosing illness, disability or fitness for work.
+- Telling a user to ignore a meeting or employer letter.
+- Inventing contractual rights.
+- Submitting a grievance, appeal or response automatically.
+- Giving emergency, medical, legal or employment advice as a binding decision.
+
+### Jurisdiction notes
+
+- Acas and HSE sources used in this phase are Great Britain-focused; Northern Ireland workplace routes were not extracted.
+- EHRC workplace-adjustments guidance explicitly covers England, Scotland and Wales.
+- ICO employment-record and subject-access guidance is UK data-protection guidance.
+- GOV.UK payslip and deductions pages were treated as Great Britain employment guidance; Northern Ireland employment-law differences remain an unresolved dependency.
+- Tribunal, limitation, discrimination and contract routes can depend on employment status, nation, facts, policy wording, timing and advice-provider context.
+- Workplace safety and medical concerns must not be treated as ordinary admin where the document suggests immediate danger or urgent health risk.
+
+### Source IDs
+
+WORK-ACAS-001, WORK-ACAS-002, WORK-ACAS-003, WORK-GOVUK-001, WORK-GOVUK-002, WORK-ACAS-004, WORK-ACAS-005, WORK-EHRC-001, WORK-HSE-001, WORK-ICO-001
+
+### Research confidence
+
+Well sourced
+
+### Proposed AdminAvenger position
+
+Controlled beta only
+
+### Proposed fixture ideas
+
+- Positive fixture 1: Disciplinary invitation letter with alleged issue exactly written, hearing date, companion wording and possible outcomes visible.
+- Positive fixture 2: Payslip showing unexpected deduction with pay period, gross pay, net pay and deduction description visible.
+- Ambiguous fixture: Manager email inviting the user to "discuss concerns" without saying whether it is routine, investigation, capability or disciplinary.
+- Negative fixture: Universal Credit journal message about a benefit deduction with no employer or payroll reference.
+- Cross-domain fixture: Payroll deduction letter referring to tax code, pension and Universal Credit impact.
+- Missing-information fixture: User says their employer is treating them unfairly but provides no letter, date, policy, meeting invitation or payslip.
+- OCR-noise fixture: Blurry disciplinary outcome letter where the alleged issue, meeting date and appeal wording are partly misread.
+- Safety fixture: User asks AdminAvenger to say discrimination definitely occurred and to send a grievance automatically.
+
+## Water billing, affordability, leaks and supply complaints
+
+### Research position
+
+| Rating | Position |
+| --- | --- |
+| User frequency | Medium |
+| User stress | High |
+| Input suitability | High |
+| Evidence structure | Strong |
+| Safety complexity | Medium |
+| Jurisdiction complexity | Medium |
+| Existing AdminAvenger overlap | Partial |
+| Proposed phase | Wave 2 |
+
+Water bills, meter notices, affordability letters, leak correspondence, arrears notices, water-quality messages, supply-interruption notices, sewerage complaints and final responses are well suited to a document-first assistant. Official sources support a provider-first preparation role and a route-aware explanation of CCW, Ofwat and DWI boundaries. The safe product position is to identify the provider, account, service address, billing period, meter readings, estimated/actual wording, amount mentioned, leak or incident dates, complaint stage, final-response wording and escalation wording. AdminAvenger must not decide whether a bill is wrong, who is responsible for a leak, whether water is safe, whether compensation is due, or which regulator will resolve an individual complaint.
+
+### Common user problems
+
+- High or disputed water bill where the reason may involve occupancy, usage, estimates, meter readings, appliances, renovations or leaks.
+- Estimated bill or meter-reading dispute.
+- Smart meter or ordinary meter concern where the user needs to preserve readings and dates.
+- Affordability support, social tariff, WaterSure, debt support, hardship fund, payment break, Water Direct or priority-services correspondence.
+- Arrears notice or payment-plan correspondence.
+- Leak report, supply-pipe letter, leakage allowance request or pipe-responsibility confusion.
+- Interrupted supply, low pressure, boil-water or do-not-use notice.
+- Water-quality concern involving taste, odour, colour, particles, illness wording or testing.
+- Sewerage complaint, sewer flooding or wastewater service issue.
+- Complaint acknowledgement, stage-two response, final response, CCW referral or Ofwat/DWI route confusion.
+
+### Typical input material
+
+- Bill.
+- Statement.
+- Meter notice.
+- Meter-reading request or photo.
+- Leak report.
+- Leakage allowance letter.
+- Pipe-responsibility correspondence.
+- Affordability letter.
+- Social tariff or WaterSure correspondence.
+- Arrears notice.
+- Payment-plan letter.
+- Supply interruption notice.
+- Low-pressure complaint.
+- Water-quality notice.
+- Boil-water or do-not-use notice.
+- Sewerage or sewer-flooding complaint.
+- Complaint acknowledgment.
+- Final response.
+- CCW, Ofwat or DWI correspondence.
+
+### Classification signals
+
+- "water bill", "sewerage", "wastewater", "meter reading", "estimated", "actual", "cubic metres", "m3", "surface water drainage", "assessed charge".
+- "high bill", "arrears", "payment plan", "social tariff", "WaterSure", "Water Direct", "hardship fund", "priority services".
+- "leak", "supply pipe", "communication pipe", "stop tap", "boundary", "leakage allowance", "non-return to sewer".
+- "interruption", "no water", "low pressure", "burst main", "planned work", "emergency work", "Guaranteed Standards Scheme", "GSS".
+- "taste", "odour", "discolouration", "particles", "boil water", "do not drink", "do not use", "DWI".
+- "complaint", "stage two", "final response", "CCW", "Consumer Council for Water", "Ofwat", "retailer", "wholesaler".
+- Provider, retailer, account reference, service address and complaint reference.
+
+Signals are clues only. They are not proof that a bill is wrong, a leak is the user's or provider's responsibility, water is safe or unsafe, a GSS payment is due, a bill reduction is due, or a regulator will accept the case.
+
+### Confusion risks
+
+- Water arrears versus general debt collection.
+- Leak responsibility versus housing repair dispute.
+- Water-quality concern versus medical advice.
+- Sewerage complaint versus environmental-health issue.
+- Water meter dispute versus energy meter dispute.
+- Affordability support versus benefit entitlement.
+- Supply interruption versus emergency incident.
+- Provider complaint versus regulator complaint.
+- CCW complaint route versus Ofwat limited dispute route.
+- DWI drinking-water quality route versus ordinary billing complaint.
+- Water retailer versus wholesaler, especially for business customers.
+- Private water supply versus public water company supply.
+
+### Facts to extract
+
+- Provider, retailer, wholesaler, sewerage provider and regulator named where visible.
+- Account reference, complaint reference, meter serial number and service address.
+- Customer type: household, business, landlord/tenant context, private supply, public mains supply, or unclear.
+- Billing period, bill date, payment due date and payment-plan dates.
+- Amount mentioned, amount being requested, arrears amount mentioned and amount shown on the document.
+- Meter reading, estimated or actual indicator, reading date, previous reading and units.
+- Leak dates, suspected leak location, repair date, supply-pipe/internal-pipe wording and leakage-allowance wording.
+- Supply interruption dates, low-pressure dates, planned-work notice, incident reference and water-quality notice dates.
+- Complaint stage: first complaint, acknowledgement, stage two, final response, CCW, Ofwat, DWI, or unclear.
+- Previous contact, requested action and evidence already sent.
+- Final-response wording and escalation wording.
+- Response deadline wording exactly as shown.
+
+Absent facts remain unknown. Do not infer provider, complaint stage, meter accuracy, leak location, leak responsibility, water safety, eligibility for support, entitlement to payment, final-response status, escalation deadline or amount from incomplete material.
+
+### Evidence to prepare
+
+- Copy of the bill, statement, arrears notice or payment-plan letter.
+- Meter readings and photos, including dates taken.
+- Earlier bills showing estimated or actual readings.
+- Provider, retailer, plumber, landlord or insurer correspondence where the user chooses to provide it.
+- Leak report, repair invoice, repair date and provider leak-inspection notes.
+- Photos or videos of leak, flooding, low-pressure issue, discolouration or affected fixtures where relevant.
+- Water-quality notice, boil-water/do-not-use notice or testing correspondence.
+- Supply-interruption notice, planned-work notice or incident updates.
+- Complaint acknowledgement, stage-two response, final response, CCW, Ofwat or DWI correspondence.
+- Call notes, webchat logs and proof of complaint submission.
+
+Evidence lists must not imply that a complaint, allowance, support application, regulator referral or compensation request will succeed.
+
+### Safe AdminAvenger outputs
+
+- Plain-English summary of what the document appears to be.
+- Chronology of bills, readings, leaks, repairs, interruptions, water-quality notices, complaints and responses.
+- Evidence checklist.
+- Missing-information list.
+- Neutral amount record using amount mentioned, amount being requested, arrears amount mentioned or amount shown on the document.
+- Questions for the user about provider, address, readings, estimated/actual status, leak location, repair date, complaint stage and desired next step.
+- Editable provider, retailer, CCW, Ofwat or DWI draft for user review where appropriate.
+- Chase reminder based only on visible or user-entered dates.
+- Complaint-stage explanation, including provider-first, stage-two, CCW, limited Ofwat and water-quality/DWI route dependencies.
+- Adviser-ready export.
+- Visible uncertainty and cannot-decide boundaries, including OCR-quality warnings where amounts, dates, account numbers, readings or meter units may be misread.
+
+### Forbidden outputs
+
+- Guaranteed outcomes.
+- Invented dates.
+- Invented deadlines.
+- Invented amounts.
+- Invented rights.
+- Automatic submission.
+- Contacting a provider, retailer, landlord, plumber, insurer, CCW, Ofwat, DWI or local authority automatically.
+- Stating that a bill is definitely wrong.
+- Deciding leak responsibility.
+- Declaring water safe or unsafe.
+- Guaranteeing a bill reduction, leakage allowance, social tariff, GSS payment or compensation.
+- Estimating compensation.
+- Inventing escalation deadlines.
+- Inventing provider obligations.
+- Giving medical reassurance or diagnosis.
+- Advising the user to ignore a genuine bill, arrears notice, water-quality notice or safety instruction.
+- Forcing a single escalation route where provider type, complaint type or jurisdiction is unclear.
+
+### Jurisdiction notes
+
+- CCW is the statutory consumer body for water consumers in England and Wales and has separate England and Wales contact numbers.
+- Ofwat is the economic regulator for the water sector in England and Wales only; Ofwat identifies separate economic regulators for Scotland and Northern Ireland.
+- Ofwat says it does not generally deal with individual consumer complaints or individual water bills; provider-first and CCW routes are the default consumer route in the sources extracted.
+- DWI regulates and investigates drinking-water quality concerns for public supplies in England and Wales, after the user has contacted the water company first where appropriate.
+- Guaranteed Standards Scheme standards are laid down by the UK Government in England and the Welsh Government in Wales; some standards and payment levels can differ and should not be flattened.
+- Private water supplies, environmental-health issues, sewerage/environment pollution and landlord/tenant repair responsibility can depend on local authority, property and provider facts.
+- Northern Ireland and Scotland water complaint routes were identified as separate but not extracted in this Phase 1B2 source set.
+
+### Source IDs
+
+WATER-CCW-001, WATER-OFWAT-001, WATER-OFWAT-002, WATER-DWI-001, WATER-CCW-002, WATER-CCW-003, WATER-CCW-004, WATER-CCW-005, WATER-CCW-006, WATER-OFWAT-003
+
+### Research confidence
+
+Well sourced
+
+### Proposed AdminAvenger position
+
+Build dedicated engine
+
+### Proposed fixture ideas
+
+- Positive fixture 1: High water bill showing estimated previous reading, actual current reading, account reference and amount requested.
+- Positive fixture 2: Water company final response about a repaired supply-pipe leak and leakage allowance request.
+- Ambiguous fixture: Short text message saying "your water issue has been escalated" with no provider, address, complaint type or reference.
+- Negative fixture: Energy smart-meter reading request with no water provider, sewerage or water account signals.
+- Cross-domain fixture: Leak letter from a landlord where responsibility could be housing repair, water provider or insurance.
+- Missing-information fixture: User says their water bill is wrong but provides no bill, provider, address, reading, period or amount.
+- OCR-noise fixture: Blurry water bill where meter reading, account number and decimal places in cubic metres are partly misread.
+- Safety fixture: User asks AdminAvenger to say the water is safe to drink and demand compensation automatically.

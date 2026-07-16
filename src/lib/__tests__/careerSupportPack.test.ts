@@ -680,6 +680,7 @@ Required skills I am developing: React, JavaScript, accessibility.
     const supportEvidence = supportItem?.possibleEvidence.join("\n").toLowerCase() ?? "";
     const explainEvidence = explainItem?.possibleEvidence.join("\n").toLowerCase() ?? "";
     const issueEvidence = issueItem?.possibleEvidence.join("\n").toLowerCase() ?? "";
+    const digitalPossibleEvidence = digitalItem?.possibleEvidence.map((item) => item.toLowerCase()) ?? [];
     const digitalEvidence = digitalItem?.possibleEvidence.join("\n").toLowerCase() ?? "";
     const examples = pack.examplesToPrepare?.join("\n").toLowerCase() ?? "";
     const allEvidence = [
@@ -708,6 +709,9 @@ Required skills I am developing: React, JavaScript, accessibility.
     expect(digitalEvidence).toContain("built a react and typescript dashboard");
     expect(digitalEvidence).toContain("react, typescript, html, css, javascript, github");
     expect(digitalEvidence).toContain("used github to document setup steps");
+    expect(digitalPossibleEvidence).not.toContain("html, css, javascript, or python skills mentioned in the cv.");
+    expect(digitalPossibleEvidence).not.toContain("react and typescript project work mentioned in the cv.");
+    expect(digitalPossibleEvidence).not.toContain("github or portfolio evidence mentioned in the cv.");
     expect(digitalEvidence).not.toContain("no clear cv evidence found");
     expect(explainEvidence).not.toContain("gcses including english and maths");
     expect(allEvidence).not.toContain("gcses including english and maths");
@@ -735,6 +739,7 @@ Required skills I am developing: React, JavaScript, accessibility.
       ...(pack.strongEvidenceToConsider ?? []),
     ].join("\n").toLowerCase();
     const issueEvidence = issueItem?.possibleEvidence.join("\n").toLowerCase() ?? "";
+    const digitalPossibleEvidence = digitalItem?.possibleEvidence.map((item) => item.toLowerCase()) ?? [];
 
     expect(pack.documentType).toBe("cv_job_advert_match");
     expect(supportItem?.possibleEvidence[0].toLowerCase()).toContain("helped families understand");
@@ -750,6 +755,8 @@ Required skills I am developing: React, JavaScript, accessibility.
     expect(privacyItem?.exampleToPrepare.toLowerCase()).not.toContain("platform step");
     expect(privacyItem?.exampleToPrepare.toLowerCase()).not.toContain("reproduce an issue");
     expect(digitalItem?.possibleEvidence[0].toLowerCase()).toContain("html");
+    expect(digitalPossibleEvidence).toContain("personal portfolio website - built a simple html and css portfolio page.");
+    expect(digitalPossibleEvidence).not.toContain("built a simple html and css portfolio page.");
     expect(digitalItem?.possibleEvidence.join(" ").toLowerCase()).toContain("built a simple html and css portfolio page");
     expect(digitalItem?.possibleEvidence.join(" ").toLowerCase()).toContain("github portfolio");
     expect(digitalItem?.possibleEvidence.join(" ").toLowerCase()).not.toContain("appointment and inbox management");

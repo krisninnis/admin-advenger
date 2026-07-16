@@ -572,9 +572,12 @@ Basic digital understanding.`,
       "possible cv evidence to consider: react, typescript, html, css, javascript, github",
     );
     expect(digitalChecklistBlock).toContain(
-      "possible cv evidence to consider: built a react and typescript dashboard for tracking customer requests.",
+      "possible cv evidence to consider: taskflow dashboard - built a react and typescript dashboard for tracking customer requests.",
     );
     expect(digitalChecklistBlock).toContain("possible cv evidence to consider: used github to document setup steps.");
+    expect(digitalChecklistBlock).not.toContain("html, css, javascript, or python skills mentioned in the cv");
+    expect(digitalChecklistBlock).not.toContain("react and typescript project work mentioned in the cv");
+    expect(digitalChecklistBlock).not.toContain("github or portfolio evidence mentioned in the cv");
     expect(validateResultViewModelSafety(model).safe).toBe(true);
   });
 
@@ -630,6 +633,10 @@ Show basic digital or web understanding.`,
       model.draftOrChecklist?.body ?? "",
       "Follow privacy processes when updating customer records.",
     );
+    const digitalChecklistBlock = extractChecklistRequirementBlock(
+      model.draftOrChecklist?.body ?? "",
+      "Show basic digital or web understanding.",
+    );
 
     expect(privacy?.possibleEvidence[0].toLowerCase()).toContain("gdpr and customer records");
     expect(privacy?.possibleEvidence.join(" ").toLowerCase()).toContain("confidential customer records");
@@ -649,6 +656,12 @@ Show basic digital or web understanding.`,
     expect(digital?.possibleEvidence[0].toLowerCase()).toContain("html");
     expect(digitalEvidence).toContain("built a simple html and css portfolio page");
     expect(digitalEvidence).toContain("github portfolio in progress");
+    expect(digitalChecklistBlock).toContain(
+      "possible cv evidence to consider: personal portfolio website - built a simple html and css portfolio page.",
+    );
+    expect(digitalChecklistBlock).not.toContain(
+      "\npossible cv evidence to consider: built a simple html and css portfolio page.",
+    );
     if (flattened.includes("github or portfolio evidence mentioned in the cv")) {
       expect(flattened.indexOf("built a simple html and css portfolio page")).toBeLessThan(
         flattened.indexOf("github or portfolio evidence mentioned in the cv"),

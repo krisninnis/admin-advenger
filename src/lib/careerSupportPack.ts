@@ -975,6 +975,73 @@ const collectDirectEvidence = (
       predicate(line),
   );
 
+const normaliseEvidenceMeaning = (evidence: string) =>
+  normaliseText(evidence).replace(/[.]+$/g, "");
+
+const titledEvidenceDetail = (evidence: string) => {
+  const parts = evidence.split(/\s+-\s+/);
+
+  return parts.length > 1 ? normaliseEvidenceMeaning(parts.slice(1).join(" - ")) : "";
+};
+
+const exactEvidenceCoversGeneratedSummary = (summary: string, evidence: string[]) => {
+  const normalisedSummary = normaliseText(summary);
+  const exactEvidence = evidence.filter((item) => !isGeneratedEvidenceSummary(item)).map(normaliseText);
+
+  if (normalisedSummary.includes("html, css, javascript")) {
+    return exactEvidence.some((item) =>
+      hasAny(item, ["html, css", "html and css", "javascript", "react, typescript"]),
+    );
+  }
+
+  if (normalisedSummary.includes("react and typescript")) {
+    return exactEvidence.some((item) =>
+      hasAny(item, ["react, typescript", "react and typescript", "typescript dashboard"]),
+    );
+  }
+
+  if (normalisedSummary.includes("github or portfolio")) {
+    return exactEvidence.some((item) => hasAny(item, ["github", "portfolio"]));
+  }
+
+  return false;
+};
+
+const dedupeRequirementEvidence = (evidence: string[]) => {
+  const withoutCoveredSummaries = evidence.filter(
+    (item) => !isGeneratedEvidenceSummary(item) || !exactEvidenceCoversGeneratedSummary(item, evidence),
+  );
+  const deduped: string[] = [];
+
+  for (const item of withoutCoveredSummaries) {
+    const itemKey = normaliseEvidenceMeaning(item);
+    const itemDetail = titledEvidenceDetail(item);
+    const existingDuplicateIndex = deduped.findIndex((existing) => {
+      const existingKey = normaliseEvidenceMeaning(existing);
+      const existingDetail = titledEvidenceDetail(existing);
+
+      return (
+        existingKey === itemKey ||
+        (itemDetail && existingKey === itemDetail) ||
+        (existingDetail && existingDetail === itemKey)
+      );
+    });
+
+    if (existingDuplicateIndex === -1) {
+      deduped.push(item);
+      continue;
+    }
+
+    const existing = deduped[existingDuplicateIndex];
+
+    if (titledEvidenceDetail(item) && !titledEvidenceDetail(existing)) {
+      deduped[existingDuplicateIndex] = item;
+    }
+  }
+
+  return deduped;
+};
+
 const shouldKeepEvidenceForRequirement = (requirement: string, evidence: string) => {
   if (isGcseOnlyEvidence(evidence) && !asksForEducationEvidence(requirement)) {
     return false;
@@ -1403,17 +1470,19 @@ const buildRequirementEvidenceMap = ({
         ? collectDirectEvidence(cvLines, isDirectDigitalWebEvidence)
         : []),
     ]);
-    const possibleEvidence = sortEvidenceForRequirement(
-      requirement,
-      unique(
-        [
-          ...reservedDirectEvidence,
-          ...categories
-            .flatMap((category) =>
-              collectCvEvidenceForCategory(cvLines, cvNormalised, category),
-            ),
-        ]
-          .filter((evidence) => shouldKeepEvidenceForRequirement(requirement, evidence)),
+    const possibleEvidence = dedupeRequirementEvidence(
+      sortEvidenceForRequirement(
+        requirement,
+        unique(
+          [
+            ...reservedDirectEvidence,
+            ...categories
+              .flatMap((category) =>
+                collectCvEvidenceForCategory(cvLines, cvNormalised, category),
+              ),
+          ]
+            .filter((evidence) => shouldKeepEvidenceForRequirement(requirement, evidence)),
+        ),
       ),
     ).slice(0, 10);
     const primaryCategory = categories[0] ?? "learning_new_systems";

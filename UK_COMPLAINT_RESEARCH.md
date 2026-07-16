@@ -646,3 +646,316 @@ England and Wales must be mapped separately. England social-housing complaints g
 - Wales-specific Citizens Advice energy page content was not manually extracted.
 - CISAS current post-2026-04-08 waiting-period text needs manual review because the accessible page still showed 8 weeks.
 - PSOW Living in Disrepair PDF was registered but not manually extracted.
+
+## Consumer refunds, faulty goods and missing deliveries
+
+### Research position
+
+| Rating | Position |
+| --- | --- |
+| User frequency | High |
+| User stress | Medium |
+| Input suitability | High |
+| Evidence structure | Strong |
+| Safety complexity | Medium |
+| Jurisdiction complexity | Medium |
+| Existing AdminAvenger overlap | Partial |
+| Proposed phase | Wave 1 |
+
+Consumer refund, faulty-goods and delivery disputes are well suited to a document-first assistant because the useful facts are usually visible in receipts, order confirmations, delivery messages, seller replies, marketplace records and card-provider correspondence. Authoritative sources support a preparation role: identify the seller, platform, item, order date, delivery status, amount mentioned, payment method, complaint stage and visible route wording. The safe product position is evidence organisation and editable drafting, not deciding whether consumer law has been breached, whether a refund is definitely due, or whether a chargeback, Section 75 claim, ADR route or court claim will succeed.
+
+### Common user problems
+
+- Item appears faulty, broken, damaged, unusable, not fit for purpose, or not as described.
+- Seller rejects or delays a refund, repair, replacement or return request.
+- Online order has not arrived, was left somewhere disputed, or missed an agreed or important delivery date.
+- User is unsure whether to complain to the seller, courier, marketplace platform, card provider, PayPal or BNPL provider.
+- Returned-goods dispute where seller says the goods were not received, were used, or were damaged after delivery.
+- Marketplace purchase where the user is unsure whether the platform or underlying seller is responsible.
+- Private-seller purchase where the issue is misdescription rather than ordinary business-seller consumer rights.
+- Product dispute confused with a service dispute, subscription cancellation, warranty claim, suspected scam, or bank dispute.
+
+### Typical input material
+
+- Receipts, order confirmations and invoices.
+- Product listings, seller descriptions and screenshots.
+- Delivery tracking, courier messages and safe-place instructions.
+- Photos or video of alleged fault, damage, missing parts or wrong item.
+- Return labels, proof of postage and return-tracking records.
+- Seller, marketplace, PayPal, BNPL or card-provider correspondence.
+- Warranty or guarantee correspondence.
+- Complaint acknowledgements, final responses, ADR messages or payment-dispute replies.
+
+### Classification signals
+
+- "refund", "return", "repair", "replacement", "faulty", "damaged", "broken", "not as described", "not fit for purpose", "warranty", "guarantee".
+- "not delivered", "missing parcel", "left with neighbour", "safe place", "delivery date", "redelivery", "tracking", "courier", "Royal Mail".
+- "order", "basket", "checkout", "seller", "retailer", "marketplace", "private seller", "business seller", "trader".
+- "chargeback", "Section 75", "PayPal dispute", "Buy Now Pay Later", "ADR", "final response", "deadlock".
+- Seller, marketplace, courier, card-provider or payment-provider names.
+
+Signals are clues only. They are not proof that goods breach consumer law, that a delivery failed, that the seller received a return, that a refund is due, or that a payment dispute will succeed.
+
+### Confusion risks
+
+- Consumer refund versus bank chargeback or Section 75 claim.
+- Missing delivery versus suspected scam or fake seller.
+- Faulty goods versus warranty or guarantee correspondence.
+- Marketplace platform versus underlying seller.
+- Subscription cancellation versus one-off purchase.
+- Private seller versus business seller.
+- Product dispute versus service dispute.
+- Courier complaint versus seller complaint.
+- Returned goods in transit versus seller refusal after receipt.
+- Consumer issue versus telecom, energy, water, banking, debt or housing correspondence.
+
+### Facts to extract
+
+- Seller, trader, marketplace platform, courier and payment provider where visible.
+- Whether the seller appears to be a business seller, private seller, marketplace seller, or unclear.
+- Order/reference number, tracking number, dispute reference and complaint reference.
+- Purchase date, order date, delivery date, agreed delivery date, return date and response dates.
+- Amount mentioned, amount being requested, refund amount mentioned, delivery charge mentioned, and amount shown on the document.
+- Item or service, product description, model, condition and listing wording where visible.
+- Payment method: debit card, credit card, PayPal, BNPL, cash, finance, mixed payment, or unclear.
+- Delivery status, safe-place wording, missed delivery wording, courier evidence and whether the user agreed to an alternative delivery location.
+- Return status, proof of postage, tracking status and whether receipt by seller is shown or unknown.
+- Complaint stage: first complaint, seller response, final response, marketplace dispute, payment dispute, ADR, or unclear.
+- Previous contact and requested action.
+- Deadline wording exactly as shown.
+
+Absent facts remain unknown. Do not infer receipt of returned goods, seller type, delivery agreement, fault cause, payment protection eligibility, deadlines or amounts from incomplete material.
+
+### Evidence to prepare
+
+- Copy of receipt, order confirmation or invoice.
+- Product listing, description, screenshots and seller promises visible at purchase.
+- Photos or video of the issue, packaging, wrong item, missing parts or damage.
+- Delivery tracking, courier message, proof of delivery and safe-place instruction records.
+- Return label, proof of postage, return tracking and seller return instructions.
+- Seller, platform, courier, PayPal, BNPL or card-provider correspondence.
+- Warranty or guarantee documents where they may be relevant.
+- Complaint letter, final response, ADR paperwork or payment-dispute reference.
+- Bank or card statement only if the user decides it is relevant evidence of payment.
+
+Evidence lists must not imply that the complaint will succeed.
+
+### Safe AdminAvenger outputs
+
+- Plain-English summary of what the document appears to be.
+- Chronology of order, delivery, return and complaint dates visible in the material.
+- Missing-information list.
+- Evidence checklist.
+- Neutral amount record using amount mentioned, amount being requested, refund amount mentioned, delivery charge mentioned or amount shown on the document.
+- Editable seller, marketplace, courier, payment-provider or ADR draft for user review where appropriate.
+- Questions for the user about seller type, delivery agreement, payment method, return proof and previous contact.
+- Chase reminder based only on dates visible or user-entered dates.
+- Adviser-ready export.
+- Visible uncertainty, including OCR-quality warnings where amounts, dates, tracking numbers or references may be misread.
+
+### Forbidden outputs
+
+- Guaranteed outcomes.
+- Invented dates.
+- Invented deadlines.
+- Invented amounts.
+- Invented rights.
+- Automatic submission.
+- Provider, seller, platform, courier or bank contact.
+- Claims that the user will win.
+- Statement that a refund is definitely due.
+- Decision that goods breach consumer law.
+- Guarantee of chargeback, Section 75, PayPal, BNPL, ADR or court success.
+- Assumption that returned goods were received.
+- Estimation of compensation.
+- Instruction to keep or dispose of goods without checking the seller's process.
+- Advice to ignore genuine correspondence or withhold payment.
+- Scam or fraud conclusions from consumer-dispute documents alone.
+
+### Jurisdiction notes
+
+- Citizens Advice consumer pages extracted in this phase apply to England and link to separate Wales, Scotland and Northern Ireland variants.
+- GOV.UK returns/refunds guidance is UK business-facing, but notes a Scotland difference for claim period; it must not be flattened into a single consumer rule.
+- CMA online-shopping guidance is UK-wide context, but scam reporting routes differ: England, Wales and Northern Ireland use Report Fraud, while Scotland routes to Police Scotland.
+- Private seller, business seller, marketplace and payment-provider routes depend on the exact transaction facts.
+- Northern Ireland routes were identified but not extracted in this Phase 1B1 source set.
+
+### Source IDs
+
+CONSUMER-CA-001, CONSUMER-CA-002, CONSUMER-CA-003, CONSUMER-CA-004, CONSUMER-CA-005, CONSUMER-GOVUK-001, CONSUMER-CMA-001
+
+### Research confidence
+
+Well sourced
+
+### Proposed AdminAvenger position
+
+Build dedicated engine
+
+### Proposed fixture ideas
+
+- Positive fixture 1: Retailer email refusing refund for a faulty appliance, with receipt, date and product description visible.
+- Positive fixture 2: Missing-delivery complaint where order confirmation, tracking number and seller response are visible.
+- Ambiguous fixture: Marketplace message showing platform name and seller username but unclear seller type and payment route.
+- Negative fixture: Broadband contract cancellation notice with no product-purchase or delivery dispute.
+- Cross-domain fixture: Missing parcel email containing suspicious link and request for card details.
+- Missing-information fixture: User asks for a refund draft but provides no order date, seller name, item description or payment method.
+- OCR-noise fixture: Blurry delivery screenshot where tracking number, date and delivery location are partly misread.
+- Safety fixture: User asks AdminAvenger to tell the seller they are definitely breaking the law and to submit the complaint automatically.
+
+## Universal Credit payments, deductions and overpayments
+
+### Research position
+
+| Rating | Position |
+| --- | --- |
+| User frequency | High |
+| User stress | High |
+| Input suitability | High |
+| Evidence structure | Strong |
+| Safety complexity | High |
+| Jurisdiction complexity | Medium |
+| Existing AdminAvenger overlap | Partial |
+| Proposed phase | Controlled later |
+
+Universal Credit statements, journal messages, overpayment letters, advance repayment notices, deduction notices and mandatory reconsideration references are document-heavy and highly suitable for extraction, chronology and evidence preparation. The safety complexity is high because deductions, sanctions, fraud penalties, overpayments, rent arrears, hardship, mandatory reconsideration and appeal routes are easily confused and can affect essential income. The safe product position is to explain what the document appears to be, preserve exact wording, organise evidence and prepare editable drafts. AdminAvenger must not calculate entitlement, decide whether a deduction or overpayment is valid, decide fraud, or predict reconsideration or appeal success.
+
+### Common user problems
+
+- Universal Credit statement shows a deduction and the user is unsure what it is for.
+- Advance repayment appears on a statement or journal message.
+- Overpayment letter or journal message says Universal Credit or another benefit was overpaid.
+- Payment is missing, reduced, stopped or lower than expected.
+- User cannot distinguish assessment-period calculations from payment-date wording.
+- Journal message or letter refers to a mandatory reconsideration, reconsideration notice or decision challenge.
+- Benefit debt recovery correspondence is confused with commercial debt collection or bailiff enforcement.
+- Sanction wording appears in a document and needs classification without deciding whether the sanction is valid.
+- Third-party deduction wording involves rent, utilities, Council Tax, child maintenance, service charges or court fines.
+
+### Typical input material
+
+- Universal Credit statements.
+- Online journal messages and screenshots.
+- DWP letters and decision letters.
+- Overpayment notices and benefit debt recovery letters.
+- Advance-payment and advance-repayment messages.
+- Third-party deduction notices.
+- Mandatory reconsideration requests, forms, replies and notices.
+- Sanction notifications or reduced-payment messages.
+- Payslips, tenancy agreements, childcare bills or bank statements only when the user chooses to provide them as evidence.
+
+### Classification signals
+
+- "Universal Credit", "DWP", "Department for Work and Pensions", "Jobcentre", "Work Coach", "online journal", "statement", "Payments", "assessment period".
+- "What we take off", "deductions", "advance", "advance repayment", "overpayment", "benefit debt", "third party deduction", "rent arrears", "standard allowance".
+- "mandatory reconsideration", "decision letter", "mandatory reconsideration notice", "appeal", "tribunal", "CRMR1".
+- "sanction", "fraud penalty", "hardship payment", "claimant commitment".
+- National Insurance number, UC account references, DWP office addresses and visible response-deadline wording.
+
+Signals are clues only. They do not prove entitlement, overpayment correctness, deduction validity, fraud, sanction validity, hardship eligibility, or appeal prospects.
+
+### Confusion risks
+
+- Benefit deduction versus commercial debt.
+- Advance repayment versus sanction.
+- Overpayment versus fraud investigation.
+- Universal Credit journal message versus ordinary email.
+- DWP-administered benefit versus council support such as Housing Benefit or Council Tax Reduction.
+- Benefit debt recovery versus bailiff enforcement.
+- Third-party deduction for rent, utilities or Council Tax versus separate housing, energy, water or local-authority disputes.
+- Payment-date confusion versus assessment-period calculation.
+- Mandatory reconsideration request versus mandatory reconsideration notice.
+- Sanction notification versus general claimant-commitment or appointment message.
+
+### Facts to extract
+
+- Organisation, DWP office, Jobcentre or named benefit office where visible.
+- Benefit type: Universal Credit, tax credits, Housing Benefit, other DWP benefit, council support, or unclear.
+- Reference number, National Insurance number presence, UC account reference and journal-message date where visible.
+- Notice type: statement, journal message, overpayment notice, deduction notice, advance repayment, third-party deduction, mandatory reconsideration request, mandatory reconsideration notice, sanction notification, debt recovery letter, or unclear.
+- Statement date, payment date, assessment period, decision date, letter date and response dates.
+- Amount mentioned, amount deducted, amount being requested, and amount shown on the document.
+- Deduction description and whether it appears to be advance repayment, overpayment, third-party deduction, hardship repayment, sanction/fraud penalty effect, or unclear.
+- Payment method and payment status where visible.
+- Complaint or challenge stage: explanation request, mandatory reconsideration, mandatory reconsideration notice, appeal reference, debt-management contact, or unclear.
+- Previous contact, requested action and evidence already sent.
+- Deadline wording exactly as shown.
+
+Absent facts remain unknown. Do not infer benefit entitlement, correct award, valid deduction, fraud, repayment liability, sanction period, appeal route or deadlines from incomplete material.
+
+### Evidence to prepare
+
+- Copy of the Universal Credit statement or journal message.
+- DWP decision letter, overpayment letter, deduction notice or mandatory reconsideration notice.
+- Earlier and later statements showing the same deduction or payment change.
+- Journal messages, letters and call notes showing previous contact.
+- Evidence named by the document, such as payslips, tenancy agreement, childcare bills or bank statements, only where the user decides they are relevant.
+- Proof of submitted evidence or journal entry where available.
+- Debt-management or benefit-debt correspondence where it is part of the same issue.
+- Adviser-ready chronology of visible dates, notices and responses.
+
+Evidence lists must not imply that a challenge will succeed.
+
+### Safe AdminAvenger outputs
+
+- Plain-English summary of what the document appears to be.
+- Chronology of statement dates, assessment periods, notice dates, payment dates and contacts.
+- Missing-information list.
+- Evidence checklist.
+- Neutral amount record using amount mentioned, amount deducted, amount being requested or amount shown on the document.
+- Editable draft asking for an explanation, clarification, hardship consideration, or mandatory reconsideration wording for user review where appropriate.
+- Questions for the user about notice type, online account access, previous contact, evidence, changed circumstances and whether advice is needed.
+- Chase reminder based only on visible or user-entered dates.
+- Adviser-ready export.
+- Visible uncertainty, including OCR-quality warnings where amounts, dates, references or assessment periods may be misread.
+
+### Forbidden outputs
+
+- Guaranteed outcomes.
+- Invented dates.
+- Invented deadlines.
+- Invented amounts.
+- Invented rights.
+- Automatic submission.
+- Contacting DWP, Jobcentre, Debt Management, council, landlord or adviser automatically.
+- Deciding entitlement.
+- Calculating what the claimant should receive.
+- Deciding whether a sanction, deduction or overpayment is valid.
+- Predicting mandatory reconsideration or appeal success.
+- Instructing users to hide income, savings, work, household changes or circumstances.
+- Deciding that fraud occurred or did not occur.
+- Labelling amounts as savings, recoveries or entitlements.
+- Advising the user to ignore a DWP, council, court or debt-recovery letter.
+- Combining different notices into one generic rule.
+
+### Jurisdiction notes
+
+- GOV.UK Universal Credit deductions guidance applies to England, Scotland and Wales and links Northern Ireland to nidirect.
+- Citizens Advice pages extracted in this phase apply to England and link to separate Wales, Scotland and Northern Ireland variants.
+- DWP mandatory reconsideration form publication provides English and Cymraeg versions; the full form content was not manually extracted in Phase 1B1.
+- Benefit overpayment routes differ for tax credits, Child Benefit, Social Security Scotland and Northern Ireland Department for Communities cases.
+- Council-administered support such as Housing Benefit and Council Tax Reduction may follow different local-authority processes and must not be merged into Universal Credit rules.
+- Northern Ireland Universal Credit and benefit debt routes were identified but not extracted in this Phase 1B1 source set.
+
+### Source IDs
+
+BENEFITS-DWP-001, BENEFITS-GOVUK-001, BENEFITS-GOVUK-002, BENEFITS-DWP-002, BENEFITS-GOVUK-003, BENEFITS-DWP-003, BENEFITS-CA-001, BENEFITS-CA-002
+
+### Research confidence
+
+Well sourced
+
+### Proposed AdminAvenger position
+
+Controlled beta only
+
+### Proposed fixture ideas
+
+- Positive fixture 1: Universal Credit statement showing "What we take off - deductions" with an advance repayment description and assessment period visible.
+- Positive fixture 2: DWP overpayment letter with amount requested, reason wording, date and mandatory reconsideration reference visible.
+- Ambiguous fixture: Journal screenshot saying payment is lower than expected but not showing whether the reason is earnings, deduction, sanction or overpayment.
+- Negative fixture: Commercial credit-card debt collection letter with no DWP, Universal Credit or benefit reference.
+- Cross-domain fixture: Rent arrears third-party deduction message that could be confused with a housing repair or landlord complaint.
+- Missing-information fixture: User says their UC is wrong but provides no statement, assessment period, deduction wording or decision letter.
+- OCR-noise fixture: Blurry phone photo of a UC statement where deduction description and amount are partly misread.
+- Safety fixture: User asks AdminAvenger to calculate what they should receive and tell DWP the overpayment is invalid.

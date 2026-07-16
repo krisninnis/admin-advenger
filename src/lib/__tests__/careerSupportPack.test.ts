@@ -112,6 +112,9 @@ Entry-level IT support candidate with practical admin and data experience.
 Projects
 AdminAvenger - local-first document preparation prototype using React and TypeScript.
 
+Technical Skills
+HTML, CSS, JavaScript, Python, GitHub
+
 Professional Experience
 Supported a community team with spreadsheet updates and record keeping.
 
@@ -129,11 +132,32 @@ Responsibilities
 Maintain spreadsheets, update records, and respond to support requests.
 
 Requirements
+Basic understanding of IT, software, data or web technologies.
 Essential skills: Excel, data handling, communication, and attention to detail.
 Desirable skills: GDPR handling, CRM administration, and Power BI awareness.
 
 How to apply
 Send a CV and short covering note.
+`;
+
+const syntheticCvWithGdprAndAdvert = `
+CV
+
+Professional profile
+Administrator with experience organising sensitive records.
+
+Professional Experience
+Maintained confidential customer records and organised important information.
+
+Education & Training
+GDPR Essentials Course
+Excel Skills Training
+
+JOB ADVERT
+Data Administrator
+
+Requirements
+GDPR handling, privacy awareness, and accurate record keeping.
 `;
 
 const syntheticNoisyCv = `
@@ -243,6 +267,50 @@ Required skills I am developing: React, JavaScript, accessibility.
     expect(education).not.toContain("desirable skills");
     expect(strongEvidence).not.toContain("gdpr handling");
     expect(strongEvidence).not.toContain("desirable skills");
+  });
+
+  it("builds a requirement-by-requirement evidence map from CV-side evidence", () => {
+    const pack = buildCareerSupportPack({ text: syntheticCvWithNoisyAdvert });
+    const map = pack.requirementEvidenceMap ?? [];
+    const spreadsheetItem = map.find((item) =>
+      item.requirement.toLowerCase().includes("excel"),
+    );
+    const itWebItem = map.find((item) =>
+      item.requirement.toLowerCase().includes("it, software"),
+    );
+    const gdprItem = map.find((item) =>
+      item.requirement.toLowerCase().includes("gdpr handling"),
+    );
+    const allPossibleEvidence = map
+      .flatMap((item) => item.possibleEvidence)
+      .join("\n")
+      .toLowerCase();
+
+    expect(map.length).toBeGreaterThan(0);
+    expect(spreadsheetItem?.possibleEvidence.join(" ").toLowerCase()).toContain("excel skills training");
+    expect(spreadsheetItem?.possibleEvidence.join(" ").toLowerCase()).toContain("spreadsheet updates");
+    expect(spreadsheetItem?.exampleToPrepare.toLowerCase()).toContain("excel");
+    expect(itWebItem?.possibleEvidence.join(" ").toLowerCase()).toContain("open university");
+    expect(itWebItem?.possibleEvidence.join(" ").toLowerCase()).toContain("html, css, javascript");
+    expect(itWebItem?.possibleEvidence.join(" ").toLowerCase()).toContain("adminavenger");
+    expect(itWebItem?.exampleToPrepare.toLowerCase()).toContain("project");
+    expect(gdprItem?.possibleEvidence.join(" ").toLowerCase()).not.toContain("gdpr handling");
+    expect(allPossibleEvidence).not.toContain("we are looking");
+    expect(allPossibleEvidence).not.toContain("essential skills");
+    expect(allPossibleEvidence).not.toContain("desirable skills");
+  });
+
+  it("maps GDPR/privacy requirements only when CV-side evidence is present", () => {
+    const pack = buildCareerSupportPack({ text: syntheticCvWithGdprAndAdvert });
+    const gdprItem = pack.requirementEvidenceMap?.find((item) =>
+      item.requirement.toLowerCase().includes("gdpr handling"),
+    );
+    const evidence = gdprItem?.possibleEvidence.join("\n").toLowerCase() ?? "";
+
+    expect(gdprItem).toBeDefined();
+    expect(evidence).toContain("gdpr essentials course");
+    expect(evidence).toContain("confidential customer records");
+    expect(gdprItem?.verificationNote.toLowerCase()).toContain("check before using");
   });
 
   it("does not turn a synthetic CV into a subscription finding", () => {

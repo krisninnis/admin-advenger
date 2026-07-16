@@ -1,6 +1,6 @@
 import type { AdminCase, MoneyImpact, OpportunityCard } from "../types";
 import type { BenefitsActionPack, BenefitsKeyDate, BenefitsMoneyLine } from "./benefitsActionPack";
-import type { CareerSupportPack } from "./careerSupportPack";
+import type { CareerRequirementEvidenceMapItem, CareerSupportPack } from "./careerSupportPack";
 import type { CommunityHelperPack } from "./communityHelperPack";
 import type { DecisionAmountTreatment, DecisionResult, DecisionSourceFact } from "./decisionEngine/types";
 import {
@@ -114,6 +114,7 @@ export type ResultViewModel = {
   safetyNotes: string[];
   safetyView: ResultSafetyView;
   draftOrChecklist?: ResultDraftView;
+  careerRequirementEvidenceMap?: CareerRequirementEvidenceMapItem[];
   sections: ResultSectionView[];
   detailSections: ResultSectionView[];
   showBenefitsActionPack: boolean;
@@ -668,6 +669,12 @@ export const buildResultViewModel = ({
     ? {
         title: "Career preparation checklist",
         body: cleanStringItems([
+          ...(careerSupportPack.requirementEvidenceMap ?? []).flatMap((item) => [
+            `Requirement to compare: ${item.requirement}`,
+            ...item.possibleEvidence.map((evidence) => `Possible CV evidence to consider: ${evidence}`),
+            `Example to prepare: ${item.exampleToPrepare}`,
+            item.verificationNote,
+          ]),
           ...(careerSupportPack.requirementsFound ?? []).map((item) => `Advert requirement to review: ${item}`),
           ...(careerSupportPack.cvEvidenceThatMayMatch ?? []).map((item) => `CV evidence that may match: ${item}`),
           ...(careerSupportPack.examplesToPrepare ?? []),
@@ -682,6 +689,15 @@ export const buildResultViewModel = ({
   const effectiveDraftOrChecklist = careerChecklist ?? draftOrChecklist;
   const sections = [
     makeSection("summary", "Summary", [summary], "main_result", "summary"),
+    careerSupportPack
+      ? makeSection(
+          "career-requirement-evidence-map",
+          "Requirement-by-requirement evidence map",
+          (careerSupportPack.requirementEvidenceMap ?? []).map((item) => item.requirement),
+          "career_support_pack",
+          "summary",
+        )
+      : undefined,
     careerSupportPack
       ? makeSection(
           "career-role-clues",
@@ -1078,6 +1094,7 @@ export const buildResultViewModel = ({
     safetyNotes,
     safetyView,
     draftOrChecklist: effectiveDraftOrChecklist,
+    careerRequirementEvidenceMap: careerSupportPack?.requirementEvidenceMap,
     sections,
     detailSections,
     showBenefitsActionPack: Boolean(benefitsActionPack),
@@ -1106,6 +1123,12 @@ export const flattenResultViewModelText = (model: ResultViewModel) =>
     ...model.safetyNotes,
     model.draftOrChecklist?.title ?? "",
     model.draftOrChecklist?.body ?? "",
+    ...(model.careerRequirementEvidenceMap ?? []).flatMap((item) => [
+      item.requirement,
+      ...item.possibleEvidence,
+      item.exampleToPrepare,
+      item.verificationNote,
+    ]),
     ...model.sections.flatMap((section) => [section.title, ...section.items]),
     ...model.detailSections.flatMap((section) => [section.title, ...section.items]),
   ].join("\n");

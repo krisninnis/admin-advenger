@@ -11,6 +11,13 @@ export type CareerSupportConfidence = {
   reason: string;
 };
 
+export type CareerRequirementEvidenceMapItem = {
+  requirement: string;
+  possibleEvidence: string[];
+  exampleToPrepare: string;
+  verificationNote: string;
+};
+
 export type CareerSupportPack = {
   documentType: CareerSupportDocumentType;
   matchMode?: "cv_job_advert_match";
@@ -23,6 +30,7 @@ export type CareerSupportPack = {
   advertWordingToReview?: string[];
   examplesToPrepare?: string[];
   claimsToVerify?: string[];
+  requirementEvidenceMap?: CareerRequirementEvidenceMapItem[];
   strengthsToHighlight: string[];
   evidenceToUse: string[];
   projectsToHighlight: string[];
@@ -385,6 +393,9 @@ const isUsableEducationDetail = (line: string) =>
 const isUsableRequirementDetail = (line: string) =>
   !isLikelySectionHeading(line) && !isContactDetail(line) && !isProfileLine(line);
 
+const isUsableEvidenceMapLine = (line: string) =>
+  !isLikelySectionHeading(line) && !isContactDetail(line) && !isProfileLine(line);
+
 const buildStrengthLabels = (normalised: string, skills: string[]) => {
   const labels: string[] = [];
 
@@ -532,8 +543,153 @@ const requirementSignals = [
   "desirable",
 ];
 
+type CareerMatchCategory =
+  | "records_admin_data"
+  | "excel_spreadsheets"
+  | "it_software_support"
+  | "web_development"
+  | "communication"
+  | "gdpr_privacy"
+  | "organisation"
+  | "problem_solving"
+  | "learning_new_systems"
+  | "projects_portfolio"
+  | "education_computing";
+
+const categorySignals: Record<CareerMatchCategory, string[]> = {
+  records_admin_data: ["record", "records", "admin", "data", "spreadsheet", "spreadsheets", "crm"],
+  excel_spreadsheets: ["excel", "spreadsheet", "spreadsheets", "formula", "formulas", "pivot"],
+  it_software_support: ["software", "systems", "support", "technical", "helpdesk", "information technology"],
+  web_development: ["web", "website", "html", "css", "javascript", "typescript", "react", "python", "development"],
+  communication: ["communication", "customer", "support requests", "respond", "escalation", "stakeholder"],
+  gdpr_privacy: ["gdpr", "privacy", "sensitive data", "confidential", "data protection"],
+  organisation: ["organised", "organized", "organisation", "organization", "scheduling", "appointments", "medication"],
+  problem_solving: ["problem", "troubleshooting", "solving", "debug", "fixed", "resolved"],
+  learning_new_systems: ["learn", "learning", "new systems", "training", "course", "bootcamp", "module"],
+  projects_portfolio: ["project", "portfolio", "github", "memephant", "adminavenger"],
+  education_computing: ["bsc", "computing", "open university", "university", "maths", "mathematics", "it study"],
+};
+
+const categoryExamples: Record<CareerMatchCategory, string> = {
+  records_admin_data: "Prepare one short example explaining how records, spreadsheets, or admin data were kept accurately.",
+  excel_spreadsheets: "Prepare one short example explaining how you used Excel, spreadsheets, formulas, or data checks.",
+  it_software_support: "Prepare a short example of supporting software, systems, users, or technical tasks.",
+  web_development: "Prepare a short explanation of one project and what you personally worked on.",
+  communication: "Prepare an example of clear communication, responding to a request, or explaining information.",
+  gdpr_privacy: "Prepare an example only if you can accurately explain privacy, GDPR, or sensitive-data handling experience.",
+  organisation: "Prepare an example of organising tasks, appointments, information, or independent work.",
+  problem_solving: "Prepare one short example of a practical problem you investigated or solved.",
+  learning_new_systems: "Prepare an example of learning a new system, course topic, or workflow.",
+  projects_portfolio: "Prepare one project example and explain your own contribution clearly.",
+  education_computing: "Prepare a short explanation of relevant study, modules, or training and how it connects to the advert.",
+};
+
+const categoryPriority: CareerMatchCategory[] = [
+  "gdpr_privacy",
+  "web_development",
+  "it_software_support",
+  "education_computing",
+  "excel_spreadsheets",
+  "records_admin_data",
+  "projects_portfolio",
+  "communication",
+  "organisation",
+  "problem_solving",
+  "learning_new_systems",
+];
+
+const categoriesForRequirement = (requirement: string): CareerMatchCategory[] => {
+  const normalisedRequirement = normaliseText(requirement);
+  const categories = (Object.keys(categorySignals) as CareerMatchCategory[]).filter((category) =>
+    categorySignals[category].some((signal) => normalisedRequirement.includes(signal)),
+  );
+  const addRelatedCategory = (category: CareerMatchCategory) => {
+    if (!categories.includes(category)) {
+      categories.push(category);
+    }
+  };
+
+  if (
+    /\bit\b/.test(normalisedRequirement) ||
+    hasAny(normalisedRequirement, ["software", "technical", "technology", "technologies"])
+  ) {
+    addRelatedCategory("education_computing");
+    addRelatedCategory("projects_portfolio");
+  }
+
+  if (hasAny(normalisedRequirement, ["web", "development", "developer", "portfolio", "github"])) {
+    addRelatedCategory("projects_portfolio");
+  }
+
+  return categories.length > 0
+    ? categories.sort((a, b) => categoryPriority.indexOf(a) - categoryPriority.indexOf(b))
+    : ["learning_new_systems"];
+};
+
+const collectCvEvidenceForCategory = (
+  cvLines: string[],
+  cvNormalised: string,
+  category: CareerMatchCategory,
+) => {
+  const signals = categorySignals[category];
+  const matches = cvLines.filter((line) => {
+    const normalisedLine = normaliseText(line);
+
+    return (
+      isUsableEvidenceMapLine(line) &&
+      signals.some((signal) => normalisedLine.includes(signal))
+    );
+  });
+
+  if (category === "web_development") {
+    if (hasAny(cvNormalised, ["html", "css", "javascript", "python"])) {
+      matches.push("HTML, CSS, JavaScript, or Python skills mentioned in the CV.");
+    }
+
+    if (hasAny(cvNormalised, ["react", "typescript"])) {
+      matches.push("React and TypeScript project work mentioned in the CV.");
+    }
+  }
+
+  if (category === "projects_portfolio" && hasAny(cvNormalised, ["github"])) {
+    matches.push("GitHub or portfolio evidence mentioned in the CV.");
+  }
+
+  return unique(matches).slice(0, 4);
+};
+
+const buildRequirementEvidenceMap = ({
+  requirements,
+  cvLines,
+  cvNormalised,
+}: {
+  requirements: string[];
+  cvLines: string[];
+  cvNormalised: string;
+}): CareerRequirementEvidenceMapItem[] =>
+  requirements.slice(0, 6).map((requirement) => {
+    const categories = categoriesForRequirement(requirement);
+    const possibleEvidence = unique(
+      categories.flatMap((category) =>
+        collectCvEvidenceForCategory(cvLines, cvNormalised, category),
+      ),
+    ).slice(0, 7);
+    const primaryCategory = categories[0];
+
+    return {
+      requirement,
+      possibleEvidence:
+        possibleEvidence.length > 0
+          ? possibleEvidence
+          : ["No clear CV evidence found for this requirement yet."],
+      exampleToPrepare: categoryExamples[primaryCategory],
+      verificationNote: "Check before using: only include this if it accurately reflects your CV and experience.",
+    };
+  });
+
 const buildMatchFields = ({
   advertLines,
+  cvLines,
   strengths,
   evidence,
   projects,
@@ -542,6 +698,7 @@ const buildMatchFields = ({
   normalised,
 }: {
   advertLines: string[];
+  cvLines: string[];
   strengths: string[];
   evidence: string[];
   projects: string[];
@@ -589,6 +746,11 @@ const buildMatchFields = ({
     "Verify dates, qualifications, project links, and role titles against your records.",
     "Tailor only where accurate; do not imply experience you cannot honestly explain.",
   ];
+  const requirementEvidenceMap = buildRequirementEvidenceMap({
+    requirements: requirementsFound,
+    cvLines,
+    cvNormalised: normalised,
+  });
 
   return {
     requirementsFound,
@@ -597,6 +759,7 @@ const buildMatchFields = ({
     strongEvidenceToConsider,
     examplesToPrepare,
     claimsToVerify,
+    requirementEvidenceMap,
   };
 };
 
@@ -712,12 +875,13 @@ export const buildCareerSupportPack = ({ text }: { text: string }): CareerSuppor
     documentType === "cv_job_advert_match"
       ? buildMatchFields({
           advertLines,
+          cvLines,
           strengths: strengthsToHighlight,
           evidence: evidenceToUse,
           projects: projectsToHighlight,
           experience: experienceToFrame,
           education: educationAndTraining,
-          normalised,
+          normalised: cvNormalised,
         })
       : undefined;
 
@@ -738,6 +902,7 @@ export const buildCareerSupportPack = ({ text }: { text: string }): CareerSuppor
     advertWordingToReview: matchFields?.advertWordingToReview,
     examplesToPrepare: matchFields?.examplesToPrepare,
     claimsToVerify: matchFields?.claimsToVerify,
+    requirementEvidenceMap: matchFields?.requirementEvidenceMap,
     strengthsToHighlight,
     evidenceToUse,
     projectsToHighlight,

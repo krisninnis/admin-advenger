@@ -230,6 +230,11 @@ Desirable skills: Portfolio or GitHub examples.`,
 
     expect(careerSupportPack.documentType).toBe("cv_job_advert_match");
     expect(html).toContain("CV and job advert match notes");
+    expect(html).toContain("Requirement-by-requirement evidence map");
+    expect(html).toContain("Requirement");
+    expect(html).toContain("Possible CV evidence to consider");
+    expect(html).toContain("What to prepare");
+    expect(html).toContain("Check before using");
     expect(html).toContain("Requirements found in the advert");
     expect(html).toContain("CV evidence that may match");
     expect(html).toContain("Strong evidence to consider using");

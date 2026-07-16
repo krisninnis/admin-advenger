@@ -300,6 +300,55 @@ function TextList({
   );
 }
 
+function RequirementEvidenceMap({
+  items,
+}: {
+  items: NonNullable<ResultViewModel["careerRequirementEvidenceMap"]>;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const visible = visibleItems(items, 3, expanded);
+
+  if (items.length === 0) {
+    return (
+      <p>
+        No requirement-by-requirement map was prepared. Review the advert
+        requirements and CV evidence manually.
+      </p>
+    );
+  }
+
+  return (
+    <>
+      <ul className="space-y-3">
+        {visible.map((item) => (
+          <li key={item.requirement} className="rounded-lg border border-white/10 bg-slate-950/45 p-3">
+            <p className="text-sm font-bold text-white">Requirement</p>
+            <p className="mt-1">{item.requirement}</p>
+            <p className="mt-3 text-sm font-bold text-white">
+              Possible CV evidence to consider
+            </p>
+            <ul className="mt-1 list-disc space-y-1 pl-5">
+              {item.possibleEvidence.map((evidence) => (
+                <li key={evidence}>{evidence}</li>
+              ))}
+            </ul>
+            <p className="mt-3 text-sm font-bold text-white">What to prepare</p>
+            <p className="mt-1">{item.exampleToPrepare}</p>
+            <p className="mt-3 text-xs leading-5 text-amber-100">
+              {item.verificationNote}
+            </p>
+          </li>
+        ))}
+      </ul>
+      <ShowMoreButton
+        expanded={expanded}
+        onClick={() => setExpanded((current) => !current)}
+        hiddenCount={items.length - 3}
+      />
+    </>
+  );
+}
+
 export function ResultCaseSheet({
   model,
   decisionResult,
@@ -427,6 +476,12 @@ export function ResultCaseSheet({
 
       {isCareerSupportResult ? (
         <div className="mt-5 grid gap-4 lg:grid-cols-2">
+          {isCareerMatchResult ? (
+            <Section title="Requirement-by-requirement evidence map" tone="cyan">
+              <RequirementEvidenceMap items={model.careerRequirementEvidenceMap ?? []} />
+            </Section>
+          ) : null}
+
           {(isCareerMatchResult
             ? [
                 "career-role-clues",

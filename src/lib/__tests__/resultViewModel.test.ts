@@ -357,6 +357,10 @@ Desirable skills: Portfolio or GitHub examples.`,
     const flattened = flattenResultViewModelText(model).toLowerCase();
     const cvEvidenceSection = model.sections.find((section) => section.id === "career-cv-evidence-may-match");
     const cvEvidenceText = cvEvidenceSection?.items.join("\n").toLowerCase() ?? "";
+    const evidenceMapText = model.careerRequirementEvidenceMap
+      ?.flatMap((item) => [item.requirement, ...item.possibleEvidence, item.exampleToPrepare, item.verificationNote])
+      .join("\n")
+      .toLowerCase() ?? "";
 
     expect(careerSupportPack.documentType).toBe("cv_job_advert_match");
     expect(model.title).toBe("CV and job advert match notes");
@@ -364,6 +368,7 @@ Desirable skills: Portfolio or GitHub examples.`,
     expect(model.sections.map((section) => section.id)).toEqual(
       expect.arrayContaining([
         "career-role-clues",
+        "career-requirement-evidence-map",
         "career-requirements-found",
         "career-cv-evidence-may-match",
         "career-strong-evidence-to-consider",
@@ -374,6 +379,9 @@ Desirable skills: Portfolio or GitHub examples.`,
     );
     expect(flattened).toContain("requirements found in the advert");
     expect(flattened).toContain("cv evidence that may match");
+    expect(flattened).toContain("requirement-by-requirement evidence map");
+    expect(evidenceMapText).toContain("adminavenger");
+    expect(evidenceMapText).toContain("check before using");
     expect(cvEvidenceText).not.toContain("we are looking for a candidate who can build user interfaces");
     expect(flattened).not.toContain("match score");
     expect(flattened).not.toContain("percentage match");

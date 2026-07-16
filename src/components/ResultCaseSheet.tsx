@@ -320,6 +320,7 @@ export function ResultCaseSheet({
     [model.evidenceFound],
   );
   const isCareerSupportResult = model.resultKind === "career_support";
+  const isCareerMatchResult = model.sections.some((section) => section.id === "career-requirements-found");
   const caseProgress = useMemo(
     () =>
       buildCaseProgress({
@@ -426,23 +427,29 @@ export function ResultCaseSheet({
 
       {isCareerSupportResult ? (
         <div className="mt-5 grid gap-4 lg:grid-cols-2">
-          {[
-            "career-role-clues",
-            "career-requirements-found",
-            "career-cv-evidence-may-match",
-            "career-strong-evidence-to-consider",
-            "career-advert-wording-to-review",
-            "career-examples-to-prepare",
-            "career-claims-to-verify",
-            "career-target-roles",
-            "career-strengths",
-            "career-evidence",
-            "career-projects",
-            "career-experience",
-            "career-education",
-            "career-gaps",
-            "career-safer-rewrites",
-          ].map((sectionId) => {
+          {(isCareerMatchResult
+            ? [
+                "career-role-clues",
+                "career-requirements-found",
+                "career-cv-evidence-may-match",
+                "career-strong-evidence-to-consider",
+                "career-gaps",
+                "career-advert-wording-to-review",
+                "career-examples-to-prepare",
+                "career-claims-to-verify",
+                "career-next-steps",
+              ]
+            : [
+                "career-target-roles",
+                "career-strengths",
+                "career-evidence",
+                "career-projects",
+                "career-experience",
+                "career-education",
+                "career-gaps",
+                "career-safer-rewrites",
+              ]
+          ).map((sectionId) => {
             const section = model.sections.find((item) => item.id === sectionId);
 
             return section ? (

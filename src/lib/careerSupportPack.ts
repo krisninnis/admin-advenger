@@ -55,6 +55,37 @@ const getLines = (text: string) =>
 const hasAny = (text: string, signals: string[]) =>
   signals.some((signal) => text.includes(signal));
 
+const cvSectionMarkerPattern =
+  /^(cv|curriculum vitae|resume|professional profile|key skills|technical skills|projects|projects\s*\/\s*portfolio|professional experience|work experience|education\s*(?:&|and)\s*training)\b/i;
+
+const advertSectionMarkerPattern =
+  /^(job advert|job description|about the role|responsibilities|requirements|essential skills|desirable skills|required skills|how to apply|salary|location)\b/i;
+
+const splitCareerMatchText = (text: string) => {
+  const rawLines = text.split(/\r?\n/);
+  const cvIndex = rawLines.findIndex((line) => cvSectionMarkerPattern.test(line.trim()));
+  const advertIndex = rawLines.findIndex((line) => advertSectionMarkerPattern.test(line.trim()));
+
+  if (cvIndex === -1 || advertIndex === -1 || cvIndex === advertIndex) {
+    return {
+      cvText: text,
+      advertText: text,
+    };
+  }
+
+  if (cvIndex < advertIndex) {
+    return {
+      cvText: rawLines.slice(cvIndex, advertIndex).join("\n"),
+      advertText: rawLines.slice(advertIndex).join("\n"),
+    };
+  }
+
+  return {
+    cvText: rawLines.slice(cvIndex).join("\n"),
+    advertText: rawLines.slice(advertIndex, cvIndex).join("\n"),
+  };
+};
+
 const directCvSignals = [
   "github portfolio",
   "curriculum vitae",
@@ -449,14 +480,39 @@ const extractLinesMatching = (lines: string[], signals: string[], fallback: stri
   return unique(matches.length > 0 ? matches.slice(0, 5) : [fallback]);
 };
 
-const extractRoleClues = (lines: string[], normalised: string) =>
-  unique([
+const weakAdvertHeadingPattern =
+  /^(job advert|job description|about the role|responsibilities|requirements|essential skills|desirable skills|required skills|how to apply|salary|location)$/i;
+
+const looksLikeRoleTitle = (line: string) => {
+  const trimmed = line.trim();
+
+  return (
+    trimmed.length >= 5 &&
+    trimmed.length <= 90 &&
+    !weakAdvertHeadingPattern.test(trimmed) &&
+    !/[.!?]$/.test(trimmed) &&
+    /(?:developer|assistant|analyst|specialist|manager|administrator|engineer|support|designer|coordinator|officer|consultant)/i.test(
+      trimmed,
+    )
+  );
+};
+
+const extractRoleClues = (lines: string[], normalised: string) => {
+  const titleFromLabel = lines
+    .map((line) => line.replace(/^(job advert|job title|role|position)\s*:\s*/i, "").trim())
+    .filter(looksLikeRoleTitle);
+  const firstAdvertHeading = lines.findIndex((line) => /^job advert\b/i.test(line.trim()));
+  const titleNearAdvert =
+    firstAdvertHeading >= 0
+      ? lines.slice(firstAdvertHeading + 1, firstAdvertHeading + 4).filter(looksLikeRoleTitle)
+      : [];
+
+  return unique([
+    ...titleFromLabel,
+    ...titleNearAdvert,
     ...extractMatchingSignals(normalised, roleSignals),
-    ...lines
-      .filter((line) => /\b(job advert|job title|role|position)\b/i.test(line))
-      .filter((line) => line.length <= 90)
-      .map((line) => line.replace(/^(job advert|job title|role|position)\s*:\s*/i, "").trim()),
   ]).slice(0, 5);
+};
 
 const requirementSignals = [
   "react",
@@ -477,7 +533,7 @@ const requirementSignals = [
 ];
 
 const buildMatchFields = ({
-  lines,
+  advertLines,
   strengths,
   evidence,
   projects,
@@ -485,7 +541,7 @@ const buildMatchFields = ({
   education,
   normalised,
 }: {
-  lines: string[];
+  advertLines: string[];
   strengths: string[];
   evidence: string[];
   projects: string[];
@@ -493,10 +549,6 @@ const buildMatchFields = ({
   education: string[];
   normalised: string;
 }) => {
-  const advertStartIndex = lines.findIndex((line) =>
-    /\b(job advert|job description|about the role|we are looking|company is looking|we are hiring)\b/i.test(line),
-  );
-  const advertLines = advertStartIndex >= 0 ? lines.slice(advertStartIndex) : lines;
   const requirementsFound = collectSectionLines(
     advertLines,
     ["about the role", "responsibilities", "requirements", "essential skills", "desirable skills", "required skills"],
@@ -602,6 +654,17 @@ export const buildCareerSupportPack = ({ text }: { text: string }): CareerSuppor
   const normalised = normaliseText(text);
   const lines = getLines(text);
   const documentType = detectCareerSupportDocumentType(text);
+  const splitText =
+    documentType === "cv_job_advert_match"
+      ? splitCareerMatchText(text)
+      : {
+          cvText: text,
+          advertText: text,
+        };
+  const cvNormalised = normaliseText(splitText.cvText);
+  const advertNormalised = normaliseText(splitText.advertText);
+  const cvLines = getLines(splitText.cvText);
+  const advertLines = getLines(splitText.advertText);
   const careerSignals = unique([
     ...extractMatchingSignals(normalised, directCvSignals),
     ...extractMatchingSignals(normalised, cvStructureSignals),
@@ -609,28 +672,37 @@ export const buildCareerSupportPack = ({ text }: { text: string }): CareerSuppor
     ...extractMatchingSignals(normalised, jobAdvertSignals),
     ...extractMatchingSignals(normalised, applicationAnswerSignals),
   ]);
-  const skills = extractMatchingSignals(normalised, skillSignals);
-  const targetRoles = extractMatchingSignals(normalised, roleSignals);
-  const strengthsToHighlight = buildStrengthLabels(normalised, skills);
+  const skills = extractMatchingSignals(
+    documentType === "cv_job_advert_match" ? cvNormalised : normalised,
+    skillSignals,
+  );
+  const targetRoles = extractMatchingSignals(
+    documentType === "cv_job_advert_match" ? advertNormalised : normalised,
+    roleSignals,
+  );
+  const strengthsToHighlight = buildStrengthLabels(
+    documentType === "cv_job_advert_match" ? cvNormalised : normalised,
+    skills,
+  );
   const evidenceToUse = extractLinesMatching(
-    lines,
+    documentType === "cv_job_advert_match" ? cvLines : lines,
     evidenceVerbs,
     "Add specific examples of work, projects, volunteering, training, or responsibilities the user can evidence.",
   );
   const projectsToHighlight = collectSectionLines(
-    lines,
+    documentType === "cv_job_advert_match" ? cvLines : lines,
     ["projects", "portfolio", "github projects"],
     ["memephant", "adminavenger", "portfolio project", "portfolio app", "github"],
     "If relevant, add project, portfolio, GitHub, or work-sample evidence.",
     isUsableProjectDetail,
   );
   const experienceToFrame = extractLinesMatching(
-    lines,
+    documentType === "cv_job_advert_match" ? cvLines : lines,
     ["professional experience", "work experience", "volunteer experience", "employment history", "managed", "supported", "delivered"],
     "Frame experience around truthful responsibilities, actions taken, and outcomes where known.",
   );
   const educationAndTraining = collectSectionLines(
-    lines,
+    documentType === "cv_job_advert_match" ? cvLines : lines,
     ["education", "education & training", "education and training", "training"],
     ["bsc computing and it", "bsc", "open university", "completed modules", "module", "modules", "excel skills training", "gdpr essentials course", "gdpr", "nvq", "degree", "certificate", "certification", "bootcamp", "gcse", "a level", "course", "training", "university"],
     "Add relevant education, training, certificates, or courses if they support the target role.",
@@ -639,7 +711,7 @@ export const buildCareerSupportPack = ({ text }: { text: string }): CareerSuppor
   const matchFields =
     documentType === "cv_job_advert_match"
       ? buildMatchFields({
-          lines,
+          advertLines,
           strengths: strengthsToHighlight,
           evidence: evidenceToUse,
           projects: projectsToHighlight,
@@ -659,7 +731,7 @@ export const buildCareerSupportPack = ({ text }: { text: string }): CareerSuppor
         : documentType === "job_advert"
           ? ["Check the job title and role family from the advert."]
           : ["Check which role this CV or application is being prepared for."],
-    roleClues: documentType === "cv_job_advert_match" ? extractRoleClues(lines, normalised) : undefined,
+    roleClues: documentType === "cv_job_advert_match" ? extractRoleClues(advertLines, advertNormalised) : undefined,
     requirementsFound: matchFields?.requirementsFound,
     cvEvidenceThatMayMatch: matchFields?.cvEvidenceThatMayMatch,
     strongEvidenceToConsider: matchFields?.strongEvidenceToConsider,

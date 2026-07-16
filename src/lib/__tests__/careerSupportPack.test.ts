@@ -103,6 +103,39 @@ Location: Remote
 Apply now with your CV.
 `;
 
+const syntheticCvWithNoisyAdvert = `
+CV
+
+Professional profile
+Entry-level IT support candidate with practical admin and data experience.
+
+Projects
+AdminAvenger - local-first document preparation prototype using React and TypeScript.
+
+Professional Experience
+Supported a community team with spreadsheet updates and record keeping.
+
+Education & Training
+BSc Computing and IT, Open University
+Excel Skills Training
+
+JOB ADVERT
+Junior IT & Data Support Assistant
+
+About the role
+We are looking for someone to support the data team and help with internal systems.
+
+Responsibilities
+Maintain spreadsheets, update records, and respond to support requests.
+
+Requirements
+Essential skills: Excel, data handling, communication, and attention to detail.
+Desirable skills: GDPR handling, CRM administration, and Power BI awareness.
+
+How to apply
+Send a CV and short covering note.
+`;
+
 const syntheticNoisyCv = `
 CV
 
@@ -181,6 +214,35 @@ Required skills I am developing: React, JavaScript, accessibility.
     expect(advertWording).toContain("we are looking");
     expect(pack.examplesToPrepare?.join(" ").toLowerCase()).toContain("react and typescript");
     expect(pack.claimsToVerify?.join(" ").toLowerCase()).toContain("tailor only where accurate");
+  });
+
+  it("keeps job advert text out of CV-side match evidence", () => {
+    const pack = buildCareerSupportPack({ text: syntheticCvWithNoisyAdvert });
+    const roleClues = pack.roleClues?.join("\n").toLowerCase() ?? "";
+    const requirements = pack.requirementsFound?.join("\n").toLowerCase() ?? "";
+    const evidenceToUse = pack.evidenceToUse.join("\n").toLowerCase();
+    const projects = pack.projectsToHighlight.join("\n").toLowerCase();
+    const education = pack.educationAndTraining.join("\n").toLowerCase();
+    const strongEvidence = pack.strongEvidenceToConsider?.join("\n").toLowerCase() ?? "";
+
+    expect(pack.documentType).toBe("cv_job_advert_match");
+    expect(roleClues).toContain("junior it & data support assistant");
+    expect(roleClues).not.toContain("job advert");
+    expect(roleClues).not.toContain("about the role");
+    expect(roleClues).not.toContain("responsibilities");
+    expect(roleClues).not.toContain("requirements");
+    expect(roleClues).not.toContain("desirable skills");
+    expect(requirements).toContain("gdpr handling");
+    expect(evidenceToUse).not.toContain("we are looking");
+    expect(evidenceToUse).not.toContain("desirable skills");
+    expect(projects).toContain("adminavenger");
+    expect(projects).not.toContain("gdpr handling");
+    expect(projects).not.toContain("desirable skills");
+    expect(education).toContain("open university");
+    expect(education).not.toContain("gdpr handling");
+    expect(education).not.toContain("desirable skills");
+    expect(strongEvidence).not.toContain("gdpr handling");
+    expect(strongEvidence).not.toContain("desirable skills");
   });
 
   it("does not turn a synthetic CV into a subscription finding", () => {

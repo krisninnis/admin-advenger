@@ -236,6 +236,8 @@ Desirable skills: Portfolio or GitHub examples.`,
     expect(html).toContain("Wording from the advert to review");
     expect(html).toContain("Examples to prepare before applying");
     expect(html).toContain("Claims to verify before sending");
+    expect(html).not.toContain("Projects to highlight");
+    expect(html).not.toContain("Education/training to mention");
     expect(text).toContain("may match");
     expect(text).not.toContain("match score");
     expect(text).not.toContain("percentage match");

@@ -343,6 +343,8 @@ Projects
 AdminAvenger - local-first document preparation prototype.
 Work Experience
 Supported customer service teams.
+Education & Training
+Web development bootcamp, 2025
 
 Job advert: Front End Developer
 About the role
@@ -353,6 +355,8 @@ Desirable skills: Portfolio or GitHub examples.`,
     });
     const model = buildResultViewModel({ careerSupportPack });
     const flattened = flattenResultViewModelText(model).toLowerCase();
+    const cvEvidenceSection = model.sections.find((section) => section.id === "career-cv-evidence-may-match");
+    const cvEvidenceText = cvEvidenceSection?.items.join("\n").toLowerCase() ?? "";
 
     expect(careerSupportPack.documentType).toBe("cv_job_advert_match");
     expect(model.title).toBe("CV and job advert match notes");
@@ -370,6 +374,7 @@ Desirable skills: Portfolio or GitHub examples.`,
     );
     expect(flattened).toContain("requirements found in the advert");
     expect(flattened).toContain("cv evidence that may match");
+    expect(cvEvidenceText).not.toContain("we are looking for a candidate who can build user interfaces");
     expect(flattened).not.toContain("match score");
     expect(flattened).not.toContain("percentage match");
     expect(flattened).not.toContain("you are qualified");

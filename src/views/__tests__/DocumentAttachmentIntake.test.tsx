@@ -29,6 +29,10 @@ describe("Document Attachment Intake v1 - HomeView wiring", () => {
     expect(homeViewSource).toContain("VISIBLE_INPUT_DROP_LABEL");
   });
 
+  it("acknowledges CV and job-advert documents in the main Home copy", () => {
+    expect(homeViewSource).toContain("Paste a bill, email, letter, CV, job advert, or message.");
+  });
+
   it("keeps the existing photo/file tabs and demo copy working alongside the new area", () => {
     expect(homeViewSource).toContain("Take or upload a photo");
     expect(homeViewSource).toContain("Upload a file");

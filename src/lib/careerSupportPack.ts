@@ -128,13 +128,18 @@ const skillSignals = [
   "tailwind",
   "node",
   "github",
+  "data",
   "excel",
   "customer service",
   "stakeholder",
   "accessibility",
   "case notes",
   "scheduling",
+  "record keeping",
+  "organisation",
+  "organization",
   "problem solving",
+  "troubleshooting",
   "communication",
 ];
 
@@ -225,7 +230,9 @@ const sectionHeadingSignals = [
   "personal statement",
   "key skills",
   "technical skills",
+  "other technical skills",
   "projects",
+  "projects / portfolio",
   "portfolio",
   "github projects",
   "professional experience",
@@ -256,8 +263,65 @@ const isContactDetail = (line: string) =>
 const isProfileLine = (line: string) =>
   /professional profile|personal profile|profile|seeking an?|looking for|career objective/i.test(line);
 
+const isBroadSkillsLine = (line: string) => {
+  const normalisedLine = normaliseText(line);
+  const hasTrainingSignal =
+    /training|course|module|bsc|university|nvq|certificate|certification|gdpr|excel skills|degree|gcse|a level/.test(
+      normalisedLine,
+    );
+
+  return (
+    /^(other\s+)?technical skills\b|^key skills\b|^skills\b/.test(normalisedLine) ||
+    (!hasTrainingSignal &&
+      normalisedLine.includes(",") &&
+      /\b(react|typescript|javascript|html|css|tailwind|node|github)\b/.test(normalisedLine) &&
+      !hasAny(normalisedLine, ["memephant", "adminavenger", "portfolio", "project", "app", "built", "created"]))
+  );
+};
+
 const isUsableCvDetail = (line: string) =>
-  !isLikelySectionHeading(line) && !isContactDetail(line) && !isProfileLine(line);
+  !isLikelySectionHeading(line) &&
+  !isContactDetail(line) &&
+  !isProfileLine(line) &&
+  !isBroadSkillsLine(line);
+
+const buildStrengthLabels = (normalised: string, skills: string[]) => {
+  const labels: string[] = [];
+
+  if (hasAny(normalised, ["react", "typescript"])) {
+    labels.push("React and TypeScript project work");
+  }
+
+  if (hasAny(normalised, ["html", "css", "javascript", "tailwind", "node"])) {
+    labels.push("Web development fundamentals");
+  }
+
+  if (hasAny(normalised, ["excel", "data"])) {
+    labels.push("Excel and data handling");
+  }
+
+  if (hasAny(normalised, ["record keeping", "case notes", "scheduling", "organisation", "organization", "admin"])) {
+    labels.push("Record keeping and organisation");
+  }
+
+  if (hasAny(normalised, ["problem solving", "troubleshooting", "built", "created", "maintained", "technical"])) {
+    labels.push("Technical/practical problem solving");
+  }
+
+  if (hasAny(normalised, ["github", "portfolio"])) {
+    labels.push("GitHub portfolio evidence");
+  }
+
+  if (labels.length > 0) {
+    return unique(labels);
+  }
+
+  if (skills.length > 0) {
+    return ["Relevant skills to evidence with truthful examples"];
+  }
+
+  return ["Identify 3 to 5 strengths that match the target role and can be backed up with examples."];
+};
 
 const collectSectionLines = (
   lines: string[],
@@ -384,10 +448,7 @@ export const buildCareerSupportPack = ({ text }: { text: string }): CareerSuppor
         : documentType === "job_advert"
           ? ["Check the job title and role family from the advert."]
           : ["Check which role this CV or application is being prepared for."],
-    strengthsToHighlight:
-      skills.length > 0
-        ? skills.map((skill) => `Evidence around ${skill}`)
-        : ["Identify 3 to 5 strengths that match the target role and can be backed up with examples."],
+    strengthsToHighlight: buildStrengthLabels(normalised, skills),
     evidenceToUse: extractLinesMatching(
       lines,
       evidenceVerbs,
@@ -396,7 +457,7 @@ export const buildCareerSupportPack = ({ text }: { text: string }): CareerSuppor
     projectsToHighlight: collectSectionLines(
       lines,
       ["projects", "portfolio", "github projects"],
-      ["memephant", "adminavenger", "portfolio project", "project", "github", "website", "app", "built", "created"],
+      ["memephant", "adminavenger", "portfolio project", "portfolio app", "github"],
       "If relevant, add project, portfolio, GitHub, or work-sample evidence.",
     ),
     experienceToFrame: extractLinesMatching(
@@ -407,7 +468,7 @@ export const buildCareerSupportPack = ({ text }: { text: string }): CareerSuppor
     educationAndTraining: collectSectionLines(
       lines,
       ["education", "education & training", "education and training", "training"],
-      ["bsc", "open university", "module", "modules", "excel skills training", "gdpr", "nvq", "degree", "certificate", "certification", "bootcamp", "gcse", "a level", "course", "training", "university"],
+      ["bsc computing and it", "bsc", "open university", "completed modules", "module", "modules", "excel skills training", "gdpr essentials course", "gdpr", "nvq", "degree", "certificate", "certification", "bootcamp", "gcse", "a level", "course", "training", "university"],
       "Add relevant education, training, certificates, or courses if they support the target role.",
     ),
     possibleGapsToCheck: buildGaps(documentType, normalised),

@@ -1481,7 +1481,7 @@ export function HomeView({
           AI remembers. AI explains. Humans decide.
         </p>
         <h2 className="text-2xl font-bold tracking-tight text-white sm:text-5xl">
-          Paste the bill, email, or message you want help with.
+          Paste a bill, email, letter, CV, job advert, or message.
         </h2>
         <p className="max-w-xl text-base leading-7 text-slate-300 sm:text-lg sm:leading-8">
           AdminAvenger explains it in plain English, tells you what to have ready, and prepares the

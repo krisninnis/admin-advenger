@@ -321,6 +321,8 @@ Web development course, 2026`,
     );
     expect(flattened).toContain("strengths to highlight");
     expect(flattened).toContain("projects to highlight");
+    expect(flattened).toContain("react and typescript project work");
+    expect(flattened).not.toContain("evidence around");
     expect(flattened).not.toContain("money mentioned");
     expect(flattened).not.toContain("check these details against the original letter");
     expect(uncertaintyText).not.toContain("reply");

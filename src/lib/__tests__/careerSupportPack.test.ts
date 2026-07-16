@@ -82,15 +82,18 @@ alex.example@example.test
 Professional profile
 Seeking a junior developer role after building practical portfolio projects and completing training.
 
+Other Technical Skills
+React, TypeScript, JavaScript, HTML, CSS, GitHub
+
 GitHub Projects
 Memephant - a playful React project using local state and reusable components.
 AdminAvenger - local-first document preparation prototype.
 
 Education & Training
-BSc Computing, Open University
-Modules: Web technologies, databases, accessibility
+BSc Computing and IT, Open University
+Completed modules: Web technologies, databases, accessibility
 Excel Skills Training
-GDPR awareness
+GDPR Essentials Course
 `;
 
 describe("Career Support Pack Core v1", () => {
@@ -142,6 +145,10 @@ Required skills I am developing: React, JavaScript, accessibility.
 
     expect(projects).toContain("memephant");
     expect(projects).toContain("adminavenger");
+    expect(projects).not.toContain("other technical skills");
+    expect(projects).not.toContain("projects / portfolio");
+    expect(projects).not.toMatch(/^projects$/m);
+    expect(projects).not.toMatch(/^portfolio$/m);
     expect(projects).not.toContain("alex.example@example.test");
     expect(projects).not.toContain("07123");
     expect(projects).not.toContain("professional profile");
@@ -153,22 +160,52 @@ Required skills I am developing: React, JavaScript, accessibility.
     const education = pack.educationAndTraining.join("\n").toLowerCase();
 
     expect(education).toContain("open university");
-    expect(education).toContain("modules");
+    expect(education).toContain("completed modules");
     expect(education).toContain("excel skills training");
-    expect(education).toContain("gdpr");
+    expect(education).toContain("gdpr essentials course");
     expect(education).not.toContain("professional profile");
     expect(education).not.toContain("seeking a junior developer role");
+    expect(education).not.toContain("react, typescript");
+    expect(education).not.toContain("other technical skills");
   });
 
   it("prepares strengths, evidence, projects, and next steps from a synthetic CV", () => {
     const pack = buildCareerSupportPack({ text: syntheticCv });
 
-    expect(pack.strengthsToHighlight.join(" ")).toContain("react");
+    expect(pack.strengthsToHighlight).toEqual(
+      expect.arrayContaining([
+        "React and TypeScript project work",
+        "Web development fundamentals",
+        "GitHub portfolio evidence",
+      ]),
+    );
+    expect(pack.strengthsToHighlight.join(" ")).not.toContain("Evidence around");
     expect(pack.evidenceToUse.join(" ")).toContain("Built a subscription tracker project");
     expect(pack.projectsToHighlight.join(" ")).toContain("GitHub");
     expect(pack.nextPreparationSteps).toContain(
       "Choose the target role or job advert before editing the CV or application.",
     );
+  });
+
+  it("uses human-readable CV strength labels for practical and admin evidence", () => {
+    const pack = buildCareerSupportPack({
+      text: `${syntheticNoisyCv}
+Professional Experience
+Record keeping, scheduling, data checks, troubleshooting, and practical problem solving.
+`,
+    });
+
+    expect(pack.strengthsToHighlight).toEqual(
+      expect.arrayContaining([
+        "React and TypeScript project work",
+        "Web development fundamentals",
+        "Excel and data handling",
+        "Record keeping and organisation",
+        "Technical/practical problem solving",
+        "GitHub portfolio evidence",
+      ]),
+    );
+    expect(pack.strengthsToHighlight.join(" ")).not.toContain("Evidence around");
   });
 
   it("detects a synthetic job advert as career/job-search material", () => {
@@ -205,8 +242,10 @@ Learn how to cancel.
     expect(text).not.toContain("you will get the job");
     expect(text).not.toContain("guaranteed interviews");
     expect(text).not.toContain("you qualify");
+    expect(text).not.toContain("employer will like this");
     expect(text).not.toContain("this is the best cv");
     expect(text).not.toContain("this proves experience");
+    expect(text).not.toContain("scoring");
     expect(text).not.toContain("apply automatically");
     expect(text).not.toContain("submit automatically");
     expect(text).not.toContain("contact employers automatically");

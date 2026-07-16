@@ -8,6 +8,12 @@ Source principles:
 - AI remembers. AI explains. Humans decide.
 - AI extracts facts. Code assesses. Human approves.
 - AdminAvenger helps prepare. You stay in control.
+- Research does not equal implementation.
+- Fixture ideas do not equal passing tests.
+- Possible money does not equal confirmed savings.
+- Stable engines should be frozen except for genuine defects.
+- No automatic sending, submission, cancellation, appeal, application or
+  provider contact.
 
 ## Done
 
@@ -50,35 +56,48 @@ Source principles:
 - Career Match v1.6 is deployed and production Tests 7 and 8 pass.
 - Added golden letter corpus, safety wording regression coverage, pilot docs,
   and product mission docs.
+- Completed Phase 1A research.
+- Completed Phase 1B1 research.
+- Completed Phase 1B2 research.
+- Completed the source register.
+- Completed the UK complaint research document.
+- Completed the golden fixture standard.
+- Completed documentation coverage consolidation.
+- Completed Career Match v1.6 stabilisation.
 
 ## Now
 
-1. Complete Phase 1A official-source register.
-2. Review energy, telecom, banking and housing research.
-3. Confirm Wales-specific housing routes.
-4. Approve the fixture ideas.
-5. Choose one existing or new engine to harden.
-6. Create fixtures before changing engine behaviour.
-7. Run cross-domain regression tests.
-8. Perform production live tests.
-9. Freeze the engine after passing.
+1. Review and approve `GOLDEN_FIXTURE_STANDARD.md`.
+2. Inventory existing decision-engine and classifier tests.
+3. Map existing tests to golden-fixture categories.
+4. Create machine-readable fixture records for one engine only.
+5. Select telecom as the first hardening candidate.
+6. Create telecom fixtures before changing behaviour.
+7. Run telecom and cross-domain regression tests.
+8. Fix only confirmed failures.
+9. Perform production live tests.
+10. Freeze telecom behaviour after passing.
 
 ## Next
 
-- Phase 1B: consumer refunds and deliveries.
-- Phase 1B: Universal Credit, deductions and overpayments.
-- Phase 1B: workplace correspondence.
-- Phase 1B: water billing and supply.
-- Phase 1B: golden-fixture standard.
+- Energy fixture design and engine evaluation.
+- Banking fixture design and fraud-boundary review.
+- Consumer fixture design and engine evaluation.
+- Benefits-family fixture audit.
+- Existing parking/debt/TVL/bank regression mapping.
+- Research-source review and stale-source monitoring.
+- Resolve sources marked `Needs review` or `Needs manual extraction`.
+- Wales-specific jurisdiction review.
+- One-engine-at-a-time hardening.
 
 ## Later
 
-- Backend.
-- Authentication.
-- Cloud database.
-- Hosted AI extraction.
-- Provider/email/calendar/storage integrations.
-- Automatic actions, only if a future trust model supports them safely.
+- Housing controlled research and fixtures.
+- Workplace controlled-beta fixtures.
+- Water Wave 2 fixtures.
+- Additional specialist verticals only after current engines are frozen.
+- Backend/auth/database only when required by validated product needs.
+- Hosted AI only through a defined privacy and consent model.
 
 ## Guardrails
 
@@ -90,6 +109,8 @@ Source principles:
 - Do not claim entitlement, eligibility, case strength, suitability, or likely
   outcome.
 - Do not count money automatically.
+- Do not count demanded, deducted, disputed, possible, or researched money as
+  saved or recovered.
 - Do not send, submit, cancel, apply, contact, or archive anything
   automatically.
 - Do not hide uncertainty, missing evidence, OCR weakness, or cannot-know

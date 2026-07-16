@@ -485,6 +485,120 @@ Report recurring data issues to managers.`,
     expect(validateResultViewModelSafety(model).safe).toBe(true);
   });
 
+  it("keeps SaaS support issue-documentation evidence in the final checklist", () => {
+    const careerSupportPack = buildCareerSupportPack({
+      text: `CV
+Professional Profile
+Front-end developer with customer support experience.
+
+Technical Skills
+React, TypeScript, HTML, CSS, JavaScript, GitHub
+
+Projects
+TaskFlow Dashboard
+Built a React and TypeScript dashboard for tracking customer requests.
+Used GitHub to document setup steps.
+
+Work Experience
+Customer Support Assistant
+Helped customers understand products and resolve simple issues.
+Explained steps clearly to customers and colleagues.
+Kept notes of recurring problems and shared them with the team.
+
+JOB ADVERT
+SaaS Support Specialist
+
+Responsibilities
+Help customers understand product settings and resolve simple issues.
+Reproduce simple issues and document what happened.`,
+    });
+    const model = buildResultViewModel({ careerSupportPack });
+    const checklist = model.draftOrChecklist?.body.toLowerCase() ?? "";
+    const customerHelp = model.careerRequirementEvidenceMap?.find((item) =>
+      item.requirement.toLowerCase().includes("help customers understand"),
+    );
+    const issueDocumentation = model.careerRequirementEvidenceMap?.find((item) =>
+      item.requirement.toLowerCase().includes("reproduce simple issues"),
+    );
+    const issueEvidence = issueDocumentation?.possibleEvidence.join("\n").toLowerCase() ?? "";
+
+    expect(customerHelp?.exampleToPrepare.toLowerCase()).toContain("helping a customer understand");
+    expect(customerHelp?.exampleToPrepare.toLowerCase()).not.toContain("reproducing an issue");
+    expect(issueDocumentation?.possibleEvidence[0].toLowerCase()).toContain("kept notes of recurring problems");
+    expect(issueEvidence.indexOf("kept notes of recurring problems")).toBeLessThan(
+      issueEvidence.indexOf("react and typescript"),
+    );
+    expect(issueDocumentation?.exampleToPrepare.toLowerCase()).toContain(
+      "reproducing an issue, recording the steps and outcome",
+    );
+    expect(checklist).toContain("kept notes of recurring problems and shared them with the team");
+    expect(checklist).toContain("reproducing an issue, recording the steps and outcome");
+    expect(validateResultViewModelSafety(model).safe).toBe(true);
+  });
+
+  it("keeps SaaS support privacy and digital evidence specific in final output", () => {
+    const careerSupportPack = buildCareerSupportPack({
+      text: `CV
+Professional Profile
+Career changer with admin, family support and basic web project experience.
+
+Key Skills
+Learning new software tools.
+Appointment and inbox management.
+GDPR and customer records.
+
+Projects
+Personal Portfolio Website
+Built a simple HTML and CSS portfolio page.
+GitHub portfolio in progress.
+
+Work Experience
+Family Support Role
+Helped families understand appointment letters and next steps.
+Explained steps clearly to people who were unsure what to do.
+Kept notes of recurring problems and shared them with the team.
+Appointment and inbox management.
+Maintained confidential customer records.
+
+Education and Training
+GDPR Essentials Course
+
+JOB ADVERT
+SaaS Customer Support Assistant
+
+Responsibilities
+Respond to support tickets and onboarding questions.
+Reproduce simple issues and document what happened.
+Follow privacy processes when updating customer records.
+Show basic digital or web understanding.`,
+    });
+    const model = buildResultViewModel({ careerSupportPack });
+    const flattened = flattenResultViewModelText(model).toLowerCase();
+    const privacy = model.careerRequirementEvidenceMap?.find((item) =>
+      item.requirement.toLowerCase().includes("privacy processes"),
+    );
+    const digital = model.careerRequirementEvidenceMap?.find((item) =>
+      item.requirement.toLowerCase().includes("digital or web understanding"),
+    );
+    const issueDocumentation = model.careerRequirementEvidenceMap?.find((item) =>
+      item.requirement.toLowerCase().includes("reproduce simple issues"),
+    );
+    const digitalEvidence = digital?.possibleEvidence.join("\n").toLowerCase() ?? "";
+
+    expect(privacy?.possibleEvidence[0].toLowerCase()).toContain("gdpr and customer records");
+    expect(privacy?.possibleEvidence.join(" ").toLowerCase()).toContain("confidential customer records");
+    expect(privacy?.possibleEvidence.join(" ").toLowerCase()).toContain("gdpr essentials course");
+    expect(privacy?.possibleEvidence.join(" ").toLowerCase()).not.toContain("learning new software tools");
+    expect(digital?.possibleEvidence[0].toLowerCase()).toContain("html");
+    expect(digitalEvidence).toContain("built a simple html and css portfolio page");
+    expect(digitalEvidence).toContain("github portfolio in progress");
+    expect(digitalEvidence).not.toContain("appointment and inbox management");
+    expect(issueDocumentation?.possibleEvidence[0].toLowerCase()).toContain("kept notes of recurring problems");
+    expect(flattened).not.toMatch(/(^|\n)family support role($|\n)/);
+    expect(flattened).not.toMatch(/(^|\n)personal portfolio website($|\n)/);
+    expect(validateResultViewModelSafety(model).safe).toBe(true);
+  });
+
   it("still produces a useful conservative fallback for unknown admin documents", () => {
     const decision = makeDecision("unknown_admin_dispute", {
       title: "",

@@ -848,6 +848,18 @@ const isPrivacyOrRecordsEvidence = (evidence: string) =>
     "customer records",
   ]);
 
+const isPrivacyCustomerRecordRequirement = (requirement: string) =>
+  hasAny(normaliseText(requirement), [
+    "gdpr",
+    "privacy",
+    "confidential",
+    "confidentiality",
+    "sensitive",
+    "data protection",
+    "customer records",
+    "customer data",
+  ]);
+
 const isSaasSupportAdvert = (requirements: string[], advertNormalised: string) =>
   hasAny(advertNormalised, [
     "customer support",
@@ -885,7 +897,20 @@ const isAppointmentInboxEvidence = (evidence: string) =>
   !hasAny(normaliseText(evidence), ["issue", "issues", "problem", "problems", "recurring", "documented", "reported", "notes", "what happened"]);
 
 const isReproduceDocumentRequirement = (requirement: string) =>
-  hasAny(normaliseText(requirement), ["reproduce", "document what happened", "documenting what happened", "simple issues", "bugs", "broken links", "layout issues"]);
+  hasAny(normaliseText(requirement), [
+    "reproduce",
+    "document what happened",
+    "documenting what happened",
+    "record the issue",
+    "record an issue",
+    "record the steps",
+    "troubleshoot and document",
+    "log the problem",
+    "capture steps",
+    "capture the steps",
+    "capture outcome",
+    "capture the outcome",
+  ]);
 
 const isDigitalWebUnderstandingRequirement = (requirement: string) =>
   hasAny(normaliseText(requirement), [
@@ -894,6 +919,18 @@ const isDigitalWebUnderstandingRequirement = (requirement: string) =>
     "digital or web understanding",
     "digital understanding",
     "web understanding",
+  ]);
+
+const isCustomerHelpRequirement = (requirement: string) =>
+  hasAny(normaliseText(requirement), [
+    "help customers",
+    "help customers understand",
+    "resolve simple issues",
+    "help customers with issues",
+    "support users with problems",
+    "support users with issues",
+    "respond to support tickets",
+    "onboarding questions",
   ]);
 
 const isDirectIssueDocumentationEvidence = (evidence: string) =>
@@ -930,6 +967,10 @@ const shouldKeepEvidenceForRequirement = (requirement: string, evidence: string)
   }
 
   if (isPrivacyOrRecordsEvidence(evidence) && !asksForPrivacyOrRecordsEvidence(requirement)) {
+    return false;
+  }
+
+  if (isPrivacyCustomerRecordRequirement(requirement) && !isPrivacyOrRecordsEvidence(evidence)) {
     return false;
   }
 
@@ -1163,7 +1204,14 @@ const categoriesForRequirement = (requirement: string): CareerMatchCategory[] =>
   }
 
   if (hasAny(normalisedRequirement, ["web", "development", "developer", "portfolio", "github"])) {
+    addRelatedCategory("web_development");
     addRelatedCategory("projects_portfolio");
+  }
+
+  if (isDigitalWebUnderstandingRequirement(requirement)) {
+    addRelatedCategory("web_development");
+    addRelatedCategory("projects_portfolio");
+    addRelatedCategory("it_software_support");
   }
 
   if (isSupportRoleRequirement(requirement)) {
@@ -1341,7 +1389,9 @@ const buildRequirementEvidenceMap = ({
       isReproduceDocumentRequirement(requirement) && !asksForSpecificDeveloperEvidence(requirement)
         ? "Prepare a short example of reproducing an issue, recording the steps and outcome, and explaining what happened."
         : isSupportRoleRequirement(requirement) && !asksForSpecificDeveloperEvidence(requirement)
-          ? hasAny(normaliseText(requirement), ["learning", "software tool", "new system"])
+          ? isCustomerHelpRequirement(requirement)
+            ? "Prepare a short example of helping a customer understand the issue, what you did, and what happened next."
+            : hasAny(normaliseText(requirement), ["learning", "software tool", "new system"])
             ? "Prepare one example of learning a software tool and explaining it to someone else."
             : "Prepare a short example of explaining a technical issue or platform step clearly."
           : categoryExamples[primaryCategory];

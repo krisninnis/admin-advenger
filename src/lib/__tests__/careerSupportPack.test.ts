@@ -686,6 +686,8 @@ Required skills I am developing: React, JavaScript, accessibility.
 
     expect(pack.documentType).toBe("cv_job_advert_match");
     expect(supportItem?.possibleEvidence[0].toLowerCase()).toContain("helped customers understand");
+    expect(supportItem?.exampleToPrepare.toLowerCase()).toContain("helping a customer understand");
+    expect(supportItem?.exampleToPrepare.toLowerCase()).not.toContain("reproducing an issue");
     expect(supportEvidence.indexOf("helped customers understand")).toBeLessThan(
       supportEvidence.indexOf("react and typescript"),
     );
@@ -728,6 +730,8 @@ Required skills I am developing: React, JavaScript, accessibility.
     expect(pack.documentType).toBe("cv_job_advert_match");
     expect(supportItem?.possibleEvidence[0].toLowerCase()).toContain("helped families understand");
     expect(supportItem?.possibleEvidence.join(" ").toLowerCase()).toContain("explained steps clearly");
+    expect(supportItem?.exampleToPrepare.toLowerCase()).toContain("helping a customer understand");
+    expect(supportItem?.exampleToPrepare.toLowerCase()).not.toContain("reproducing an issue");
     expect(privacyItem?.possibleEvidence[0].toLowerCase()).toContain("gdpr and customer records");
     expect(privacyItem?.possibleEvidence.join(" ").toLowerCase()).toContain("gdpr essentials course");
     expect(privacyItem?.possibleEvidence.join(" ").toLowerCase()).toContain("confidential customer records");

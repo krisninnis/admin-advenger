@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vitest";
+import addAdminItemSource from "../../components/AddAdminItem.tsx?raw";
+import sidebarSource from "../../components/Sidebar.tsx?raw";
+import addItemViewSource from "../AddItemView.tsx?raw";
 import homeViewSource from "../HomeView.tsx?raw";
 import documentAttachmentAreaSource from "../../components/DocumentAttachmentArea.tsx?raw";
 import {
@@ -31,6 +34,13 @@ describe("Document Attachment Intake v1 - HomeView wiring", () => {
 
   it("acknowledges CV and job-advert documents in the main Home copy", () => {
     expect(homeViewSource).toContain("Paste a bill, email, letter, CV, job advert, or message.");
+    expect(homeViewSource).toContain("Paste the email, bill, letter, CV, job advert, or message here...");
+    expect(sidebarSource).toContain("Paste a bill, email, letter, CV, job advert, or message");
+    expect(addAdminItemSource).toContain("Paste an email, message, bill, letter, CV, or job advert");
+    expect(addAdminItemSource).toContain(
+      "Paste the full email, message, bill, receipt, letter, CV, or job advert text here...",
+    );
+    expect(addItemViewSource).toContain("Paste an email, message, bill, letter, CV, or job advert.");
   });
 
   it("keeps the existing photo/file tabs and demo copy working alongside the new area", () => {

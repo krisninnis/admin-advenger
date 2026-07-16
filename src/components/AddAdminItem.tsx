@@ -73,7 +73,7 @@ export function AddAdminItem({
     <section className="rounded-lg border border-white/10 bg-slate-900/85 p-5 shadow-xl shadow-slate-950/20 sm:p-6">
       <div>
         <h2 className="text-xl font-semibold text-white">
-          Paste an email, message, bill, or letter
+          Paste an email, message, bill, letter, CV, or job advert
         </h2>
         <p className="mt-1 text-sm leading-6 text-slate-400">
           Tell AdminAvenger what this is, then paste the text you want prepared into a case.
@@ -121,7 +121,7 @@ export function AddAdminItem({
             value={values.rawText}
             onChange={(event) => updateValue("rawText", event.target.value)}
             rows={8}
-            placeholder="Paste the full email, message, bill, receipt, or letter text here..."
+            placeholder="Paste the full email, message, bill, receipt, letter, CV, or job advert text here..."
             className="mt-2 w-full resize-y rounded-lg border border-white/10 bg-slate-950 px-4 py-3 text-base leading-7 text-white outline-none transition placeholder:text-slate-600 focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20"
           />
         </div>

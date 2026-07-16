@@ -86,6 +86,8 @@ Other Technical Skills
 React, TypeScript, JavaScript, HTML, CSS, GitHub
 
 GitHub Projects
+Development Tools / Portfolio: GitHub
+Key areas worked on include:
 Memephant - a playful React project using local state and reusable components.
 AdminAvenger - local-first document preparation prototype.
 
@@ -93,6 +95,7 @@ Education & Training
 BSc Computing and IT, Open University
 Completed modules: Web technologies, databases, accessibility
 Excel Skills Training
+GDPR and data handling awareness
 GDPR Essentials Course
 `;
 
@@ -147,6 +150,8 @@ Required skills I am developing: React, JavaScript, accessibility.
     expect(projects).toContain("adminavenger");
     expect(projects).not.toContain("other technical skills");
     expect(projects).not.toContain("projects / portfolio");
+    expect(projects).not.toContain("development tools / portfolio");
+    expect(projects).not.toContain("key areas worked on include");
     expect(projects).not.toMatch(/^projects$/m);
     expect(projects).not.toMatch(/^portfolio$/m);
     expect(projects).not.toContain("alex.example@example.test");
@@ -163,6 +168,7 @@ Required skills I am developing: React, JavaScript, accessibility.
     expect(education).toContain("completed modules");
     expect(education).toContain("excel skills training");
     expect(education).toContain("gdpr essentials course");
+    expect(education).not.toContain("gdpr and data handling awareness");
     expect(education).not.toContain("professional profile");
     expect(education).not.toContain("seeking a junior developer role");
     expect(education).not.toContain("react, typescript");

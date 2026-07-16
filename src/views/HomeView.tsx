@@ -1813,7 +1813,7 @@ export function HomeView({
                   }
                 }}
                 rows={9}
-                placeholder="Paste the email, bill, letter, or message here…"
+                placeholder="Paste the email, bill, letter, CV, job advert, or message here..."
                 className="mt-3 w-full resize-y rounded-lg border border-white/10 bg-slate-950 px-4 py-4 text-base leading-7 text-white outline-none transition placeholder:text-slate-600 focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20"
               />
               </div>

@@ -233,6 +233,7 @@ const sectionHeadingSignals = [
   "other technical skills",
   "projects",
   "projects / portfolio",
+  "development tools / portfolio",
   "portfolio",
   "github projects",
   "professional experience",
@@ -279,11 +280,35 @@ const isBroadSkillsLine = (line: string) => {
   );
 };
 
+const isNoisyProjectLine = (line: string) => {
+  const normalisedLine = normaliseText(line).replace(/:$/, "");
+
+  return (
+    /^development tools\s*\/\s*portfolio\b/.test(normalisedLine) ||
+    /^key areas worked on include\b/.test(normalisedLine)
+  );
+};
+
+const isGenericAwarenessLine = (line: string) => {
+  const normalisedLine = normaliseText(line);
+
+  return (
+    /\bawareness\b/.test(normalisedLine) &&
+    !/\b(course|training|module|certificate|certification|qualification|essentials course)\b/.test(normalisedLine)
+  );
+};
+
 const isUsableCvDetail = (line: string) =>
   !isLikelySectionHeading(line) &&
   !isContactDetail(line) &&
   !isProfileLine(line) &&
   !isBroadSkillsLine(line);
+
+const isUsableProjectDetail = (line: string) =>
+  isUsableCvDetail(line) && !isNoisyProjectLine(line);
+
+const isUsableEducationDetail = (line: string) =>
+  isUsableCvDetail(line) && !isGenericAwarenessLine(line);
 
 const buildStrengthLabels = (normalised: string, skills: string[]) => {
   const labels: string[] = [];
@@ -328,6 +353,7 @@ const collectSectionLines = (
   headingSignals: string[],
   contentSignals: string[],
   fallback: string,
+  isUsableLine = isUsableCvDetail,
 ) => {
   const matches: string[] = [];
 
@@ -344,13 +370,13 @@ const collectSectionLines = (
           break;
         }
 
-        if (isUsableCvDetail(nextLine)) {
+        if (isUsableLine(nextLine)) {
           matches.push(nextLine);
         }
       }
     }
 
-    if (isDirectContent && isUsableCvDetail(line)) {
+    if (isDirectContent && isUsableLine(line)) {
       matches.push(line);
     }
   });
@@ -459,6 +485,7 @@ export const buildCareerSupportPack = ({ text }: { text: string }): CareerSuppor
       ["projects", "portfolio", "github projects"],
       ["memephant", "adminavenger", "portfolio project", "portfolio app", "github"],
       "If relevant, add project, portfolio, GitHub, or work-sample evidence.",
+      isUsableProjectDetail,
     ),
     experienceToFrame: extractLinesMatching(
       lines,
@@ -470,6 +497,7 @@ export const buildCareerSupportPack = ({ text }: { text: string }): CareerSuppor
       ["education", "education & training", "education and training", "training"],
       ["bsc computing and it", "bsc", "open university", "completed modules", "module", "modules", "excel skills training", "gdpr essentials course", "gdpr", "nvq", "degree", "certificate", "certification", "bootcamp", "gcse", "a level", "course", "training", "university"],
       "Add relevant education, training, certificates, or courses if they support the target role.",
+      isUsableEducationDetail,
     ),
     possibleGapsToCheck: buildGaps(documentType, normalised),
     saferRewriteSuggestions: [

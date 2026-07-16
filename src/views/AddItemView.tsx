@@ -38,9 +38,9 @@ export function AddItemView({
           What do you need help with?
         </h2>
         <p className="mt-2 max-w-4xl text-base leading-7 text-slate-400">
-          Paste an email, message, bill, or letter. AdminAvenger will prepare a case. You decide
-          what happens next. Take a screenshot later is on the roadmap; for now, paste the readable
-          text.
+          Paste an email, message, bill, letter, CV, or job advert. AdminAvenger will prepare a case.
+          You decide what happens next. Take a screenshot later is on the roadmap; for now, paste
+          the readable text.
         </p>
       </header>
 

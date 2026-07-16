@@ -1,134 +1,105 @@
 # AdminAvenger Tasks
 
-This file tracks practical next work. Keep it short, current, and useful.
+This file is intentionally short and operational. It tracks current work, not
+old branch history.
 
-Source principle:
+Source principles:
 
-AI remembers. AI explains. Humans decide.
-
-Prefer tasks that close loops, reduce stress, show evidence, and keep the user in control.
+- AI remembers. AI explains. Humans decide.
+- AI extracts facts. Code assesses. Human approves.
+- AdminAvenger helps prepare. You stay in control.
 
 ## Done
 
-- Created React + TypeScript + Vite project.
-- Installed Tailwind CSS.
-- Built dashboard.
-- Built Add Admin Item form.
-- Built findings list.
-- Built mock analysis.
-- Added multiple findings per pasted item.
-- Added Admin Case layer.
-- Added Evidence Locker.
-- Added Battle Log / Case Timeline.
-- Attached drafts to cases.
-- Added status timeline events.
-- Added localStorage persistence.
-- Added reset demo data control.
-- Added clear all local data control.
-- Added case title and next action editing.
-- Added chase date and outcome note editing.
-- Added quick mark resolved action.
-- Added delete case action.
-- Added Markdown evidence pack export.
-- Added Chase Engine dashboard panel.
-- Added chase date, waiting, chasing, and chased-today controls.
-- Added demo scenarios with load and analyse actions.
-- Added first Refund Avenger workflow for UK train delay refund checks.
-- Reorganised the app into state-driven views without React Router.
-- Added THE_COVENANT.md.
-- Added Refund Avenger validation workflow for real-user testing notes.
-- Added local feedback loop for what users want built next.
-- Added AI-ready Delay Repay extraction service boundary without frontend API calls.
-- Aligned roadmap around Money Back Avenger as the public wedge.
-- Reordered demo scenarios around broadband/mobile price-rise validation.
-- Added broadband/mobile price-rise assessment vertical.
-- Removed the unauthenticated backend AI gateway from the deploy surface.
-- Kept structured extraction behind local deterministic rules and optional local Ollama testing.
-- Added AI extraction service for the Home input.
-- Added Home AI extraction toggle.
-- Added AI extracted facts panel.
-- Added image/photo AI extraction attempt with local fallback.
-- Added Local Ollama experimental extraction mode for pasted text.
-- Added Opportunity Cards for consumer-facing money/deadline/action summaries.
-- Added local Savings / Impact Ledger with confirmed, pending, potential, and no-action records.
-- Added Savings view for money tracked and impact history.
-- Added user-confirmed outcome workflow with local proof notes/images.
-- Added Trusted Guidance Cards with original checklists and source links only.
-- Added preview-first Home checks so pasted documents are not saved until the user chooses.
-- Added Save case, Save as record, and Ignore / Clear result paths on Home.
-- Added no-action handling for documents with no obvious saving, deadline, complaint, or useful action.
-- Added Home demo example buttons for price rise, refund, subscription, receipt, missing parcel,
-  delivery update, and payment received checks.
-- Added Savings and Cases filters for no-action records, chase due, potential saving, pending
-  recovery, and confirmed saved.
-- Added outcome nudges for user-confirmed money, deadline, waiting, rejected, and no-saving results.
-- Added plain-English trust, privacy, safety, money-counting, and beta feedback copy for private beta.
+- Built the React + TypeScript + Vite + Tailwind frontend.
+- Built the one-front-door Check a message experience.
+- Added paste-first checking with preview-first-save-later behaviour.
+- Added local file/photo intake:
+  - TXT, Markdown, CSV, JSON.
+  - DOCX via local Mammoth extraction.
+  - selectable-text PDF via local pdfjs extraction.
+  - JPG/PNG/WebP/HEIC-style image selection and camera capture.
+  - local Tesseract OCR with editable review and low-confidence guards.
+- Added visible drag/drop into the main input area and attachment area.
+- Added Admin Items, Findings, Admin Cases, Evidence Locker, Battle Log,
+  drafts/checklists, chase dates, and case actions.
+- Added localStorage persistence, reset demo data, clear local data, and
+  storage safety handling.
+- Added Opportunity Cards, Result View Model, Simple Result Panel, Case Sheet,
+  Strategic Next Step panel, and Case Progress tracker.
+- Added no-action / checked records.
+- Added Savings / Impact Ledger with confirmed, pending, potential, rejected,
+  deadline, and no-action states kept separate.
+- Added user-confirmed outcome workflow with local proof notes/images metadata.
+- Added Trusted Guidance Cards.
+- Added Evidence Pack export and Adviser Export Pack Markdown download.
+- Added UK Train Delay / Delay Repay proof vertical.
+- Added broadband/mobile price-rise narrow assessment.
+- Added decision-engine modules for parking, debt/bailiff, TV Licence, bank
+  complaint, consumer dispute, benefits-family documents, Council Tax
+  Reduction, and unknown admin fallback.
+- Added Benefits Action Pack and benefits-focused Result View Model coverage.
+- Added high-risk suspicious email guard.
+- Added Workplace Support gated beta.
+- Added Community Helper controlled manual-text beta.
+- Added local-only Community Helper feedback panel.
+- Added Career Support Pack, CV result polish, CV/job advert matching, source
+  splitting, requirement-scoped evidence, claim hygiene, final output guard,
+  preparation wording, privacy wording, checklist association, and evidence
+  deduplication.
+- Career Match v1.6 is deployed and production Tests 7 and 8 pass.
+- Added golden letter corpus, safety wording regression coverage, pilot docs,
+  and product mission docs.
+
+## Now
+
+1. Complete repository coverage audit.
+2. Create and validate `COVERAGE_MATRIX.md`.
+3. Define a standard decision-engine contract.
+4. Research authoritative UK complaint sources.
+5. Build golden fixtures for existing engines.
+6. Run cross-category regression testing.
+7. Fix only confirmed engine failures.
+8. Freeze stable engines after production verification.
 
 ## Next
 
-- Validate broadband/mobile price-rise letters with real users.
-- Validate whether preview-first-save-later reduces anxiety and false case creation.
-- Validate the no-action result with ordinary delivery updates, payment confirmations, and receipts.
-- Validate whether Savings / Impact history helps users understand value without overclaiming.
-- Improve proof handling before any account-backed storage.
-- Test Ollama quality on broadband/mobile price-rise letters.
-- Compare local Ollama extraction with any future hosted extraction only after trust hardening.
-- Add screenshot/photo extraction later.
-- Test AI extraction with real screenshots/photos.
-- Improve the AI extraction adapter from real examples.
-- Consider auth, rate limiting, abuse protection, and privacy wording before any hosted extraction.
-- Add hosted AI extraction only after validation proves the need and the safety boundary is testable.
-- Use validation notes to decide whether broadband/mobile becomes the next vertical.
-- Keep Train Delay / Delay Repay as the completed proof vertical and demo.
-- Add archive or hide ignored cases.
-- Add filters for category, urgency, and status.
-- Run 10 real-user Refund Avenger tests and review validation export.
-- Add actual value recovered field.
-- Add money recovered and money saved tracking.
-- Add loop-closed / case-resolved dashboard signals.
-- Add confidence and uncertainty notes to cases.
-- Add "check before acting" notes to draft and case views.
-- Improve evidence extraction for amounts, dates, company names, and references.
-- Move draft generation into a small reusable helper.
-- Later add accounts/auth only if storing server-side user data.
-- Later consider Gmail/Outlook only with explicit user consent.
-
-## Product Strategy Notes
-
-- Verticals are earned from real user behaviour, not declared from architecture.
-- The product can support multiple demos, but the launch wedge must be one focused workflow.
-- Do not build five verticals at once.
-- Broadband/mobile price-rise letters are the next validation candidate.
-- Subscriptions, delivery/returns, and warranties follow only after validation.
+- Research Wave 1 complaint categories.
+- Choose the first new vertical from evidence.
+- Implement one vertical.
+- Add positive, ambiguous, negative, cross-domain, OCR-error, and safety tests.
+- Deploy and perform live tests.
 
 ## Later
 
-- Improve upload support.
-- Add better draft tone controls.
-- Improve real AI extraction quality.
-- Add backend and accounts only after local prototype is useful.
-- Add privacy-first data export and deletion UX for account-backed data.
-- Add integrations only when consent and trust boundaries are explicit.
+- Backend.
+- Authentication.
+- Cloud database.
+- Hosted AI extraction.
+- Provider/email/calendar/storage integrations.
+- Automatic actions, only if a future trust model supports them safely.
 
 ## Guardrails
 
-- Keep app state frontend/local-first for now.
-- Do not add backend features beyond the AI extraction gateway unless explicitly scoped.
-- Do not add auth yet.
-- Do not add routing yet.
-- Do not add autonomous AI actions.
-- Do not call external APIs from the frontend.
-- Do not install new libraries without a clear reason.
-- Do not silently act on behalf of the user.
-- Do not optimise for time-in-app.
-- Do not hide why a recommendation was made.
-- Do not create false confidence.
-- Do not make legal, financial, or medical decisions for the user.
+- Keep the default product local-first and privacy-first.
+- Keep one user-facing input: Check a message.
+- Do not add a separate checker, category picker, or benefits page.
+- Do not add legal, financial, benefits, debt, care, medical, housing, or
+  employment advice.
+- Do not claim entitlement, eligibility, case strength, suitability, or likely
+  outcome.
+- Do not count money automatically.
+- Do not send, submit, cancel, apply, contact, or archive anything
+  automatically.
+- Do not hide uncertainty, missing evidence, OCR weakness, or cannot-know
+  fields.
+- Do not expand stable engines without tests and source review.
 
 ## Useful Commands
 
 ```bash
 npm run dev
-npm run build
+npm run test
 npm run lint
+npm run build
 ```

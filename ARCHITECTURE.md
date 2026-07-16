@@ -1,410 +1,375 @@
 # AdminAvenger Architecture
 
-AdminAvenger is currently a React + TypeScript + Vite + Tailwind app with one Vercel
-serverless AI extraction gateway.
+AdminAvenger is a local-first React + TypeScript + Vite + Tailwind app.
 
-No authentication, routing framework, database, autonomous agents, email sending, claim
-submission, or provider integrations are used yet.
+The current repository has no backend, no authentication, no database, no
+routing framework, no hosted AI gateway, no autonomous agent runtime, no email
+sending, no provider integrations, and no automatic submission/cancellation.
 
-The architecture should preserve the manifesto principle:
-
-AI remembers. AI explains. Humans decide.
-
-Every future automation boundary should keep user consent, evidence, and explainability visible.
-
-Core protocol:
+The architecture preserves:
 
 ```text
+AI remembers. AI explains. Humans decide.
+
 AI extracts facts.
 Code assesses.
 Human approves.
 ```
 
+## Product Flow
+
+```text
+User input
+-> local parsing/extraction
+-> classification
+-> specialist assessment or safe fallback
+-> evidence and missing-information model
+-> consumer-facing result
+-> optional save
+-> finding/case
+-> draft/checklist
+-> chase and timeline
+-> user-confirmed outcome
+-> evidence-pack export
+```
+
+Nothing sends, submits, cancels, applies, contacts, pays, archives, or claims
+automatically.
+
 ## App Shape
 
-The app is a single-page, state-driven SaaS workspace. It uses local React state for navigation
-instead of React Router.
+The app is a single-page, state-driven workspace. Navigation is local React
+state, not React Router.
 
-Main views:
+Main views include:
 
-- Home: consumer-first input for pasted text, supported uploads, private previews, demo examples,
-  and a plain Opportunity Card before anything is saved.
-- Dashboard: high-level stats, Chase Engine summary, recent cases, and quick actions.
-- Paste: Add Admin Item form, demo scenarios, analysis loading, and analysis errors.
-- Cases: findings discovery list, case queue, and practical filters for status, category, chase due,
-  potential saving, pending recovery, confirmed saved, and no-action records.
-- Case File: selected Admin Case, Evidence Locker, Delay Repay Assessment, Battle Log, Draft Panel, Case Actions, and Evidence Pack Export.
-- Validation: real-user testing notes for Refund Avenger and local feedback on what to build next.
-- Settings / Data: localStorage data controls and a local data privacy note.
+- Home: the consumer-first Check a message front door.
+- Cases: saved case list and filters.
+- Case File: selected case, evidence, timeline, actions, drafts/checklists,
+  exports, and outcome controls.
+- Savings: local impact tracking.
+- Settings / Data: local privacy, data controls, Terms & Safety, and backup
+  copy.
+- Dashboard / Validation / Demo / Trust & Safety / Covenant views for advanced
+  product, testing, and trust surfaces.
+
+Desktop uses a sidebar. Mobile uses a fixed bottom navigation for the main
+consumer paths.
+
+## Input Architecture
+
+All current intake routes feed the same local Check a message pipeline.
+
+Supported input paths:
+
+- Pasted or typed text.
+- Email/letter-style text.
+- TXT, Markdown, CSV, and JSON text files read with browser file APIs.
+- DOCX read locally with `mammoth.extractRawText`.
+- Selectable-text PDFs read locally with `pdfjs-dist`.
+- Image/photo files and camera captures read locally with Tesseract.js OCR.
+- Drag/drop into the visible input panel or attachment area.
+
+Unsupported or limited cases:
+
+- Legacy `.doc` files are not parsed.
+- Scanned/image-only PDFs are not OCRed as PDFs; the user is told to photograph
+  the page or paste text.
+- OCR can misread small, blurry, shadowed, cropped, or low-contrast images.
+- OCR key details are hidden when confidence is too low or moderate/poor.
+- Extracted text is editable before checking.
+
+Privacy model:
+
+- Files are read in the browser.
+- Photos are processed locally.
+- Text is previewed before a saved case is created.
+- LocalStorage is used only after save/record actions or explicit settings.
+- Users can clear known AdminAvenger local data.
 
 ## Core Data Types
 
-Important types live in:
+Core product types live in `src/types.ts`.
 
-```text
-src/types.ts
-```
+Important objects:
 
-Core objects:
-
-- `AdminItem`: pasted source material from the user.
-- `AdminFinding`: a detected opportunity or admin action.
-- `AdminCase`: a stronger case file created from a finding.
-- `OpportunityCard`: a derived consumer-facing summary of money, deadline, evidence, missing information, and next action.
-- `ImpactEntry`: a local ledger entry for potential, pending, confirmed, rejected, or not-applicable outcomes.
+- `AdminItem`: source material.
+- `AdminFinding`: detected opportunity/admin action.
+- `AdminCase`: saved case file derived from a finding.
 - `EvidenceItem`: evidence attached to a case.
-- `CaseTimelineEvent`: case history event.
-- `AdminDraft`: a mock draft attached to a finding/case.
+- `CaseTimelineEvent`: battle log event.
+- `AdminDraft`: editable prepared message/draft.
+- `ImpactEntry`: local impact/savings/recovery/deadline/no-action record.
+- `OpportunityCard`: consumer-facing summary derived from a case/finding.
 
-## Data Flow
+Decision-engine objects live in `src/lib/decisionEngine/types.ts`.
 
-1. User checks text from Home or submits the Add Admin Item form.
-2. `App.tsx` creates an `AdminItem`.
-3. `analyseAdminItem` creates one or more `AdminFinding` records.
-4. `createAdminCase` converts each finding into an `AdminCase`.
-5. Home checks create a preview result first. Nothing is saved or counted until the user chooses
-   Save case or Save as record.
-6. Add/Paste workflow analysis can still save directly into the case system for the advanced view.
-7. Findings appear in the discovery list after saving.
-8. Selecting a finding or case opens the related case in the Case File view.
-9. Status changes update both the case and the original finding.
-10. Draft generation creates a draft, marks the case as drafted, and adds a timeline event.
-11. Opportunity cards are derived from cases for the Home, Cases, Case File, and Savings views.
-12. Impact entries track potential, pending, confirmed, rejected, and no-action outcomes without
-    mixing them.
-13. Saved state is written to localStorage.
+Important decision fields:
 
-Nothing sends, cancels, claims, complains, or contacts anyone automatically.
+- `documentType`.
+- `title`.
+- `plainEnglishSummary`.
+- `caseStrength`.
+- `strengthLabel`.
+- `confidence`.
+- `uncertainty`.
+- `cannotKnow`.
+- `evidenceNeeded`.
+- `deadlines`.
+- `risks`.
+- `nextSteps`.
+- `safetyNotes`.
+- `amountTreatment`.
+- `sourceFacts`.
 
-## Important Files
+## Engine Architecture
 
-```text
-src/App.tsx
-```
+AdminAvenger has multiple deterministic preparation systems behind one input.
 
-Owns top-level state and connects the major components.
-
-```text
-src/components/AppShell.tsx
-src/components/Sidebar.tsx
-src/views/
-```
-
-Provide state-driven navigation and focused page layouts. These are view components only; they do
-not introduce a routing framework.
+The main shared decision engine is:
 
 ```text
-src/lib/mockAnalysis.ts
+src/lib/decisionEngine/classifier.ts
+src/lib/decisionEngine/decisionEngine.ts
+src/lib/decisionEngine/modules/
 ```
 
-Frontend-only mock keyword analysis. Accepts an `AdminItem` and returns `AdminFinding[]`.
+It classifies and analyses:
 
-```text
-src/lib/caseFactory.ts
+- Parking notices.
+- Debt collection and bailiff/enforcement notices.
+- TV Licence letters.
+- Bank complaints.
+- Consumer disputes.
+- Benefits-family documents.
+- Council Tax Reduction / Support.
+- Unknown admin disputes.
+
+Specialist engines and packs also exist:
+
+- `delayRepayAssessment.ts`: train Delay Repay proof vertical.
+- `broadbandPriceRiseAssessment.ts`: broadband/mobile price-rise narrow
+  assessment.
+- `careerSupportPack.ts`: CV, job advert, and CV/job advert match preparation.
+- `workplaceSupportPack.ts`: gated workplace preparation beta.
+- `communityHelperPack.ts`: controlled manual-text community helper beta.
+- `benefitsActionPack.ts`: benefits-specific view/derivation layer over
+  benefits DecisionResults.
+- `strategicNextStep.ts`: safe next-step planning over Result View Models.
+
+There is no single generic entitlement engine. Generic keyword findings and
+fallbacks coexist with narrow specialist engines, and the UI should not present
+all categories as equally mature.
+
+## Conceptual Decision Engine Contract
+
+Future and existing engines should be documented against this conceptual
+contract. This is documentation only unless a matching type is later introduced
+in code.
+
+```ts
+type DecisionEngineContract = {
+  id: string
+  category: string
+  supportedInputs: string[]
+  classifierSignals: string[]
+  conflictingCategories: string[]
+  factsExtracted: string[]
+  evidenceExpected: string[]
+  missingInformation: string[]
+  safeOutputs: string[]
+  forbiddenOutputs: string[]
+  testFixtureIds: string[]
+}
 ```
 
-Converts an `AdminFinding` and `AdminItem` into an `AdminCase`.
+## Result Architecture
 
-```text
-src/lib/storage.ts
-```
+The current result path is built around:
 
-Loads, saves, and clears persisted local app state.
+- `src/lib/resultViewModel.ts`
+- `src/components/SimpleResultPanel.tsx`
+- `src/components/ResultCaseSheet.tsx`
+- `src/components/OpportunityCardPanel.tsx`
+- `src/components/StrategicNextStepPanel.tsx`
+- `src/components/BenefitsActionPackPanel.tsx`
+- `src/components/CaseProgressCard.tsx`
 
-```text
-src/lib/chaseEngine.ts
-```
+The Result View Model composes decision results, benefits action packs,
+strategic next steps, workplace packs, career packs, adviser exports, and case
+progress into a safety-checked output model.
 
-Calculates chase groups such as due today, overdue, upcoming, and waiting without dates.
+## Career Match Architecture
 
-```text
-src/lib/delayRepayAssessment.ts
-```
+Career Match v1.6 is a specialist career preparation system, not a job-search
+or suitability-scoring engine.
 
-Contains the first vertical workflow model: a UK train delay refund assessment. It is intentionally train-specific and should not become a generic assessment engine yet.
+It supports:
 
-```text
-src/lib/broadbandPriceRiseAssessment.ts
-```
+- CV detection.
+- Job advert detection.
+- CV plus job advert match detection.
+- Source splitting between CV-side text and advert-side text.
+- Requirement extraction from advert text.
+- Role/title clue extraction.
+- Requirement-scoped evidence mapping.
+- Direct evidence ranking.
+- Support-role, privacy, issue-documentation, and digital/web evidence
+  prioritisation.
+- Claim hygiene for overclaiming or unsupported project claims.
+- Final-output evidence guard.
+- Requirement-specific checklist association.
+- Privacy-specific preparation wording.
+- Evidence deduplication within each requirement.
 
-Contains the Money Back Avenger broadband/mobile price-rise assessment. It is intentionally specific to provider price-rise letters and should not become a generic assessment engine.
+It must not:
 
-```text
-src/services/delayRepayExtractionService.ts
-```
+- Score suitability.
+- Use percentages.
+- Claim the user qualifies.
+- Predict interviews or outcomes.
+- Apply automatically.
+- Send messages.
+- Contact employers.
+- Scrape job sites.
+- Use real personal CV fixtures in tests.
 
-Provides the AI-ready Delay Repay fact extraction boundary. It currently defaults to local mock extraction. Future real AI extraction must happen server-side; API keys must never be placed in frontend code.
-
-```text
-src/views/ValidationView.tsx
-src/lib/validationStorage.ts
-```
-
-Store local real-user validation notes and feedback entries, then export them as Markdown.
-
-```text
-src/data/demoScenarios.ts
-```
-
-Contains fake sample admin scenarios that can be loaded into the form or analysed through the normal service flow.
-
-```text
-src/components/CasePanel.tsx
-```
-
-Main right-hand case file view.
-
-```text
-src/components/EvidenceLocker.tsx
-```
-
-Shows detected and placeholder evidence.
-
-```text
-src/components/CaseTimeline.tsx
-```
-
-Shows the case battle log.
+Career Match v1.6 is stable for the current MVP and should be frozen except
+for confirmed bugs.
 
 ## Persistence
 
-The app persists one state object to localStorage.
+AdminAvenger saves local state to localStorage through `src/lib/storage.ts`.
 
-Saved groups:
+Persisted groups include:
 
-- `adminItems`
-- `findings`
-- `adminCases`
-- `drafts`
-- `impactEntries`
-- `selectedFindingId`
-- `selectedCaseId`
+- Admin items.
+- Findings.
+- Admin cases.
+- Drafts.
+- Impact entries.
+- Selected finding/case IDs.
 
-Separate localStorage keys also store Refund Avenger validation notes and local feedback entries.
+Other local keys support:
 
-If saved data is missing or malformed, the app falls back safely.
+- Terms acceptance.
+- Inbox scan prompt state.
+- Validation notes.
+- Feedback notes.
+- Local AI/Ollama settings.
 
-Legacy cases without impact entries are hydrated by deriving safe potential/pending/no-action
-entries from the existing case data. Confirmed savings or recovered money are never inferred from
-AI or case text; they are created only when the user confirms an outcome.
+Storage safety:
 
-## Opportunity And Impact Layer
+- Bad or old localStorage data is parsed defensively.
+- Save/quota failures are surfaced.
+- Proof image data URLs are not persisted; metadata such as filename can be
+  retained.
+- Users can clear known AdminAvenger keys without clearing unrelated browser
+  storage.
 
-The opportunity and savings layer lives in:
+## Impact And Money Safety
+
+Impact tracking lives in:
 
 ```text
-src/lib/opportunityCards.ts
 src/lib/impactLedger.ts
 src/views/SavingsView.tsx
+src/components/OutcomeConfirmation.tsx
 ```
 
-Opportunity cards are derived from existing cases and assessments. They answer: what this is, money
-or deadline involved, evidence found, missing information, and next best action.
+Totals are separated:
 
-Impact entries are persisted because they may contain user-confirmed outcomes and local proof
-metadata. Totals deliberately separate:
+- Confirmed saved/recovered.
+- Pending recovery.
+- Potential saving.
+- Potential annual saving.
+- Deadlines protected.
+- No action / checked.
+- Rejected or not pursuing.
 
-- confirmed saved/recovered
-- pending recovery
-- potential saving
-- potential annual saving
-- deadlines protected
-- resolved cases
+Rules:
 
-The app must not combine potential and confirmed amounts in a way that implies money has already
-been saved or recovered.
+- Demanded money is not savings.
+- Benefits amounts are display-only.
+- Debt balances are display-only.
+- Possible recovery is not confirmed recovery.
+- A refund approval is not money received.
+- Money is counted only after the user confirms the outcome.
 
-No-action and evidence-only records are first-class outcomes. They can be saved as records, but they
-must not inflate confirmed savings, pending recovery, potential savings, or deadline totals. In the
-Savings view they belong under "No action / checked" rather than the main money feed.
+## Exports
 
-Home preview results are deliberately unsaved. This lets someone paste a document, understand what
-AdminAvenger sees, then decide whether to save a case, save a record, or clear the result. Private
-checks should never create pressure, fake value, or inflated case counts.
+Exports are local, browser-side downloads/copy actions.
 
-Outcome confirmation is human-entered. The UI can offer nudges such as "Money came back", "Bill
-reduced", or "Still waiting", but confirmed impact and proof are stored only after the user says what
-happened. Prototype proof images and notes remain local to this browser.
+Implemented:
 
-## Trusted Guidance Cards
+- Case Evidence Pack export (`src/lib/exportCase.ts`).
+- Adviser Export Pack builder/renderer/download helper
+  (`src/lib/adviserExportPack.ts`, `src/lib/adviserExportDownload.ts`).
+- Validation and feedback Markdown exports.
 
-Trusted guidance cards live in:
+Exports do not upload, email, share, or submit anything automatically.
+
+## AI Boundary
+
+Current truth:
+
+- Hosted AI is not deployed in the current repository.
+- There is no `api/` directory.
+- There is no backend AI gateway in the deployed code.
+- No API keys are required for production frontend use.
+- Local Ollama is experimental only.
+
+Local Ollama mode:
+
+- Lives in `src/services/ollamaExtractionService.ts`.
+- Is configured locally by the user/developer.
+- Reads pasted text only when selected.
+- Returns structured facts into the same deterministic checking pipeline.
+- Must not decide rights, entitlement, outcomes, or actions.
+
+The future AI boundary, if built, is:
 
 ```text
-src/data/trustedGuidanceCards.ts
-src/lib/trustedGuidanceMatcher.ts
+AI extracts facts.
+AdminAvenger code assesses.
+Human approves.
 ```
 
-They contain original AdminAvenger checklist wording plus source links only. The app does not scrape,
-copy, reproduce, or dynamically fetch third-party guidance.
-
-Local persistence is currently for prototype convenience only. Long-term storage must protect sensitive data, support deletion/export, and avoid selling or leaking personal admin data.
-
-## AI Extraction Boundary
-
-AdminAvenger currently ships as a frontend-only local prototype. The previous unauthenticated cloud
-AI gateway has been removed from the deploy surface, and there are no server-side AI environment
-variables to configure.
-
-The product boundary remains:
-
-```text
-AI extracts facts -> AdminAvenger code assesses -> Human approves
-```
-
-Any future extraction service may:
-
-- Read user-provided text or selected images/files.
-- Classify document type.
-- Extract structured facts.
-- Quote supporting evidence.
-- List missing information.
-- Return safe JSON.
-
-Any future extraction service must not:
-
-- Decide legal rights.
-- Claim entitlement.
-- Invent facts.
-- Submit claims.
-- Send emails.
-- Cancel services.
-- Contact providers.
-- Override deterministic AdminAvenger assessment logic.
-- Silently act on behalf of the user.
-
-AI extraction must only enrich the input. `src/lib/aiExtractionAdapter.ts` converts extracted facts
-into a plain text block, then the existing AdminAvenger analysis and case creation flow still
-performs:
-
-- Case classification.
-- Confidence wording.
-- Missing evidence.
-- Contract/date reasoning.
-- Rights caveats.
-- Next action.
-- Draft safety.
-
-The user must always approve any action.
-
-## Local AI Testing Mode
-
-AdminAvenger has an experimental local Ollama extraction mode for development and power-user
-testing. It is configured from the Home input area and saved in localStorage.
-
-Defaults:
-
-- AI mode: Local rules only
-- Ollama URL: `http://localhost:11434`
-- Ollama model: `qwen2.5:7b`
-
-Local Ollama mode is not the final public customer AI model. It only works when Ollama is installed
-and running on the user's own device. Future hosted customers should not need to install Ollama,
-manage model names, or provide API keys.
-
-The local Ollama service lives in:
-
-```text
-src/services/ollamaExtractionService.ts
-```
-
-The service may:
-
-- Read pasted text.
-- Classify document type.
-- Extract structured facts.
-- Quote supporting evidence.
-- List missing information.
-- Return safe JSON.
-
-The service must not:
-
-- Decide legal rights.
-- Claim entitlement.
-- Invent missing facts.
-- Submit claims.
-- Send emails.
-- Cancel services.
-- Contact providers.
-- Override deterministic AdminAvenger assessment logic.
-
-Local Ollama extraction uses the same adapter boundary:
-
-```text
-AI extracted facts -> src/lib/aiExtractionAdapter.ts -> deterministic AdminAvenger checking
-```
-
-If Ollama is not running, the model is missing, or JSON is unreadable, the Home flow shows a
-friendly warning and falls back to local rules.
-
-## Current Constraints
-
-Keep these constraints until explicitly changed:
-
-- No backend.
-- No auth.
-- No routing.
-- No real AI outside optional local structured extraction.
-- No external APIs beyond optional local Ollama testing.
-- No new libraries unless there is a clear product need.
+AI may read and organise user-provided material, quote evidence, list missing
+information, and return structured JSON. It must not decide legal rights, claim
+entitlement, invent facts, submit claims, send emails, cancel services, contact
+providers, or override deterministic assessment logic.
 
 ## Trust Boundaries
 
-The app should always:
+AdminAvenger must keep these boundaries visible:
 
-- Show the evidence behind recommendations.
-- Explain uncertainty clearly.
-- Require approval before meaningful real-world action.
-- Keep drafts editable and copy-based until integrations are trusted.
-- Let users delete and export their data.
-- Avoid legal, financial, or medical decision-making.
-- Avoid false confidence.
+- No automatic sending.
+- No automatic claims.
+- No automatic cancellation.
+- No automatic application submission.
+- No automatic provider/employer contact.
+- No entitlement decisions.
+- No legal, financial, debt, benefits, medical, housing, care, safeguarding, or
+  employment decisions.
+- No guaranteed outcomes.
+- No invented evidence.
+- No confirmed savings without user confirmation.
+- No hidden cloud processing.
 
-Plain-English product guardrails:
+## Testing Architecture
 
-- AdminAvenger can read pasted text, organise facts, show useful proof, and prepare messages or checklists for review.
-- AdminAvenger does not send messages, cancel subscriptions, submit claims, contact companies, confirm fraud, give legal/financial/debt advice, or guarantee money back.
-- Money is only counted as saved or recovered when the user records the outcome.
-- Risky email checks flag warning signs only. They do not prove a message is definitely a scam or definitely safe.
-- Photo proof is not fully stored in the prototype; users must keep original files somewhere safe.
+Key test areas include:
 
-## Future Integration Boundary
+- Decision engine module and integration tests.
+- Golden Letter Corpus tests.
+- Benefits Action Pack and Result View Model tests.
+- Career Support Pack and final UI/output tests.
+- Workplace Support and Community Helper gated-flow tests.
+- File intake, DOCX/PDF text extraction, photo capture, OCR, and key-detail
+  tests.
+- Storage, local data control, terms, copy actions, adviser export, case
+  progress, safety wording, and UI regression tests.
 
-The likely future AI boundary is:
-
-```text
-AdminItem -> analysis adapter -> AdminFinding[] -> caseFactory -> AdminCase[]
-```
-
-This lets the UI stay stable while mock analysis is later replaced by real AI.
-
-Future AI should return structured, auditable data. The UI should show what was found, why it was found, what is uncertain, and what the human should check before acting.
-
-## Vertical Workflow Rule
-
-Build verticals before abstractions.
-
-The first complete vertical is the Refund Avenger UK train delay workflow. It uses a specific `DelayRepayAssessment` model to show extracted train-delay evidence, missing information, operator-rule caveats, confidence explanation, draft wording, and chase steps. Generalise only after multiple verticals prove the repeated shape.
-
-The public wedge is now Money Back Avenger. Train Delay / Delay Repay remains the completed proof
-vertical and demo. Broadband/mobile price-rise letters are the next focused validation vertical.
-
-Principles:
-
-- Verticals are earned from real user behaviour, not declared from architecture.
-- The product can support multiple demos, but the launch wedge must be one focused workflow.
-- Do not build a generic assessment engine to get ahead of validated user behaviour.
-
-## Product Health Orientation
-
-The system should optimise for:
-
-- Cases resolved
-- Loops closed
-- Deadlines not missed
-- Time saved
-- Money saved or recovered
-- User confidence increased
-- Stress reduced
-
-It should not optimise for unnecessary time-in-app, anxiety, or endless notification loops.
+Golden fixtures are synthetic. Real personal documents and manual OCR images
+must not be committed.

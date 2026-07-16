@@ -1,270 +1,207 @@
 # AdminAvenger Roadmap
 
-## Product Direction
-
-AdminAvenger is a human-in-the-loop AI life-admin advocate. It turns messy admin emails, messages, bills, receipts, letters, and notes into clear cases with evidence, missing information, next actions, drafts, chase steps, and outcomes.
-
-The goal is resolution, not engagement. AdminAvenger should help people understand what matters, recover money where possible, close loops, and leave with more confidence than they arrived with.
-
-Core principle:
-
-**AI remembers. AI explains. Humans decide.**
-
-Operating protocol:
-
-**AI extracts facts. Code assesses. Human decides.**
-
-Current product direction:
-
-- Public wedge: **Money Back Avenger**
-- Completed proof vertical: **UK Train Delay / Delay Repay**
-- Next validation vertical: **Broadband/Mobile Price-Rise Letters**
-
-Train Delay remains valuable as a completed proof vertical and demo, but it is not currently the main launch wedge. Verticals are earned from observed user behaviour, not declared from architecture. The product can support multiple demos, but the launch wedge must be one focused workflow.
-
-## Current Completed Foundation
-
-Complete:
-
-- React + TypeScript + Vite
-- Tailwind CSS
-- View-based app structure
-- localStorage persistence
-- Admin Cases
-- Findings
-- Evidence Locker
-- Battle Log
-- Draft Panel
-- Chase Engine
-- Evidence Pack export
-- Demo Scenarios
-- Data controls
-- AI-ready service boundaries
-- Refund Avenger / Delay Repay proof vertical
-- Validation and feedback tools
-- Project docs, manifesto, research notes, and covenant
-
-Not added yet:
-
-- Backend
-- Authentication
-- Routing
-- Database
-- Real AI calls
-- External APIs
-- File uploads
-
-## Completed Proof Vertical: Refund Avenger / Train Delay
-
-The UK Train Delay / Delay Repay workflow proved that AdminAvenger can support a complete vertical without pretending certainty.
-
-It proved:
-
-- Train-delay assessment
-- Evidence found
-- Evidence missing
-- Unknown information
-- Honest confidence
-- Case creation
-- Draft generation
-- Chase date
-- Evidence Pack export
-
-Guardrail:
-
-Train Delay is not currently the main launch wedge. It remains a useful proof vertical and demo because it shows the full loop: paste messy text, extract facts, show evidence, explain uncertainty, prepare a draft, set a chase date, and export the case.
-
-## Current Phase: Money Back Avenger Validation
-
-This is the current priority.
-
-The immediate goal is to validate which everyday money-back admin problem users actually care about before building broader features.
-
-Current tasks:
-
-- Validate which everyday money-back admin problem users actually care about.
-- Focus on mobile and paste behaviour.
-- Test with real users.
-- Record confusion and hesitation.
-- Measure whether users would act on the assessment.
-- Measure whether users would use the flow on mobile.
-- Avoid adding broad features until evidence supports them.
-
-Do not build multiple verticals at once. Do not build a generic assessment engine.
-
-## Next Validation Vertical: Broadband/Mobile Price-Rise Letters
-
-Broadband/mobile price-rise letters are the next validation priority.
-
-Why this is promising:
-
-- Users receive these as emails, messages, bills, and letters.
-- They are paste-friendly and screenshot-friendly.
-- They involve real money.
-- They require explanation, not just lookup.
-- They are a strong showcase of AI reading, fact extraction, and evidence organisation.
-- Recent UK telecom price-rise rules can be confusing for everyday users.
-
-Planned workflow features:
-
-- Detect provider if present.
-- Extract old price.
-- Extract new price.
-- Extract increase amount.
-- Estimate annual impact.
-- Extract effective date.
-- Extract contract clues.
-- Detect wording about price-rise terms.
-- Show evidence found.
-- Show missing evidence.
-- Show unknowns.
-- Generate a safe next action.
-- Draft a negotiation or check-rights message.
-- Never make legal or financial claims beyond what the evidence supports.
-
-This should stay specific to broadband/mobile price-rise letters until real-user validation proves the shape is useful.
-
-## AI Protocol
-
-**AI extracts facts. Code assesses. Human decides.**
-
-Rules:
-
-- No API keys in frontend code.
-- Real AI calls must go through a backend AI gateway.
-- Use structured JSON outputs only.
-- Every extracted fact should include source text or an evidence quote where possible.
-- AI should not decide entitlement.
-- Deterministic app code should apply rules and confidence logic.
-- Drafts must only use verified facts.
-- High-stakes actions require deliberate human confirmation.
-
-The AI should prepare, explain, and organise. The human keeps judgement, consent, and final authority.
-
-## AI Implementation Roadmap
-
-Recommended order:
-
-1. Keep current mock/local extraction working.
-2. Harden deterministic checks with golden-case tests before adding any hosted AI.
-3. Consider a backend extraction gateway only after validation, auth, abuse controls, and privacy copy are ready.
-4. Keep deterministic assessment code in the app/backend.
-5. Add AI draft generation only after extraction is reliable.
-6. Add provider flexibility later if needed.
-
-Recommended first hosted path:
-
-- A narrow structured extraction gateway that only reads and organises facts. It must not assess rights, claim entitlement, draft unsafe action, or act for the user.
-
-Possible later providers:
-
-- Gemini later for screenshots/photos.
-- Claude later as an optional high-quality drafting/reasoning provider.
-- Local AI remains a developer/privacy experiment.
-
-Do not use autonomous agent frameworks as the core runtime yet.
-
-## Mobile-First Input Roadmap
-
-Prioritise:
-
-1. Paste text.
-2. Paste email/message.
-3. Screenshot/photo later.
-4. Upload files later.
-
-User-facing concept:
-
-**What do you need help with?**
-
-Not:
-
-**Add admin item.**
-
-The product should meet the everyday behaviour: someone has a worrying email, letter, message, bill, or screenshot and wants to know what it means and what they can do next.
-
-## Future Verticals
-
-Future vertical order:
-
-1. Subscriptions / unwanted renewals
-2. Missing delivery / faulty goods / returns
-3. Warranty claims
-4. Energy/water billing later
-5. Benefits/financial complaints much later due to sensitivity and risk
-
-Guardrail:
-
-Do not build these until the current validation vertical has been tested with real users.
-
-## Backend and Accounts
-
-Backend and accounts come later.
-
-Only add them after:
-
-- The local product is useful.
-- The wedge is validated.
-- The privacy model is clear.
-- The AI gateway pattern is proven.
-
-Future backend/account features may include:
-
-- User accounts
-- Database persistence
-- Secure document storage
-- Account export/delete
-- Explicit deletion controls
-- Transparent data handling
-
-## Integrations
-
-Integrations stay later.
-
-Possible integrations:
-
-- Gmail
-- Outlook
-- Calendar
-- Cloud storage
-- CSV imports
-
-Guardrail:
-
-Integrations must not reduce trust or user control. The user must understand what is connected, what is read, what is stored, and what actions are being prepared.
-
-## Product Health Metrics
-
-Primary validation metric:
-
-**Did this help someone understand, act, or recover money?**
-
-Good metrics:
-
-- Cases resolved
-- Money recovered
-- Money saved
-- Admin loops closed
-- Deadlines not missed
-- User confidence increased
-- Stress reduced
-- Fewer forgotten follow-ups
-
-Bad metrics:
-
-- Time in app for its own sake
-- More notifications
-- More open loops
-- Unnecessary engagement
-- User dependency
-
-AdminAvenger should optimise for closed loops and user confidence, not time-on-site.
-
-## Current Top Priorities
-
-1. Polish paste-first/mobile-first flow.
-2. Validate broadband/mobile price-rise letters with real users.
-3. Add backend AI gateway.
-4. Add real AI extraction for price-rise letters only.
-5. Improve from observed user behaviour.
-6. Only then choose the second vertical.
+## Product Definition
+
+AdminAvenger is a local-first, human-controlled life-admin preparation and
+case-management product.
+
+It helps a person check a message, letter, bill, receipt, CV, job advert,
+photo, screenshot, or file; understand what it appears to be; gather evidence;
+prepare an editable draft or checklist; and decide what to do next.
+
+Core principles:
+
+- AI remembers. AI explains. Humans decide.
+- AI extracts facts. Code assesses. Human approves.
+- Resolution over engagement.
+- Evidence before claims.
+- No silent actions.
+
+The public promise should stay practical:
+
+AdminAvenger helps prepare. You stay in control.
+
+The product must not present itself as a lawyer, benefits adviser, debt adviser,
+employment adviser, medical adviser, social worker, government department,
+provider, recruiter, ombudsman, or autonomous agent.
+
+## Completed Foundation
+
+The current repository contains a substantial local-first foundation:
+
+- React, TypeScript, Vite, and Tailwind CSS frontend.
+- State-driven views without React Router.
+- Mobile bottom navigation and desktop shell.
+- One front door: Check a message.
+- Paste text intake.
+- File intake and visible drag/drop from the main input area.
+- Local text extraction for TXT, Markdown, CSV, JSON, DOCX, and selectable-text
+  PDFs.
+- Local image/photo intake through camera or file picker.
+- Local OCR with Tesseract.js, editable OCR review, low-confidence guards, and
+  key-detail hiding when OCR is unreliable.
+- Preview-first checking on Home before a case is saved.
+- Admin findings, Admin Cases, Evidence Locker, Battle Log, drafts/checklists,
+  chase dates, and case actions.
+- LocalStorage persistence, reset/clear controls, storage safety handling, and
+  backup/export copy.
+- Opportunity Cards and Simple Result/Card Sheet views.
+- Savings / Impact Ledger with potential, pending, confirmed, rejected, and
+  no-action records kept separate.
+- User-confirmed outcome flow; money is not counted as saved/recovered until
+  the user records an outcome.
+- Evidence Pack export for cases.
+- Adviser Export Pack Markdown download for result packs.
+- Trusted Guidance Cards with static checklist wording and source links.
+- Terms & Safety gate, Trust & Safety page, public covenant page, and safety
+  wording regression tests.
+- Golden Letter Corpus for high-stakes synthetic fixtures.
+- Demo tour, pilot readiness docs, and local validation/feedback tooling.
+
+## Current Specialist Coverage
+
+This section describes verified repository coverage, not marketing claims.
+
+### Stable Or Implemented
+
+- Career Support Pack v1.6: CV, job advert, and CV-plus-job-advert match
+  preparation. It includes source splitting, requirement extraction,
+  requirement-scoped evidence, evidence ranking, claim hygiene, final-output
+  guards, privacy-specific preparation wording, checklist association, and
+  evidence deduplication. Career Match v1.6 is stable for the current MVP and
+  frozen except for genuine bugs.
+- Decision Engine family: a shared `DecisionResult` pipeline for parking,
+  debt/bailiff, TV Licence, bank complaint, consumer dispute, benefits-family
+  letters, Council Tax Reduction, and unknown admin disputes. These are
+  cautious preparation engines, not entitlement or legal engines.
+- Benefits Action Pack: implemented as a view/derivation layer over benefits
+  DecisionResults, with dates marked user-check-required and benefits money
+  display-only.
+- Result View Model: implemented to present decision results, action packs,
+  strategic next steps, workplace packs, career packs, adviser exports, and
+  case progress safely.
+- Suspicious email guard: implemented as a safety override so high-risk email
+  signals do not become generic reply/deadline advice.
+
+### Dedicated But Narrow
+
+- UK Train Delay / Delay Repay: implemented as a train-specific proof vertical
+  with extracted operator/journey/date/delay/reference when present, evidence
+  found/missing, uncertainty, draft, chase workflow, and export. It remains a
+  useful proof vertical, not a generic travel-rights engine.
+- Broadband/mobile price-rise assessment: implemented as a narrow
+  broadband/mobile provider price-change assessment with old/new price,
+  effective date, annual impact, contract timing, missing evidence, provider
+  options, and safe draft/checklist wording.
+- Refund/subscription/delivery/warranty/job-follow-up mock opportunities:
+  implemented through deterministic mock analysis and opportunity cards. These
+  are useful product coverage, but not all are dedicated specialist engines.
+
+### Controlled Betas
+
+- Workplace Support: gated preparation pack for workplace letters/messages,
+  including disciplinary, grievance, sickness/capability, redundancy, pay,
+  contract/rota changes, dismissal, investigation, bullying record prep,
+  settlement agreement signposting, and unknown workplace admin. It is
+  preparation-only and not normal Home auto-routing.
+- Community Helper: controlled manual-text public beta for carers, family
+  helpers, support workers, housing/OT-style preparation, missed letters,
+  communication barriers, financial admin concerns, and urgent
+  safeguarding-like signposting. It remains manual text only and is not wired
+  to OCR/file/photo intake or the main classifier.
+
+### Generic Or Fallback Coverage
+
+- Unknown official/admin letters route to a safe fallback.
+- Generic keyword findings can create refund, complaint, subscription,
+  deadline, job application, bill increase, warranty, important reply, and
+  unknown/no-action findings.
+- No-action / checked records are implemented for messages with no clear
+  saving, refund, deadline, complaint, or useful action.
+
+Generic keyword handling must not be described as a complete specialist engine.
+
+## Current Phase
+
+The next phase is:
+
+**Coverage consolidation, authoritative UK complaint research and
+golden-fixture testing.**
+
+The goal is not to add random features.
+
+The goal is to:
+
+1. Catalogue existing coverage.
+2. Standardise engine contracts.
+3. Research common UK complaint categories.
+4. Build a complaint fixture library.
+5. Harden existing engines.
+6. Expand one vertical at a time.
+
+## Future Implementation Waves
+
+These are research candidates, not implemented promises. Each candidate needs
+source review, safety wording, golden fixtures, negative/cross-domain tests,
+and live testing before it becomes product coverage.
+
+### Wave 1 Candidates
+
+- Energy billing and meters.
+- Housing repairs and complaints.
+- Telecom billing and cancellation.
+- Banking fraud and card disputes.
+- Consumer refunds, faulty goods, and deliveries.
+- Universal Credit payments, deductions, and overpayments.
+
+### Wave 2 Candidates
+
+- Employment correspondence.
+- Water billing and supply.
+- Insurance complaints.
+- Council tax and council complaints.
+- Privacy and data requests.
+- Used-car and home-improvement disputes.
+
+### Controlled High-Risk Areas Later
+
+- Homelessness.
+- Social care.
+- SEND and education.
+- Solicitor-service complaints.
+- Probate and conveyancing administration.
+
+These areas should be approached through preparation, evidence organisation,
+and signposting only. They must not become legal, benefits, debt, care, medical,
+housing, employment, or financial advice.
+
+## Platform Work Later
+
+Keep these later until coverage, safety, and product usefulness are proven:
+
+- Authentication.
+- Cloud database.
+- Secure account storage.
+- Hosted AI extraction.
+- Provider integrations.
+- Email integrations.
+- Automatic actions.
+
+## Technical Boundary
+
+Current status:
+
+- Frontend: React + TypeScript + Vite + Tailwind.
+- Backend: not implemented.
+- Authentication: not implemented.
+- Database: not implemented.
+- Routing library: not implemented.
+- Hosted AI gateway: not deployed in the current repo.
+- Local Ollama: experimental local structured extraction for pasted text.
+- External APIs: not used for product workflows.
+- Email sending/provider integrations: not implemented.
+- Automatic submission/cancellation/contacting: not implemented.
+- Autonomous agents: not implemented.
+
+Hosted AI may be revisited only as an explicit, opt-in extraction gateway with
+privacy, abuse controls, and deterministic assessment boundaries preserved.

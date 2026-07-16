@@ -671,8 +671,12 @@ Required skills I am developing: React, JavaScript, accessibility.
     const explainItem = pack.requirementEvidenceMap?.find((item) =>
       item.requirement.toLowerCase().includes("explain technical steps"),
     );
+    const issueItem = pack.requirementEvidenceMap?.find((item) =>
+      item.requirement.toLowerCase().includes("reproduce simple issues"),
+    );
     const supportEvidence = supportItem?.possibleEvidence.join("\n").toLowerCase() ?? "";
     const explainEvidence = explainItem?.possibleEvidence.join("\n").toLowerCase() ?? "";
+    const issueEvidence = issueItem?.possibleEvidence.join("\n").toLowerCase() ?? "";
     const examples = pack.examplesToPrepare?.join("\n").toLowerCase() ?? "";
     const allEvidence = [
       ...(pack.requirementEvidenceMap ?? []).flatMap((item) => item.possibleEvidence),
@@ -686,6 +690,14 @@ Required skills I am developing: React, JavaScript, accessibility.
       supportEvidence.indexOf("react and typescript"),
     );
     expect(explainEvidence).toContain("explained steps clearly");
+    expect(issueItem?.possibleEvidence[0].toLowerCase()).toContain("kept notes of recurring problems");
+    expect(issueEvidence.indexOf("kept notes of recurring problems")).toBeLessThan(
+      issueEvidence.indexOf("react and typescript"),
+    );
+    expect(issueItem?.exampleToPrepare.toLowerCase()).toContain(
+      "reproducing an issue, recording the steps and outcome",
+    );
+    expect(issueItem?.exampleToPrepare.toLowerCase()).not.toContain("one project");
     expect(explainEvidence).not.toContain("gcses including english and maths");
     expect(allEvidence).not.toContain("gcses including english and maths");
     expect(examples).toContain("explaining a technical issue or platform step clearly");
@@ -716,11 +728,19 @@ Required skills I am developing: React, JavaScript, accessibility.
     expect(pack.documentType).toBe("cv_job_advert_match");
     expect(supportItem?.possibleEvidence[0].toLowerCase()).toContain("helped families understand");
     expect(supportItem?.possibleEvidence.join(" ").toLowerCase()).toContain("explained steps clearly");
+    expect(privacyItem?.possibleEvidence[0].toLowerCase()).toContain("gdpr and customer records");
     expect(privacyItem?.possibleEvidence.join(" ").toLowerCase()).toContain("gdpr essentials course");
     expect(privacyItem?.possibleEvidence.join(" ").toLowerCase()).toContain("confidential customer records");
+    expect(digitalItem?.possibleEvidence[0].toLowerCase()).toContain("html");
     expect(digitalItem?.possibleEvidence.join(" ").toLowerCase()).toContain("built a simple html and css portfolio page");
     expect(digitalItem?.possibleEvidence.join(" ").toLowerCase()).toContain("github portfolio");
+    expect(digitalItem?.possibleEvidence.join(" ").toLowerCase()).not.toContain("appointment and inbox management");
+    expect(issueItem?.possibleEvidence[0].toLowerCase()).toContain("kept notes of recurring problems");
     expect(issueEvidence).toContain("kept notes of recurring problems");
+    expect(issueItem?.exampleToPrepare.toLowerCase()).toContain(
+      "reproducing an issue, recording the steps and outcome",
+    );
+    expect(issueItem?.exampleToPrepare.toLowerCase()).not.toContain("one project");
     expect(issueEvidence).not.toContain("appointment and inbox management");
     expect(allEvidence).not.toMatch(/(^|\n)family support role($|\n)/);
     expect(allEvidence).not.toMatch(/(^|\n)personal portfolio website($|\n)/);

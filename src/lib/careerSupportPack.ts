@@ -416,7 +416,7 @@ const isLikelyProfileSummaryLine = (line: string) => {
 
   return (
     trimmedLine.length >= 40 &&
-    /\b(?:administrator|developer|candidate|applicant|professional|assistant)\b/i.test(trimmedLine) &&
+    /\b(?:administrator|developer|candidate|applicant|professional|assistant|career changer)\b/i.test(trimmedLine) &&
     /\b(?:with|seeking|focused|strong|experienced|experience)\b/i.test(trimmedLine)
   );
 };
@@ -887,6 +887,39 @@ const isAppointmentInboxEvidence = (evidence: string) =>
 const isReproduceDocumentRequirement = (requirement: string) =>
   hasAny(normaliseText(requirement), ["reproduce", "document what happened", "documenting what happened", "simple issues", "bugs", "broken links", "layout issues"]);
 
+const isDigitalWebUnderstandingRequirement = (requirement: string) =>
+  hasAny(normaliseText(requirement), [
+    "basic digital understanding",
+    "basic web understanding",
+    "digital or web understanding",
+    "digital understanding",
+    "web understanding",
+  ]);
+
+const isDirectIssueDocumentationEvidence = (evidence: string) =>
+  hasAny(normaliseText(evidence), [
+    "kept notes of recurring problems",
+    "documented setup steps",
+    "recorded what happened",
+    "reported recurring",
+    "shared them with the team",
+    "document what happened",
+    "tested core user flows",
+    "checked pages for broken links",
+  ]);
+
+const isDirectDigitalWebEvidence = (evidence: string) =>
+  hasAny(normaliseText(evidence), [
+    "html",
+    "css",
+    "javascript",
+    "github",
+    "built a simple",
+    "portfolio page",
+    "website",
+    "web",
+  ]);
+
 const shouldKeepEvidenceForRequirement = (requirement: string, evidence: string) => {
   if (isGcseOnlyEvidence(evidence) && !asksForEducationEvidence(requirement)) {
     return false;
@@ -904,6 +937,10 @@ const shouldKeepEvidenceForRequirement = (requirement: string, evidence: string)
     return false;
   }
 
+  if (isDigitalWebUnderstandingRequirement(requirement) && isAppointmentInboxEvidence(evidence)) {
+    return false;
+  }
+
   if (
     isSupportRoleRequirement(requirement) &&
     !asksForSpecificDeveloperEvidence(requirement) &&
@@ -913,6 +950,62 @@ const shouldKeepEvidenceForRequirement = (requirement: string, evidence: string)
   }
 
   return true;
+};
+
+const issueDocumentationEvidenceRank = (evidence: string) => {
+  const normalisedEvidence = normaliseText(evidence);
+
+  if (isDirectIssueDocumentationEvidence(evidence)) {
+    return 0;
+  }
+
+  if (hasAny(normalisedEvidence, ["debug", "bug", "issue", "issues", "tested", "broken links", "layout"])) {
+    return 1;
+  }
+
+  if (hasAny(normalisedEvidence, ["helped customers", "helped families", "explained steps", "support"])) {
+    return 2;
+  }
+
+  if (isDirectDigitalWebEvidence(evidence)) {
+    return 4;
+  }
+
+  return 6;
+};
+
+const privacyEvidenceRank = (evidence: string) => {
+  const normalisedEvidence = normaliseText(evidence);
+
+  if (hasAny(normalisedEvidence, ["gdpr and customer records", "maintained confidential customer records", "gdpr essentials course"])) {
+    return 0;
+  }
+
+  if (isPrivacyOrRecordsEvidence(evidence)) {
+    return 1;
+  }
+
+  if (hasAny(normalisedEvidence, ["customer support", "learning", "software tools"])) {
+    return 5;
+  }
+
+  return 6;
+};
+
+const digitalWebEvidenceRank = (evidence: string) => {
+  if (isDirectDigitalWebEvidence(evidence)) {
+    return 0;
+  }
+
+  if (hasAny(normaliseText(evidence), ["learning", "software tools", "digital"])) {
+    return 2;
+  }
+
+  if (isAppointmentInboxEvidence(evidence)) {
+    return 8;
+  }
+
+  return 6;
 };
 
 const supportEvidenceRank = (evidence: string) => {
@@ -946,9 +1039,15 @@ const supportEvidenceRank = (evidence: string) => {
 };
 
 const sortEvidenceForRequirement = (requirement: string, evidence: string[]) =>
-  isSupportRoleRequirement(requirement)
-    ? [...evidence].sort((a, b) => supportEvidenceRank(a) - supportEvidenceRank(b))
-    : evidence;
+  isReproduceDocumentRequirement(requirement)
+    ? [...evidence].sort((a, b) => issueDocumentationEvidenceRank(a) - issueDocumentationEvidenceRank(b))
+    : asksForPrivacyOrRecordsEvidence(requirement)
+      ? [...evidence].sort((a, b) => privacyEvidenceRank(a) - privacyEvidenceRank(b))
+      : isDigitalWebUnderstandingRequirement(requirement)
+        ? [...evidence].sort((a, b) => digitalWebEvidenceRank(a) - digitalWebEvidenceRank(b))
+        : isSupportRoleRequirement(requirement)
+          ? [...evidence].sort((a, b) => supportEvidenceRank(a) - supportEvidenceRank(b))
+          : evidence;
 
 const requirementSectionHeadingPattern =
   /^(responsibilities|requirements|essential skills|essential criteria|desirable skills|desirable criteria|required skills)\b/i;
@@ -1239,13 +1338,13 @@ const buildRequirementEvidenceMap = ({
     ).slice(0, 10);
     const primaryCategory = categories[0] ?? "learning_new_systems";
     const exampleToPrepare =
-      isSupportRoleRequirement(requirement) && !asksForSpecificDeveloperEvidence(requirement)
-        ? isReproduceDocumentRequirement(requirement)
-          ? "Prepare a short example of supporting a user, recording what happened, and escalating if needed."
-          : hasAny(normaliseText(requirement), ["learning", "software tool", "new system"])
+      isReproduceDocumentRequirement(requirement) && !asksForSpecificDeveloperEvidence(requirement)
+        ? "Prepare a short example of reproducing an issue, recording the steps and outcome, and explaining what happened."
+        : isSupportRoleRequirement(requirement) && !asksForSpecificDeveloperEvidence(requirement)
+          ? hasAny(normaliseText(requirement), ["learning", "software tool", "new system"])
             ? "Prepare one example of learning a software tool and explaining it to someone else."
             : "Prepare a short example of explaining a technical issue or platform step clearly."
-        : categoryExamples[primaryCategory];
+          : categoryExamples[primaryCategory];
 
     return {
       requirement,

@@ -593,6 +593,25 @@ const buildMappedCareerEvidenceKeysFromMap = (
       .map(normaliseCareerEvidenceKey),
   );
 
+const buildCareerRequirementChecklistBlocks = (
+  requirementEvidenceMap?: CareerRequirementEvidenceMapItem[],
+): string[] =>
+  (requirementEvidenceMap ?? [])
+    .map((item) => {
+      const possibleEvidence = cleanStringItems(
+        item.possibleEvidence.map((evidence) => `Possible CV evidence to consider: ${evidence}`),
+      );
+      const block = cleanStringItems([
+        `Requirement to compare: ${item.requirement}`,
+        ...possibleEvidence,
+        `Example to prepare: ${item.exampleToPrepare}`,
+        item.verificationNote,
+      ]);
+
+      return block.join("\n");
+    })
+    .filter(Boolean);
+
 export const buildResultViewModel = ({
   decisionResult,
   benefitsActionPack,
@@ -833,24 +852,22 @@ export const buildResultViewModel = ({
     ...(decisionResult?.safetyNotes ?? []),
   ], RESULT_NO_CONTACT_SAFETY_NOTE);
   const draftOrChecklist = buildDraftView(benefitsActionPack, decisionResult, workplaceSupportPack);
+  const careerRequirementChecklistBlocks = buildCareerRequirementChecklistBlocks(finalCareerRequirementEvidenceMap);
   const careerChecklist: ResultDraftView | undefined = careerSupportPack
     ? {
         title: "Career preparation checklist",
-        body: cleanStringItems([
-          ...(finalCareerRequirementEvidenceMap ?? []).flatMap((item) => [
-            `Requirement to compare: ${item.requirement}`,
-            ...item.possibleEvidence.map((evidence) => `Possible CV evidence to consider: ${evidence}`),
-            `Example to prepare: ${item.exampleToPrepare}`,
-            item.verificationNote,
-          ]),
-          ...(careerSupportPack.requirementsFound ?? []).map((item) => `Advert requirement to review: ${item}`),
-          ...finalCareerCvEvidence.map((item) => `CV evidence that may match: ${item}`),
-          ...(careerSupportPack.examplesToPrepare ?? []),
-          ...(careerSupportPack.claimsToVerify ?? []),
-          ...careerSupportPack.nextPreparationSteps,
-          ...careerSupportPack.saferRewriteSuggestions,
-          "Review every claim before using or sharing it.",
-        ]).join("\n"),
+        body: [
+          ...careerRequirementChecklistBlocks,
+          cleanStringItems([
+            ...(careerSupportPack.requirementsFound ?? []).map((item) => `Advert requirement to review: ${item}`),
+            ...finalCareerCvEvidence.map((item) => `CV evidence that may match: ${item}`),
+            ...(careerSupportPack.examplesToPrepare ?? []),
+            ...(careerSupportPack.claimsToVerify ?? []),
+            ...careerSupportPack.nextPreparationSteps,
+            ...careerSupportPack.saferRewriteSuggestions,
+            "Review every claim before using or sharing it.",
+          ]).join("\n"),
+        ].filter(Boolean).join("\n"),
         source: "career_support_pack",
       }
     : undefined;

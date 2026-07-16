@@ -68,6 +68,19 @@ const expectUniqueText = (items: string[]) => {
   expect(new Set(keys).size).toBe(keys.length);
 };
 
+const extractChecklistRequirementBlock = (checklist: string, requirement: string) => {
+  const blockStart = `Requirement to compare: ${requirement}`;
+  const startIndex = checklist.indexOf(blockStart);
+
+  expect(startIndex).toBeGreaterThanOrEqual(0);
+
+  const nextRequirementIndex = checklist.indexOf("\nRequirement to compare:", startIndex + blockStart.length);
+
+  return checklist
+    .slice(startIndex, nextRequirementIndex === -1 ? undefined : nextRequirementIndex)
+    .toLowerCase();
+};
+
 const expectNoWorkplaceForbiddenWording = (text: string) => {
   const normalised = normaliseResultText(text);
 
@@ -514,7 +527,6 @@ Reproduce simple issues and document what happened.
 Basic digital understanding.`,
     });
     const model = buildResultViewModel({ careerSupportPack });
-    const checklist = model.draftOrChecklist?.body.toLowerCase() ?? "";
     const customerHelp = model.careerRequirementEvidenceMap?.find((item) =>
       item.requirement.toLowerCase().includes("help customers understand"),
     );
@@ -526,6 +538,14 @@ Basic digital understanding.`,
     );
     const issueEvidence = issueDocumentation?.possibleEvidence.join("\n").toLowerCase() ?? "";
     const digitalEvidence = digital?.possibleEvidence.join("\n").toLowerCase() ?? "";
+    const issueChecklistBlock = extractChecklistRequirementBlock(
+      model.draftOrChecklist?.body ?? "",
+      "Reproduce simple issues and document what happened.",
+    );
+    const digitalChecklistBlock = extractChecklistRequirementBlock(
+      model.draftOrChecklist?.body ?? "",
+      "Basic digital understanding.",
+    );
 
     expect(customerHelp?.exampleToPrepare.toLowerCase()).toContain("helping a customer understand");
     expect(customerHelp?.exampleToPrepare.toLowerCase()).not.toContain("reproducing an issue");
@@ -536,16 +556,25 @@ Basic digital understanding.`,
     expect(issueDocumentation?.exampleToPrepare.toLowerCase()).toContain(
       "reproducing an issue, recording the steps and outcome",
     );
-    expect(checklist).toContain("kept notes of recurring problems and shared them with the team");
-    expect(checklist).toContain("reproducing an issue, recording the steps and outcome");
-    expect(checklist.indexOf("kept notes of recurring problems")).toBeLessThan(
-      checklist.indexOf("react and typescript"),
+    expect(issueChecklistBlock).toContain(
+      "possible cv evidence to consider: kept notes of recurring problems and shared them with the team.",
+    );
+    expect(issueChecklistBlock).toContain("reproducing an issue, recording the steps and outcome");
+    expect(issueChecklistBlock.indexOf("kept notes of recurring problems")).toBeLessThan(
+      issueChecklistBlock.indexOf("react and typescript"),
     );
     expect(digital?.possibleEvidence[0].toLowerCase()).toContain("react");
     expect(digitalEvidence).toContain("built a react and typescript dashboard");
     expect(digitalEvidence).toContain("react, typescript, html, css, javascript, github");
     expect(digitalEvidence).toContain("used github to document setup steps");
     expect(digitalEvidence).not.toContain("no clear cv evidence found");
+    expect(digitalChecklistBlock).toContain(
+      "possible cv evidence to consider: react, typescript, html, css, javascript, github",
+    );
+    expect(digitalChecklistBlock).toContain(
+      "possible cv evidence to consider: built a react and typescript dashboard for tracking customer requests.",
+    );
+    expect(digitalChecklistBlock).toContain("possible cv evidence to consider: used github to document setup steps.");
     expect(validateResultViewModelSafety(model).safe).toBe(true);
   });
 

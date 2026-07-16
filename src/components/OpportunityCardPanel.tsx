@@ -42,6 +42,7 @@ export function OpportunityCardPanel({ opportunity, onOpenCase }: OpportunityCar
           opportunity.confirmedRecovery,
           opportunity.annualisedAmount,
         ].filter((item): item is MoneyImpact => Boolean(item));
+  const isCareerSupport = opportunity.opportunityType === "career_support";
 
   return (
     <section className="rounded-lg border border-emerald-300/25 bg-emerald-300/[0.08] p-5 shadow-xl shadow-emerald-950/10">
@@ -60,6 +61,36 @@ export function OpportunityCardPanel({ opportunity, onOpenCase }: OpportunityCar
         </span>
       </div>
 
+      {isCareerSupport ? (
+        <div className="mt-5 grid gap-3 sm:grid-cols-3">
+          <div className="rounded-lg border border-white/10 bg-slate-950/70 p-4">
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
+              Preparation focus
+            </p>
+            <p className="mt-2 text-sm leading-6 text-slate-200">
+              No savings or recovery counted. This is a CV review aid.
+            </p>
+          </div>
+
+          <div className="rounded-lg border border-white/10 bg-slate-950/70 p-4">
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
+              Evidence to review
+            </p>
+            <p className="mt-2 text-sm leading-6 text-slate-200">
+              Strengths, projects, training, dates, and links from the CV text.
+            </p>
+          </div>
+
+          <div className="rounded-lg border border-white/10 bg-slate-950/70 p-4">
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
+              Status
+            </p>
+            <p className="mt-2 text-sm leading-6 text-slate-200">
+              {opportunity.statusLabel ?? "Career preparation only"}
+            </p>
+          </div>
+        </div>
+      ) : (
       <div className="mt-5 grid gap-3 sm:grid-cols-3">
         <div className="rounded-lg border border-white/10 bg-slate-950/70 p-4">
           <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
@@ -102,6 +133,7 @@ export function OpportunityCardPanel({ opportunity, onOpenCase }: OpportunityCar
           </p>
         </div>
       </div>
+      )}
 
       {opportunity.opportunityNote ? (
         <div className="mt-4 rounded-lg border border-emerald-300/20 bg-slate-950/50 p-4">

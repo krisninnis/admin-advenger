@@ -69,6 +69,7 @@ Your payment this month: GBP 843.45`);
     expect(html).toContain("What AdminAvenger cannot know");
     expect(html).toContain("Uncertainty / double-check");
     expect(html).toContain("Draft/checklist");
+    expect(html).toContain("Save this check");
     expect(html).toContain("Download adviser pack");
     expect(html).toContain(
       "Creates a Markdown file you can save, print, or share with someone you trust.",
@@ -168,6 +169,11 @@ Web development course, 2026`,
     const html = renderToStaticMarkup(
       <ResultCaseSheet
         model={resultViewModel}
+        primaryAction={{ label: "Save CV review", onClick: () => undefined, emphasis: "primary" }}
+        secondaryActions={[
+          { label: "Mark reviewed", onClick: () => undefined, emphasis: "quiet" },
+          { label: "Ignore", onClick: () => undefined, emphasis: "quiet" },
+        ]}
         supportingDetailsOpen={false}
         onToggleSupportingDetails={() => undefined}
       />,
@@ -179,8 +185,14 @@ Web development course, 2026`,
     expect(html).toContain("Projects to highlight");
     expect(html).toContain("Experience to frame");
     expect(html).toContain("Education/training to mention");
+    expect(html).toContain("Choose the target role before editing the CV");
+    expect(html).toContain("Save CV review");
+    expect(html).toContain("Mark reviewed");
     expect(html).not.toContain("Dates to check");
     expect(html).not.toContain("Money mentioned");
+    expect(html).not.toContain("Check email safety");
+    expect(html).not.toContain("Create draft message");
+    expect(html).not.toContain("Save as record");
     expect(text).not.toContain("check against the original letter");
     expect(text).not.toContain("check the sender, date, reference");
     expect(findForbiddenSafetyPhrases(html)).toEqual([]);

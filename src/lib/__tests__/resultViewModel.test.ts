@@ -10,7 +10,7 @@ import {
   normaliseResultText,
   validateResultViewModelSafety,
 } from "../resultViewModel";
-import { buildStrategicNextStepPlan } from "../strategicNextStep";
+import { buildStrategicNextStepPlan, type StrategicNextStepPlan } from "../strategicNextStep";
 import { buildWorkplaceSupportPack } from "../workplaceSupportPack";
 
 const makeDecision = (
@@ -91,6 +91,31 @@ const expectNoWorkplaceForbiddenWording = (text: string) => {
   ]) {
     expect(normalised).not.toContain(normaliseResultText(phrase));
   }
+};
+
+const genericAdminStrategicPlan: StrategicNextStepPlan = {
+  title: "Best next move",
+  plainEnglishSummary: "This needs a careful check before deciding what to do next.",
+  actors: [],
+  userGoal: "Identify what the message is asking for before acting.",
+  missingInformation: ["Sender, date, reference, requested action, and any deadline shown on the document."],
+  safestMove: {
+    label: "Identify the sender, date, reference, and deadline",
+    description: "Find who sent it, when, any reference number, what they want, and whether a date is mentioned.",
+    whyThisHelps: "It avoids a rushed response and helps you decide whether this needs action.",
+    riskLevel: "low",
+    reversibility: "easy_to_reverse",
+    preservesOptions: true,
+    requiresEvidence: true,
+    requiresAdvice: false,
+    doNotAutoSend: true,
+  },
+  otherSafeMoves: [],
+  movesToAvoid: ["Do not reply, pay, click, or submit anything before checking what the document is."],
+  whenToGetAdvice: [],
+  uncertainty: ["Some details may be missing if the message was cropped, incomplete, or hard to read."],
+  cannotKnow: ["AdminAvenger cannot know whether the sender has other information outside this message."],
+  safetyNotes: ["AdminAvenger helps you compare safe next steps."],
 };
 
 describe("ResultViewModel", () => {
@@ -257,13 +282,28 @@ Volunteer experience supporting admin updates.
 Education & Training
 Web development course, 2026`,
     });
-    const model = buildResultViewModel({ careerSupportPack });
+    const model = buildResultViewModel({
+      careerSupportPack,
+      strategicNextStepPlan: genericAdminStrategicPlan,
+    });
     const flattened = flattenResultViewModelText(model).toLowerCase();
+    const bestNextMoveText = [
+      model.bestNextMove?.label,
+      model.bestNextMove?.description,
+      model.bestNextMove?.whyThisHelps,
+    ].join(" ").toLowerCase();
+    const uncertaintyText = model.uncertainty.join(" ").toLowerCase();
 
     expect(careerSupportPack.documentType).toBe("cv");
     expect(model.resultKind).toBe("career_support");
     expect(model.title).toBe("CV preparation notes");
     expect(model.primaryStatusLabel).toBe("Career preparation only - review before using");
+    expect(model.bestNextMove?.label).toBe("Choose the target role before editing the CV");
+    expect(model.bestNextMove?.description).toContain("Pick the job type or job advert first");
+    expect(model.bestNextMove?.whyThisHelps).toContain("tailored to a specific role");
+    expect(bestNextMoveText).not.toContain("sender");
+    expect(bestNextMoveText).not.toContain("reference");
+    expect(bestNextMoveText).not.toContain("deadline");
     expect(model.keyDates).toEqual([]);
     expect(model.moneyMentioned).toEqual([]);
     expect(model.sections.map((section) => section.id)).toEqual(
@@ -283,6 +323,10 @@ Web development course, 2026`,
     expect(flattened).toContain("projects to highlight");
     expect(flattened).not.toContain("money mentioned");
     expect(flattened).not.toContain("check these details against the original letter");
+    expect(uncertaintyText).not.toContain("reply");
+    expect(uncertaintyText).not.toContain("pay");
+    expect(uncertaintyText).not.toContain("click");
+    expect(uncertaintyText).not.toContain("submit anything");
     expect(validateResultViewModelSafety(model).safe).toBe(true);
   });
 

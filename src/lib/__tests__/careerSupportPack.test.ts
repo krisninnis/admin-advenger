@@ -71,6 +71,28 @@ Portfolio or GitHub examples preferred.
 Closing date: 30 August 2026
 `;
 
+const syntheticNoisyCv = `
+CV
+
+Contact
+Alex Example
+alex.example@example.test
+07123 456789
+
+Professional profile
+Seeking a junior developer role after building practical portfolio projects and completing training.
+
+GitHub Projects
+Memephant - a playful React project using local state and reusable components.
+AdminAvenger - local-first document preparation prototype.
+
+Education & Training
+BSc Computing, Open University
+Modules: Web technologies, databases, accessibility
+Excel Skills Training
+GDPR awareness
+`;
+
 describe("Career Support Pack Core v1", () => {
   it("detects a synthetic CV as a career document", () => {
     const pack = buildCareerSupportPack({ text: syntheticCv });
@@ -112,6 +134,30 @@ Required skills I am developing: React, JavaScript, accessibility.
     expect(pack.educationAndTraining.join(" ")).toContain("Software development course");
     expect(pack.experienceToFrame.join(" ")).toContain("Volunteer experience");
     expect(pack.nextPreparationSteps.length).toBeGreaterThan(0);
+  });
+
+  it("keeps CV projects focused and excludes contact details", () => {
+    const pack = buildCareerSupportPack({ text: syntheticNoisyCv });
+    const projects = pack.projectsToHighlight.join("\n").toLowerCase();
+
+    expect(projects).toContain("memephant");
+    expect(projects).toContain("adminavenger");
+    expect(projects).not.toContain("alex.example@example.test");
+    expect(projects).not.toContain("07123");
+    expect(projects).not.toContain("professional profile");
+    expect(projects).not.toContain("seeking a junior developer role");
+  });
+
+  it("keeps CV education focused and excludes professional profile paragraphs", () => {
+    const pack = buildCareerSupportPack({ text: syntheticNoisyCv });
+    const education = pack.educationAndTraining.join("\n").toLowerCase();
+
+    expect(education).toContain("open university");
+    expect(education).toContain("modules");
+    expect(education).toContain("excel skills training");
+    expect(education).toContain("gdpr");
+    expect(education).not.toContain("professional profile");
+    expect(education).not.toContain("seeking a junior developer role");
   });
 
   it("prepares strengths, evidence, projects, and next steps from a synthetic CV", () => {

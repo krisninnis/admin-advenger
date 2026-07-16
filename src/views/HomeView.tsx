@@ -685,11 +685,15 @@ export function HomeView({
     : undefined;
   const showEmailSafetyButton =
     Boolean(inboxScanSettings.showEmailSafetyCheckButton && emailSafetyAssessment?.isEmailLike);
+  const isCareerSupportCase =
+    primaryOpportunity?.opportunityType === "career_support" || Boolean(primaryCase?.careerSupportPack);
   const primaryActionLabel =
     primaryOpportunity && guidedMode && primaryCase
-      ? isAppointmentTask(primaryCase)
-        ? "Save this task"
-        : getHomePrimaryActionLabel(primaryOpportunity.opportunityType, guidedMode)
+      ? isCareerSupportCase
+        ? "Save CV review"
+        : isAppointmentTask(primaryCase)
+          ? "Save this task"
+          : getHomePrimaryActionLabel(primaryOpportunity.opportunityType, guidedMode)
       : undefined;
   const simplePrimaryAction: ResultCaseSheetAction | undefined =
     primaryOpportunity && primaryCase
@@ -707,7 +711,20 @@ export function HomeView({
       : undefined;
   const simpleSecondaryActions: ResultCaseSheetAction[] =
     primaryCase && primaryOpportunity
-      ? [
+      ? isCareerSupportCase
+        ? [
+            {
+              label: "Mark reviewed",
+              onClick: () => onSaveRecord(primaryCase.id),
+              emphasis: "quiet" as const,
+            },
+            {
+              label: "Ignore",
+              onClick: onClearResult,
+              emphasis: "quiet" as const,
+            },
+          ]
+        : [
           ...(showEmailSafetyButton &&
           primaryOpportunity.opportunityType !== "suspicious_email_risk"
             ? [
@@ -2214,7 +2231,7 @@ export function HomeView({
               : simpleSecondaryActions
           }
           guidedNextStepButton={
-            !isWorkplaceBetaResultActive && guidedNextStep
+            !isWorkplaceBetaResultActive && !isCareerSupportCase && guidedNextStep
               ? {
                   label: guidedNextStep.primaryAction.label,
                   onClick: () => setShowGuidedNextStep(true),
@@ -2234,7 +2251,7 @@ export function HomeView({
           </p>
           <div className="mt-4 grid gap-4">
             <OpportunityCardPanel opportunity={primaryOpportunity} />
-            {strategicNextStepPlan ? <StrategicNextStepPanel plan={strategicNextStepPlan} /> : null}
+            {!isCareerSupportCase && strategicNextStepPlan ? <StrategicNextStepPanel plan={strategicNextStepPlan} /> : null}
             {benefitsActionPack ? <BenefitsActionPackPanel pack={benefitsActionPack} /> : null}
           </div>
         </section>

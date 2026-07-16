@@ -218,6 +218,82 @@ export const isCareerSupportDocument = (text: string) =>
 const extractMatchingSignals = (normalised: string, signals: string[]) =>
   unique(signals.filter((signal) => normalised.includes(signal)));
 
+const sectionHeadingSignals = [
+  "contact",
+  "professional profile",
+  "profile",
+  "personal statement",
+  "key skills",
+  "technical skills",
+  "projects",
+  "portfolio",
+  "github projects",
+  "professional experience",
+  "work experience",
+  "volunteer experience",
+  "employment history",
+  "education",
+  "education & training",
+  "education and training",
+  "training",
+  "references",
+];
+
+const isLikelySectionHeading = (line: string) => {
+  const normalisedLine = normaliseText(line).replace(/:$/, "");
+
+  return (
+    line.length <= 45 &&
+    sectionHeadingSignals.some((signal) => normalisedLine === signal)
+  );
+};
+
+const isContactDetail = (line: string) =>
+  /@/.test(line) ||
+  /\b(?:\+?\d[\d\s().-]{7,}\d)\b/.test(line) ||
+  /\b(?:tel|phone|mobile|email|address)\b/i.test(line);
+
+const isProfileLine = (line: string) =>
+  /professional profile|personal profile|profile|seeking an?|looking for|career objective/i.test(line);
+
+const isUsableCvDetail = (line: string) =>
+  !isLikelySectionHeading(line) && !isContactDetail(line) && !isProfileLine(line);
+
+const collectSectionLines = (
+  lines: string[],
+  headingSignals: string[],
+  contentSignals: string[],
+  fallback: string,
+) => {
+  const matches: string[] = [];
+
+  lines.forEach((line, index) => {
+    const normalisedLine = normaliseText(line);
+    const isSectionStart = headingSignals.some((signal) => normalisedLine.includes(signal));
+    const isDirectContent = contentSignals.some((signal) => normalisedLine.includes(signal));
+
+    if (isSectionStart) {
+      for (let nextIndex = index + 1; nextIndex < lines.length; nextIndex += 1) {
+        const nextLine = lines[nextIndex];
+
+        if (isLikelySectionHeading(nextLine)) {
+          break;
+        }
+
+        if (isUsableCvDetail(nextLine)) {
+          matches.push(nextLine);
+        }
+      }
+    }
+
+    if (isDirectContent && isUsableCvDetail(line)) {
+      matches.push(line);
+    }
+  });
+
+  return unique(matches.length > 0 ? matches.slice(0, 5) : [fallback]);
+};
+
 const extractLinesMatching = (lines: string[], signals: string[], fallback: string) => {
   const matches: string[] = [];
 
@@ -317,9 +393,10 @@ export const buildCareerSupportPack = ({ text }: { text: string }): CareerSuppor
       evidenceVerbs,
       "Add specific examples of work, projects, volunteering, training, or responsibilities the user can evidence.",
     ),
-    projectsToHighlight: extractLinesMatching(
+    projectsToHighlight: collectSectionLines(
       lines,
-      ["project", "portfolio", "github", "website", "app"],
+      ["projects", "portfolio", "github projects"],
+      ["memephant", "adminavenger", "portfolio project", "project", "github", "website", "app", "built", "created"],
       "If relevant, add project, portfolio, GitHub, or work-sample evidence.",
     ),
     experienceToFrame: extractLinesMatching(
@@ -327,9 +404,10 @@ export const buildCareerSupportPack = ({ text }: { text: string }): CareerSuppor
       ["professional experience", "work experience", "volunteer experience", "employment history", "managed", "supported", "delivered"],
       "Frame experience around truthful responsibilities, actions taken, and outcomes where known.",
     ),
-    educationAndTraining: extractLinesMatching(
+    educationAndTraining: collectSectionLines(
       lines,
-      ["education", "training", "degree", "certificate", "certification", "bootcamp", "gcse", "a level"],
+      ["education", "education & training", "education and training", "training"],
+      ["bsc", "open university", "module", "modules", "excel skills training", "gdpr", "nvq", "degree", "certificate", "certification", "bootcamp", "gcse", "a level", "course", "training", "university"],
       "Add relevant education, training, certificates, or courses if they support the target role.",
     ),
     possibleGapsToCheck: buildGaps(documentType, normalised),

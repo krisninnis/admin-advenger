@@ -398,6 +398,15 @@ const buildBestNextMove = (
   };
 };
 
+const buildCareerBestNextMove = (): ResultBestNextMoveView => ({
+  label: "Choose the target role before editing the CV",
+  description:
+    "Pick the job type or job advert first, then tailor the strongest evidence, projects, skills, and training to that role.",
+  whyThisHelps:
+    "A CV is stronger when it is tailored to a specific role instead of being reviewed in isolation.",
+  source: "best_next_move",
+});
+
 const buildDraftView = (
   benefitsActionPack: BenefitsActionPack | null | undefined,
   decisionResult: DecisionResult | undefined,
@@ -441,8 +450,10 @@ export const buildResultViewModel = ({
   opportunity,
   adminCase,
 }: BuildResultViewModelInput): ResultViewModel => {
-  const bestNextMove = buildBestNextMove(strategicNextStepPlan);
   const isCareerSupportResult = Boolean(careerSupportPack);
+  const bestNextMove = isCareerSupportResult
+    ? buildCareerBestNextMove()
+    : buildBestNextMove(strategicNextStepPlan);
   const title = safeText(
     opportunity?.title ??
       benefitsActionPack?.title ??
@@ -566,7 +577,7 @@ export const buildResultViewModel = ({
     ...(workplaceSupportPack?.riskWarnings ?? []),
     ...(communityHelperPack?.riskWarnings ?? []),
     ...(decisionResult?.risks ?? []),
-    ...(strategicNextStepPlan?.movesToAvoid ?? []),
+    ...(isCareerSupportResult ? [] : (strategicNextStepPlan?.movesToAvoid ?? [])),
   ]);
   const cannotKnow = cleanStringItems([
     ...(benefitsActionPack?.cannotKnow ?? []),
@@ -578,7 +589,7 @@ export const buildResultViewModel = ({
           "AdminAvenger cannot verify experience, qualifications, dates, references, or portfolio links outside the text provided.",
         ]
       : []),
-    ...(strategicNextStepPlan?.cannotKnow ?? []),
+    ...(isCareerSupportResult ? [] : (strategicNextStepPlan?.cannotKnow ?? [])),
     ...(decisionResult?.cannotKnow ?? []),
   ], fallbackCannotKnow);
   const uncertainty = cleanStringItems([
@@ -595,11 +606,13 @@ export const buildResultViewModel = ({
       : []),
     ...(careerSupportPack
       ? [
-          "Career material may need tailoring to a specific job advert, employer, or application form.",
-          "Some claims may need checking against the user's real experience, dates, projects, and training records.",
+          "Review every claim before sharing with an employer or recruiter.",
+          "Check dates, qualifications, project links, and role titles against your records.",
+          "Tailor the CV to the job advert where appropriate.",
+          "Do not imply experience or qualifications you cannot honestly explain.",
         ]
       : []),
-    ...(strategicNextStepPlan?.uncertainty ?? []),
+    ...(isCareerSupportResult ? [] : (strategicNextStepPlan?.uncertainty ?? [])),
     ...(decisionResult?.uncertainty ?? []),
   ], fallbackUncertainty);
   const safetyNotes = cleanStringItems([
@@ -617,7 +630,7 @@ export const buildResultViewModel = ({
     ...(communityHelperPack?.consentAndControlNotes ?? []),
     ...(communityHelperPack?.signposting ?? []),
     ...(careerSupportPack?.safetyNotes ?? []),
-    ...(strategicNextStepPlan?.safetyNotes ?? []),
+    ...(isCareerSupportResult ? [] : (strategicNextStepPlan?.safetyNotes ?? [])),
     ...(benefitsActionPack?.safetyNotes ?? []),
     ...(decisionResult?.safetyNotes ?? []),
   ], RESULT_NO_CONTACT_SAFETY_NOTE);
@@ -972,7 +985,7 @@ export const buildResultViewModel = ({
     sections,
     detailSections,
     showBenefitsActionPack: Boolean(benefitsActionPack),
-    showStrategicNextStep: Boolean(strategicNextStepPlan),
+    showStrategicNextStep: Boolean(strategicNextStepPlan && !isCareerSupportResult),
   };
 };
 

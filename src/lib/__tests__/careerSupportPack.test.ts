@@ -305,15 +305,20 @@ const syntheticDataAdminCvWithFrontendAdvert = `
 CV
 
 Professional Profile
-Data administrator with spreadsheet and records experience.
+Data-focused administrator with strong Excel, record keeping and customer information experience.
 
 Key Skills
 Microsoft Excel, CRM updates, records, GDPR
 
 Work Experience
 Data Administrator
+2024
 Maintained CRM records and checked data quality.
 Used Excel formulas, filters and simple reports.
+Maintained confidential customer information.
+
+Education and Training
+Data Protection and GDPR Training
 
 JOB ADVERT
 Junior Front-End Developer
@@ -321,6 +326,7 @@ Junior Front-End Developer
 Responsibilities
 - Build user interfaces using HTML, CSS, JavaScript and React.
 - Work with TypeScript components and reusable UI patterns.
+- Help fix bugs and improve existing pages.
 - Communicate clearly with designers and support users when needed.
 `;
 
@@ -594,11 +600,21 @@ Required skills I am developing: React, JavaScript, accessibility.
     const communicationItem = pack.requirementEvidenceMap?.find((item) =>
       item.requirement.toLowerCase().includes("communicate clearly"),
     );
+    const bugFixItem = pack.requirementEvidenceMap?.find((item) =>
+      item.requirement.toLowerCase().includes("help fix bugs"),
+    );
     const cvEvidence = pack.cvEvidenceThatMayMatch?.join("\n").toLowerCase() ?? "";
+    const allEvidence = [
+      ...(pack.requirementEvidenceMap ?? []).flatMap((item) => item.possibleEvidence),
+      ...(pack.cvEvidenceThatMayMatch ?? []),
+      ...(pack.strongEvidenceToConsider ?? []),
+    ].join("\n").toLowerCase();
+    const strongEvidence = pack.strongEvidenceToConsider?.join("\n").toLowerCase() ?? "";
 
     expect(pack.documentType).toBe("cv_job_advert_match");
     expect(webItem?.possibleEvidence.join(" ").toLowerCase()).toContain("no clear cv evidence found");
     expect(typeScriptItem?.possibleEvidence.join(" ").toLowerCase()).toContain("no clear cv evidence found");
+    expect(bugFixItem?.possibleEvidence.join(" ").toLowerCase()).toContain("no clear cv evidence found");
     expect(webItem?.possibleEvidence.join(" ").toLowerCase()).not.toContain("excel");
     expect(webItem?.possibleEvidence.join(" ").toLowerCase()).not.toContain("crm");
     expect(typeScriptItem?.possibleEvidence.join(" ").toLowerCase()).not.toContain("records");
@@ -606,6 +622,15 @@ Required skills I am developing: React, JavaScript, accessibility.
     expect(communicationItem?.possibleEvidence.join(" ").toLowerCase()).not.toContain("excel");
     expect(cvEvidence).not.toContain("excel and data handling");
     expect(cvEvidence).not.toContain("crm records");
+    expect(allEvidence).not.toContain("data protection and gdpr training");
+    expect(allEvidence).not.toContain("maintained confidential customer information");
+    expect(allEvidence).not.toMatch(/(^|\n)2024($|\n)/);
+    expect(allEvidence).not.toContain("data-focused administrator with strong excel");
+    expect(allEvidence).not.toContain("technical/practical problem solving");
+    expect(strongEvidence).not.toContain("gdpr");
+    expect(strongEvidence).not.toContain("confidential");
+    expect(strongEvidence).not.toContain("excel");
+    expect(strongEvidence).not.toContain("crm");
   });
 
   it("moves overclaiming CV match claims into verification notes instead of strong evidence", () => {

@@ -400,6 +400,19 @@ const isBareRoleTitle = (line: string) =>
   bareRoleTitlePattern.test(line.trim()) &&
   !hasConcreteEvidenceVerb(line);
 
+const isStandaloneYearLine = (line: string) =>
+  /^(?:19|20)\d{2}(?:\s*[–-]\s*(?:19|20)\d{2})?$/.test(line.trim());
+
+const isLikelyProfileSummaryLine = (line: string) => {
+  const trimmedLine = line.trim();
+
+  return (
+    trimmedLine.length >= 55 &&
+    /\b(?:administrator|developer|candidate|applicant|professional|assistant)\b/i.test(trimmedLine) &&
+    /\b(?:with|seeking|focused|strong|experienced|experience)\b/i.test(trimmedLine)
+  );
+};
+
 const isContactDetail = (line: string) =>
   /@/.test(line) ||
   /\b(?:\+?\d[\d\s().-]{7,}\d)\b/.test(line) ||
@@ -501,6 +514,8 @@ const isUnsafeEvidenceLine = (line: string, lines: string[]) =>
   isTemplateEvidenceLine(line) ||
   isLikelySectionHeading(line) ||
   isBareRoleTitle(line) ||
+  isStandaloneYearLine(line) ||
+  isLikelyProfileSummaryLine(line) ||
   isRiskyClaimLine(line) ||
   hasUnsupportedProjectContext(line, lines);
 
@@ -706,11 +721,11 @@ const categorySignals: Record<CareerMatchCategory, string[]> = {
   records_admin_data: ["record", "records", "admin", "data", "validation", "validated", "document", "documents", "documentation", "process notes", "letter", "letters", "spreadsheet", "spreadsheets", "crm"],
   excel_spreadsheets: ["excel", "spreadsheet", "spreadsheets", "formula", "formulas", "filter", "filters", "pivot"],
   it_software_support: ["software", "systems", "support", "technical", "helpdesk", "information technology"],
-  web_development: ["web", "website", "html", "css", "javascript", "typescript", "react", "python", "development", "vite", "vitest", "testing", "test", "tests", "ui", "interface", "interfaces", "component", "components", "responsive"],
+  web_development: ["web", "website", "page", "pages", "app", "code", "html", "css", "javascript", "typescript", "react", "python", "development", "vite", "vitest", "testing", "test", "tests", "ui", "interface", "interfaces", "component", "components", "responsive"],
   communication: ["communication", "customer", "support requests", "respond", "escalation", "stakeholder"],
   gdpr_privacy: ["gdpr", "privacy", "sensitive data", "sensitive information", "confidential", "data protection"],
   organisation: ["organised", "organized", "organisation", "organization", "scheduling", "appointments", "medication"],
-  problem_solving: ["problem", "troubleshooting", "solving", "debug", "fixed", "resolved"],
+  problem_solving: ["problem", "troubleshooting", "solving", "bug", "bugs", "fix", "fixed", "debug", "improve", "improved", "issue", "issues", "resolved"],
   learning_new_systems: ["learn", "learning", "new systems", "training", "course", "bootcamp", "module"],
   projects_portfolio: ["project", "portfolio", "github", "memephant", "adminavenger"],
   education_computing: ["bsc", "computing", "open university", "university", "maths", "mathematics", "it study"],
@@ -862,7 +877,7 @@ const categoriesForRequirement = (requirement: string): CareerMatchCategory[] =>
 
   return categories.length > 0
     ? categories.sort((a, b) => categoryPriority.indexOf(a) - categoryPriority.indexOf(b))
-    : ["learning_new_systems"];
+    : [];
 };
 
 const categoriesForText = (text: string): CareerMatchCategory[] => {
@@ -899,7 +914,7 @@ const relevantStrengthCategories: Record<string, CareerMatchCategory[]> = {
   "Web development fundamentals": ["web_development", "projects_portfolio"],
   "Excel and data handling": ["excel_spreadsheets", "records_admin_data"],
   "Record keeping and organisation": ["records_admin_data", "organisation"],
-  "Technical/practical problem solving": ["it_software_support", "problem_solving", "web_development"],
+  "Technical/practical problem solving": [],
   "GitHub portfolio evidence": ["projects_portfolio", "web_development"],
   "Relevant skills to evidence with truthful examples": [],
 };
@@ -921,7 +936,13 @@ const filterStrengthsForAdvert = (strengths: string[], relevantCategories: Caree
 
 const filterEvidenceForAdvert = (items: string[], relevantCategories: CareerMatchCategory[]) =>
   items.filter((item) => {
-    if (isTemplateEvidenceLine(item) || isLikelySectionHeading(item) || isBareRoleTitle(item)) {
+    if (
+      isTemplateEvidenceLine(item) ||
+      isLikelySectionHeading(item) ||
+      isBareRoleTitle(item) ||
+      isStandaloneYearLine(item) ||
+      isLikelyProfileSummaryLine(item)
+    ) {
       return false;
     }
 
@@ -988,7 +1009,7 @@ const buildRequirementEvidenceMap = ({
         collectCvEvidenceForCategory(cvLines, cvNormalised, category),
       ),
     ).slice(0, 10);
-    const primaryCategory = categories[0];
+    const primaryCategory = categories[0] ?? "learning_new_systems";
 
     return {
       requirement,

@@ -7,6 +7,7 @@ import type {
   SourceType,
 } from "../types";
 import { assessBroadbandPriceRise, isBroadbandPriceRiseScenario } from "./broadbandPriceRiseAssessment";
+import { buildCareerSupportPack, type CareerSupportPack } from "./careerSupportPack";
 import { assessUkTrainDelayRefund } from "./delayRepayAssessment";
 import { classifyDecisionDocument } from "./decisionEngine/classifier";
 import { analyseDecisionProblem } from "./decisionEngine/decisionEngine";
@@ -474,6 +475,34 @@ const createSubscriptionFinding = (item: AdminItem): AdminFinding => ({
   createdAt: new Date().toISOString(),
 });
 
+const careerDocumentTitles: Record<CareerSupportPack["documentType"], string> = {
+  cv: "Career support pack prepared",
+  cover_letter: "Cover letter review notes prepared",
+  job_advert: "Job advert preparation notes",
+  application_answer: "Application answer review notes prepared",
+  career_unknown: "Career material needs review",
+};
+
+const createCareerSupportFinding = (
+  item: AdminItem,
+  pack: CareerSupportPack,
+): AdminFinding => ({
+  id: `finding-${crypto.randomUUID()}`,
+  itemId: item.id,
+  category: "unknown",
+  title: careerDocumentTitles[pack.documentType],
+  summary: pack.summary,
+  whyItMatters:
+    "This looks like career or job-search material, so AdminAvenger is treating it as preparation work rather than a bill, subscription, complaint, or admin letter.",
+  suggestedAction:
+    pack.nextPreparationSteps[0] ??
+    "Review the career support notes, check the evidence, and edit any wording before using it.",
+  urgency: pack.documentType === "job_advert" ? "medium" : "low",
+  confidence: pack.confidence.level,
+  status: "new",
+  createdAt: new Date().toISOString(),
+});
+
 const createTravelRecoveryFinding = (item: AdminItem): AdminFinding => {
   const travel = extractTravelRecoveryDetails(`${item.title}\n${item.rawText}`);
 
@@ -613,6 +642,18 @@ const createDecisionEngineFinding = (item: AdminItem, text: string): AdminFindin
 
 export const analyseAdminItem = (item: AdminItem): AdminFinding[] => {
   const text = `${item.title} ${item.rawText} ${sourceTypeLabels[item.sourceType]}`.toLowerCase();
+  const careerSupportPack = buildCareerSupportPack({
+    text: `${item.title}\n${item.rawText}`,
+  });
+  const careerSupportFinding =
+    careerSupportPack.documentType !== "career_unknown"
+      ? createCareerSupportFinding(item, careerSupportPack)
+      : undefined;
+
+  if (careerSupportFinding) {
+    return [careerSupportFinding];
+  }
+
   const emailSafetyAssessment = assessEmailSafety(`${item.title}\n${item.rawText}`);
   const highRiskEmailFinding = hasStrongEmailSafetyOverride(emailSafetyAssessment)
     ? createEmailSafetyFinding(item, emailSafetyAssessment)

@@ -1,0 +1,327 @@
+export type CareerSupportDocumentType =
+  | "cv"
+  | "cover_letter"
+  | "job_advert"
+  | "application_answer"
+  | "career_unknown";
+
+export type CareerSupportConfidence = {
+  level: "low" | "medium" | "high";
+  reason: string;
+};
+
+export type CareerSupportPack = {
+  documentType: CareerSupportDocumentType;
+  summary: string;
+  likelyTargetRoles: string[];
+  strengthsToHighlight: string[];
+  evidenceToUse: string[];
+  projectsToHighlight: string[];
+  experienceToFrame: string[];
+  educationAndTraining: string[];
+  possibleGapsToCheck: string[];
+  saferRewriteSuggestions: string[];
+  nextPreparationSteps: string[];
+  safetyNotes: string[];
+  confidence: CareerSupportConfidence;
+};
+
+const unique = (items: string[]) =>
+  Array.from(
+    new Set(
+      items
+        .map((item) => item.trim())
+        .filter(Boolean),
+    ),
+  );
+
+const normaliseText = (text: string) => text.toLowerCase().replace(/\s+/g, " ").trim();
+
+const getLines = (text: string) =>
+  text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+const hasAny = (text: string, signals: string[]) =>
+  signals.some((signal) => text.includes(signal));
+
+const directCvSignals = [
+  "curriculum vitae",
+  "resume",
+  "professional profile",
+  "references available upon request",
+];
+
+const cvStructureSignals = [
+  "key skills",
+  "technical skills",
+  "professional experience",
+  "work experience",
+  "employment history",
+  "education and training",
+  "portfolio",
+  "github",
+  "projects",
+];
+
+const coverLetterSignals = [
+  "cover letter",
+  "dear hiring manager",
+  "dear recruitment team",
+  "i am applying for",
+  "please find attached my cv",
+];
+
+const jobAdvertSignals = [
+  "job advert",
+  "job description",
+  "responsibilities",
+  "requirements",
+  "essential criteria",
+  "desirable criteria",
+  "salary",
+  "closing date",
+];
+
+const applicationAnswerSignals = [
+  "application answer",
+  "supporting statement",
+  "personal statement",
+  "selection criteria",
+  "why are you interested",
+  "tell us about a time",
+];
+
+const roleSignals = [
+  "frontend developer",
+  "front-end developer",
+  "software developer",
+  "web developer",
+  "data analyst",
+  "project manager",
+  "administrator",
+  "customer support",
+  "support worker",
+  "teaching assistant",
+  "care assistant",
+  "marketing assistant",
+  "operations assistant",
+];
+
+const skillSignals = [
+  "react",
+  "typescript",
+  "javascript",
+  "html",
+  "css",
+  "tailwind",
+  "node",
+  "github",
+  "excel",
+  "customer service",
+  "stakeholder",
+  "accessibility",
+  "case notes",
+  "scheduling",
+  "problem solving",
+  "communication",
+];
+
+const evidenceVerbs = [
+  "built",
+  "created",
+  "managed",
+  "supported",
+  "improved",
+  "reduced",
+  "organised",
+  "trained",
+  "volunteered",
+  "delivered",
+  "maintained",
+];
+
+const confidenceFromSignals = (
+  documentType: CareerSupportDocumentType,
+  signalCount: number,
+): CareerSupportConfidence => {
+  if (documentType === "career_unknown") {
+    return {
+      level: "low",
+      reason: "Career or job-search structure was not clear enough from the text.",
+    };
+  }
+
+  if (signalCount >= 4) {
+    return {
+      level: "high",
+      reason: "Several career-document signals were found, such as CV sections, skills, experience, projects, or job-advert wording.",
+    };
+  }
+
+  return {
+    level: "medium",
+    reason: "Some career-document signals were found, but the user should still review the text before using it.",
+  };
+};
+
+export const detectCareerSupportDocumentType = (
+  text: string,
+): CareerSupportDocumentType => {
+  const normalised = normaliseText(text);
+
+  if (!normalised) {
+    return "career_unknown";
+  }
+
+  if (hasAny(normalised, coverLetterSignals)) {
+    return "cover_letter";
+  }
+
+  if (hasAny(normalised, jobAdvertSignals) && hasAny(normalised, ["role", "apply", "candidate", "experience"])) {
+    return "job_advert";
+  }
+
+  if (hasAny(normalised, applicationAnswerSignals)) {
+    return "application_answer";
+  }
+
+  const cvStructureCount = cvStructureSignals.filter((signal) => normalised.includes(signal)).length;
+  const hasDirectCvSignal = hasAny(normalised, directCvSignals) || /\bcv\b/i.test(text);
+
+  if (hasDirectCvSignal || cvStructureCount >= 3) {
+    return "cv";
+  }
+
+  return "career_unknown";
+};
+
+export const isCareerSupportDocument = (text: string) =>
+  detectCareerSupportDocumentType(text) !== "career_unknown";
+
+const extractMatchingSignals = (normalised: string, signals: string[]) =>
+  unique(signals.filter((signal) => normalised.includes(signal)));
+
+const extractLinesMatching = (lines: string[], signals: string[], fallback: string) => {
+  const matches = lines.filter((line) => {
+    const normalisedLine = normaliseText(line);
+    return signals.some((signal) => normalisedLine.includes(signal));
+  });
+
+  return unique(matches.length > 0 ? matches.slice(0, 5) : [fallback]);
+};
+
+const buildSummary = (documentType: CareerSupportDocumentType) => {
+  if (documentType === "cv") {
+    return "This appears to be a CV or resume. AdminAvenger has prepared review notes so the user can highlight strengths, evidence, projects, and gaps before applying.";
+  }
+
+  if (documentType === "cover_letter") {
+    return "This appears to be cover-letter material. AdminAvenger has prepared notes to help the user keep wording specific, truthful, and linked to evidence.";
+  }
+
+  if (documentType === "job_advert") {
+    return "This appears to be a job advert or job description. AdminAvenger has prepared notes to help compare the role requirements with the user's evidence before applying.";
+  }
+
+  if (documentType === "application_answer") {
+    return "This appears to be application-answer or supporting-statement material. AdminAvenger has prepared notes to help make the answer clearer and evidence-led.";
+  }
+
+  return "This does not clearly look like a CV, cover letter, job advert, or application answer.";
+};
+
+const buildGaps = (documentType: CareerSupportDocumentType, normalised: string) => {
+  const gaps: string[] = [];
+
+  if (!hasAny(normalised, roleSignals)) {
+    gaps.push("Check whether the target role or role family is clear.");
+  }
+
+  if (!/\b(20\d{2}|19\d{2})\b/.test(normalised)) {
+    gaps.push("Check whether dates are included for recent roles, courses, or projects.");
+  }
+
+  if (!/\b(\d+%|\d+\s+(people|users|customers|projects|cases|tickets|weeks|months|years))\b/.test(normalised)) {
+    gaps.push("Look for places where a real example or measured result could make the evidence clearer.");
+  }
+
+  if (documentType === "cv" && !hasAny(normalised, ["github", "portfolio"])) {
+    gaps.push("Check whether useful portfolio, GitHub, or work-sample links should be included.");
+  }
+
+  if (documentType === "job_advert" && !hasAny(normalised, ["closing date", "apply by", "deadline"])) {
+    gaps.push("Check the original advert for the closing date and application instructions.");
+  }
+
+  return unique(gaps);
+};
+
+export const buildCareerSupportPack = ({ text }: { text: string }): CareerSupportPack => {
+  const normalised = normaliseText(text);
+  const lines = getLines(text);
+  const documentType = detectCareerSupportDocumentType(text);
+  const careerSignals = unique([
+    ...extractMatchingSignals(normalised, directCvSignals),
+    ...extractMatchingSignals(normalised, cvStructureSignals),
+    ...extractMatchingSignals(normalised, coverLetterSignals),
+    ...extractMatchingSignals(normalised, jobAdvertSignals),
+    ...extractMatchingSignals(normalised, applicationAnswerSignals),
+  ]);
+  const skills = extractMatchingSignals(normalised, skillSignals);
+  const targetRoles = extractMatchingSignals(normalised, roleSignals);
+
+  return {
+    documentType,
+    summary: buildSummary(documentType),
+    likelyTargetRoles:
+      targetRoles.length > 0
+        ? targetRoles
+        : documentType === "job_advert"
+          ? ["Check the job title and role family from the advert."]
+          : ["Check which role this CV or application is being prepared for."],
+    strengthsToHighlight:
+      skills.length > 0
+        ? skills.map((skill) => `Evidence around ${skill}`)
+        : ["Identify 3 to 5 strengths that match the target role and can be backed up with examples."],
+    evidenceToUse: extractLinesMatching(
+      lines,
+      evidenceVerbs,
+      "Add specific examples of work, projects, volunteering, training, or responsibilities the user can evidence.",
+    ),
+    projectsToHighlight: extractLinesMatching(
+      lines,
+      ["project", "portfolio", "github", "website", "app"],
+      "If relevant, add project, portfolio, GitHub, or work-sample evidence.",
+    ),
+    experienceToFrame: extractLinesMatching(
+      lines,
+      ["professional experience", "work experience", "employment history", "managed", "supported", "delivered"],
+      "Frame experience around truthful responsibilities, actions taken, and outcomes where known.",
+    ),
+    educationAndTraining: extractLinesMatching(
+      lines,
+      ["education", "training", "degree", "certificate", "certification", "bootcamp", "gcse", "a level"],
+      "Add relevant education, training, certificates, or courses if they support the target role.",
+    ),
+    possibleGapsToCheck: buildGaps(documentType, normalised),
+    saferRewriteSuggestions: [
+      "Turn broad claims into specific examples the user can honestly explain.",
+      "Use wording from the job advert only where it genuinely matches the user's experience.",
+      "Keep drafts editable and check every claim before sharing it with an employer or recruiter.",
+    ],
+    nextPreparationSteps: [
+      "Choose the target role or job advert before editing the CV or application.",
+      "Pick the strongest evidence examples and make sure they are accurate.",
+      "Review gaps, dates, and links before sending anything outside AdminAvenger.",
+    ],
+    safetyNotes: [
+      "Preparation only. AdminAvenger helps prepare. You stay in control.",
+      "This is not employment, recruitment, legal, benefits, or financial advice.",
+      "AdminAvenger does not apply for jobs, send messages, or contact employers for you.",
+      "The user should review and edit all wording before using it.",
+    ],
+    confidence: confidenceFromSignals(documentType, careerSignals.length),
+  };
+};

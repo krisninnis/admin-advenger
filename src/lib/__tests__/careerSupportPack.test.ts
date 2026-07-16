@@ -301,6 +301,80 @@ Responsibilities
 - Write clear process notes and documentation.
 `;
 
+const syntheticFrontendCvWithSaasSupportAdvert = `
+CV
+
+Professional Profile
+Front-end developer with customer support experience.
+
+Technical Skills
+React, TypeScript, HTML, CSS, JavaScript, GitHub
+
+Projects
+TaskFlow Dashboard
+Built a React and TypeScript dashboard for tracking customer requests.
+Used GitHub to document setup steps.
+
+Work Experience
+Customer Support Assistant
+Helped customers understand products and resolve simple issues.
+Explained steps clearly to customers and colleagues.
+Dealt calmly with confused or frustrated customers.
+Kept notes of recurring problems and shared them with the team.
+
+Education and Training
+GCSEs including English and Maths.
+
+JOB ADVERT
+SaaS Support Specialist
+
+Responsibilities
+- Help customers understand product settings and resolve simple issues.
+- Respond to support tickets and onboarding questions.
+- Explain technical steps in plain English.
+- Reproduce simple issues and document what happened.
+
+Requirements
+- Basic digital understanding.
+`;
+
+const syntheticCareerChangerCvWithSaasSupportAdvert = `
+CV
+
+Professional Profile
+Career changer with admin, family support and basic web project experience.
+
+Key Skills
+Learning new software tools.
+Appointment and inbox management.
+GDPR and customer records.
+
+Projects
+Personal Portfolio Website
+Built a simple HTML and CSS portfolio page.
+GitHub portfolio in progress.
+
+Work Experience
+Family Support Role
+Helped families understand appointment letters and next steps.
+Explained steps clearly to people who were unsure what to do.
+Kept notes of recurring problems and shared them with the team.
+Appointment and inbox management.
+Maintained confidential customer records.
+
+Education and Training
+GDPR Essentials Course
+
+JOB ADVERT
+SaaS Customer Support Assistant
+
+Responsibilities
+- Respond to support tickets and onboarding questions.
+- Reproduce simple issues and document what happened.
+- Follow privacy processes when updating customer records.
+- Show basic digital or web understanding.
+`;
+
 const syntheticDataAdminCvWithFrontendAdvert = `
 CV
 
@@ -587,6 +661,69 @@ Required skills I am developing: React, JavaScript, accessibility.
     expect(evidenceText).not.toMatch(/^work experience$/m);
     expect(evidenceText).not.toMatch(/^data administrator$/m);
     expect(evidenceText).not.toMatch(/^education$/m);
+  });
+
+  it("ranks customer support evidence above developer evidence for SaaS support adverts", () => {
+    const pack = buildCareerSupportPack({ text: syntheticFrontendCvWithSaasSupportAdvert });
+    const supportItem = pack.requirementEvidenceMap?.find((item) =>
+      item.requirement.toLowerCase().includes("respond to support tickets"),
+    );
+    const explainItem = pack.requirementEvidenceMap?.find((item) =>
+      item.requirement.toLowerCase().includes("explain technical steps"),
+    );
+    const supportEvidence = supportItem?.possibleEvidence.join("\n").toLowerCase() ?? "";
+    const explainEvidence = explainItem?.possibleEvidence.join("\n").toLowerCase() ?? "";
+    const examples = pack.examplesToPrepare?.join("\n").toLowerCase() ?? "";
+    const allEvidence = [
+      ...(pack.requirementEvidenceMap ?? []).flatMap((item) => item.possibleEvidence),
+      ...(pack.cvEvidenceThatMayMatch ?? []),
+      ...(pack.strongEvidenceToConsider ?? []),
+    ].join("\n").toLowerCase();
+
+    expect(pack.documentType).toBe("cv_job_advert_match");
+    expect(supportItem?.possibleEvidence[0].toLowerCase()).toContain("helped customers understand");
+    expect(supportEvidence.indexOf("helped customers understand")).toBeLessThan(
+      supportEvidence.indexOf("react and typescript"),
+    );
+    expect(explainEvidence).toContain("explained steps clearly");
+    expect(explainEvidence).not.toContain("gcses including english and maths");
+    expect(allEvidence).not.toContain("gcses including english and maths");
+    expect(examples).toContain("explaining a technical issue or platform step clearly");
+    expect(examples).not.toContain("prepare a short example of react and typescript work");
+  });
+
+  it("keeps SaaS support match evidence specific for career-changer CVs", () => {
+    const pack = buildCareerSupportPack({ text: syntheticCareerChangerCvWithSaasSupportAdvert });
+    const supportItem = pack.requirementEvidenceMap?.find((item) =>
+      item.requirement.toLowerCase().includes("respond to support tickets"),
+    );
+    const issueItem = pack.requirementEvidenceMap?.find((item) =>
+      item.requirement.toLowerCase().includes("reproduce simple issues"),
+    );
+    const privacyItem = pack.requirementEvidenceMap?.find((item) =>
+      item.requirement.toLowerCase().includes("privacy processes"),
+    );
+    const digitalItem = pack.requirementEvidenceMap?.find((item) =>
+      item.requirement.toLowerCase().includes("digital or web understanding"),
+    );
+    const allEvidence = [
+      ...(pack.requirementEvidenceMap ?? []).flatMap((item) => item.possibleEvidence),
+      ...(pack.cvEvidenceThatMayMatch ?? []),
+      ...(pack.strongEvidenceToConsider ?? []),
+    ].join("\n").toLowerCase();
+    const issueEvidence = issueItem?.possibleEvidence.join("\n").toLowerCase() ?? "";
+
+    expect(pack.documentType).toBe("cv_job_advert_match");
+    expect(supportItem?.possibleEvidence[0].toLowerCase()).toContain("helped families understand");
+    expect(supportItem?.possibleEvidence.join(" ").toLowerCase()).toContain("explained steps clearly");
+    expect(privacyItem?.possibleEvidence.join(" ").toLowerCase()).toContain("gdpr essentials course");
+    expect(privacyItem?.possibleEvidence.join(" ").toLowerCase()).toContain("confidential customer records");
+    expect(digitalItem?.possibleEvidence.join(" ").toLowerCase()).toContain("built a simple html and css portfolio page");
+    expect(digitalItem?.possibleEvidence.join(" ").toLowerCase()).toContain("github portfolio");
+    expect(issueEvidence).toContain("kept notes of recurring problems");
+    expect(issueEvidence).not.toContain("appointment and inbox management");
+    expect(allEvidence).not.toMatch(/(^|\n)family support role($|\n)/);
+    expect(allEvidence).not.toMatch(/(^|\n)personal portfolio website($|\n)/);
   });
 
   it("does not use data/admin evidence as developer evidence", () => {

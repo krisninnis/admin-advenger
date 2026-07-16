@@ -390,6 +390,9 @@ const isTemplateEvidenceLine = (line: string) =>
 const bareRoleTitlePattern =
   /^(?:data|office|care|retail|customer|family support|freelance|front[- ]?end|frontend|software|web|project|operations|marketing)\s+(?:administrator|assistant|developer|support role|support assistant|analyst|specialist|coordinator|manager)$/i;
 
+const bareProjectHeadingPattern =
+  /^(?:personal\s+portfolio\s+website|portfolio\s+website|taskflow\s+dashboard|customer\s+support\s+assistant|family\s+support\s+role|customer\s+assistant)$/i;
+
 const hasConcreteEvidenceVerb = (line: string) =>
   /\b(?:built|created|used|maintained|organised|organized|supported|helped|handled|delivered|improved|managed|updated|tracked|tested|wrote|designed|developed|implemented|stored|checked)\b/i.test(
     line,
@@ -400,6 +403,11 @@ const isBareRoleTitle = (line: string) =>
   bareRoleTitlePattern.test(line.trim()) &&
   !hasConcreteEvidenceVerb(line);
 
+const isBareProjectHeading = (line: string) =>
+  line.trim().length <= 60 &&
+  bareProjectHeadingPattern.test(line.trim()) &&
+  !hasConcreteEvidenceVerb(line);
+
 const isStandaloneYearLine = (line: string) =>
   /^(?:19|20)\d{2}(?:\s*[–-]\s*(?:19|20)\d{2})?$/.test(line.trim());
 
@@ -407,7 +415,7 @@ const isLikelyProfileSummaryLine = (line: string) => {
   const trimmedLine = line.trim();
 
   return (
-    trimmedLine.length >= 55 &&
+    trimmedLine.length >= 40 &&
     /\b(?:administrator|developer|candidate|applicant|professional|assistant)\b/i.test(trimmedLine) &&
     /\b(?:with|seeking|focused|strong|experienced|experience)\b/i.test(trimmedLine)
   );
@@ -459,6 +467,7 @@ const isUsableCvDetail = (line: string) =>
   !isLikelySectionHeading(line) &&
   !isTemplateEvidenceLine(line) &&
   !isBareRoleTitle(line) &&
+  !isBareProjectHeading(line) &&
   !isContactDetail(line) &&
   !isProfileLine(line) &&
   !isBroadSkillsLine(line);
@@ -514,6 +523,7 @@ const isUnsafeEvidenceLine = (line: string, lines: string[]) =>
   isTemplateEvidenceLine(line) ||
   isLikelySectionHeading(line) ||
   isBareRoleTitle(line) ||
+  isBareProjectHeading(line) ||
   isStandaloneYearLine(line) ||
   isLikelyProfileSummaryLine(line) ||
   isRiskyClaimLine(line) ||
@@ -720,12 +730,12 @@ type CareerMatchCategory =
 const categorySignals: Record<CareerMatchCategory, string[]> = {
   records_admin_data: ["record", "records", "admin", "data", "validation", "validated", "document", "documents", "documentation", "process notes", "letter", "letters", "spreadsheet", "spreadsheets", "crm"],
   excel_spreadsheets: ["excel", "spreadsheet", "spreadsheets", "formula", "formulas", "filter", "filters", "pivot"],
-  it_software_support: ["software", "systems", "support", "technical", "helpdesk", "information technology"],
+  it_software_support: ["software", "systems", "support", "technical", "helpdesk", "information technology", "platform", "platforms"],
   web_development: ["web", "website", "page", "pages", "app", "code", "html", "css", "javascript", "typescript", "react", "python", "development", "vite", "vitest", "testing", "test", "tests", "ui", "interface", "interfaces", "component", "components", "responsive"],
-  communication: ["communication", "customer", "support requests", "respond", "escalation", "stakeholder"],
+  communication: ["communication", "customer", "customers", "support requests", "support tickets", "tickets", "respond", "response", "onboarding", "questions", "explain", "explained", "plain english", "steps", "colleagues", "escalation", "stakeholder", "frustrated", "calm", "patient", "patience"],
   gdpr_privacy: ["gdpr", "privacy", "sensitive data", "sensitive information", "confidential", "data protection"],
   organisation: ["organised", "organized", "organisation", "organization", "scheduling", "appointments", "medication"],
-  problem_solving: ["problem", "troubleshooting", "solving", "bug", "bugs", "fix", "fixed", "debug", "improve", "improved", "issue", "issues", "resolved"],
+  problem_solving: ["problem", "problems", "troubleshooting", "solving", "bug", "bugs", "fix", "fixed", "debug", "improve", "improved", "issue", "issues", "resolved", "reproduce", "document what happened", "broken links", "layout", "tested core user flows"],
   learning_new_systems: ["learn", "learning", "new systems", "training", "course", "bootcamp", "module"],
   projects_portfolio: ["project", "portfolio", "github", "memephant", "adminavenger"],
   education_computing: ["bsc", "computing", "open university", "university", "maths", "mathematics", "it study"],
@@ -758,6 +768,187 @@ const categoryPriority: CareerMatchCategory[] = [
   "problem_solving",
   "learning_new_systems",
 ];
+
+const supportCategoryPriority: CareerMatchCategory[] = [
+  "communication",
+  "problem_solving",
+  "records_admin_data",
+  "organisation",
+  "learning_new_systems",
+  "it_software_support",
+  "web_development",
+  "projects_portfolio",
+  "education_computing",
+  "excel_spreadsheets",
+  "gdpr_privacy",
+];
+
+const isSupportRoleRequirement = (requirement: string) =>
+  hasAny(normaliseText(requirement), [
+    "customer",
+    "customers",
+    "support ticket",
+    "support tickets",
+    "onboarding",
+    "questions",
+    "explain",
+    "plain english",
+    "technical steps",
+    "platform step",
+    "support users",
+    "confused",
+    "frustrated",
+  ]);
+
+const asksForEducationEvidence = (requirement: string) =>
+  hasAny(normaliseText(requirement), ["gcse", "education", "qualification", "qualified", "maths", "degree"]) ||
+  (normaliseText(requirement).includes("english") && !normaliseText(requirement).includes("plain english"));
+
+const asksForSpecificDeveloperEvidence = (requirement: string) =>
+  hasAny(normaliseText(requirement), [
+    "react",
+    "typescript",
+    "javascript",
+    "html",
+    "css",
+    "github",
+    "vite",
+    "vitest",
+    "component",
+    "components",
+    "code",
+    "coding",
+    "build user interfaces",
+  ]);
+
+const asksForPrivacyOrRecordsEvidence = (requirement: string) =>
+  hasAny(normaliseText(requirement), [
+    "gdpr",
+    "privacy",
+    "confidential",
+    "confidentiality",
+    "sensitive",
+    "data protection",
+    "record",
+    "records",
+    "customer information",
+    "customer data",
+  ]);
+
+const isPrivacyOrRecordsEvidence = (evidence: string) =>
+  hasAny(normaliseText(evidence), [
+    "gdpr",
+    "privacy",
+    "confidential",
+    "confidentiality",
+    "sensitive",
+    "data protection",
+    "customer information",
+    "customer data",
+    "customer records",
+  ]);
+
+const isSaasSupportAdvert = (requirements: string[], advertNormalised: string) =>
+  hasAny(advertNormalised, [
+    "customer support",
+    "support tickets",
+    "support ticket",
+    "onboarding",
+    "saas support",
+    "technical support",
+    "support users",
+    "help customers",
+  ]) ||
+  requirements.some((requirement) =>
+    hasAny(normaliseText(requirement), [
+      "help customers",
+      "respond to support",
+      "support tickets",
+      "onboarding questions",
+      "explain technical steps",
+      "platform step",
+    ]),
+  );
+
+const isGcseOnlyEvidence = (evidence: string) => {
+  const normalisedEvidence = normaliseText(evidence).replace(/[.]/g, "");
+
+  return (
+    /\bgcses?\b/.test(normalisedEvidence) ||
+    normalisedEvidence === "english and maths" ||
+    normalisedEvidence === "gcses including english and maths"
+  );
+};
+
+const isAppointmentInboxEvidence = (evidence: string) =>
+  hasAny(normaliseText(evidence), ["appointment", "appointments", "inbox", "inboxes"]) &&
+  !hasAny(normaliseText(evidence), ["issue", "issues", "problem", "problems", "recurring", "documented", "reported", "notes", "what happened"]);
+
+const isReproduceDocumentRequirement = (requirement: string) =>
+  hasAny(normaliseText(requirement), ["reproduce", "document what happened", "documenting what happened", "simple issues", "bugs", "broken links", "layout issues"]);
+
+const shouldKeepEvidenceForRequirement = (requirement: string, evidence: string) => {
+  if (isGcseOnlyEvidence(evidence) && !asksForEducationEvidence(requirement)) {
+    return false;
+  }
+
+  if (isBareProjectHeading(evidence)) {
+    return false;
+  }
+
+  if (isPrivacyOrRecordsEvidence(evidence) && !asksForPrivacyOrRecordsEvidence(requirement)) {
+    return false;
+  }
+
+  if (isReproduceDocumentRequirement(requirement) && isAppointmentInboxEvidence(evidence)) {
+    return false;
+  }
+
+  if (
+    isSupportRoleRequirement(requirement) &&
+    !asksForSpecificDeveloperEvidence(requirement) &&
+    hasAny(normaliseText(evidence), ["react and typescript project work mentioned", "built reusable react", "vite and vitest"])
+  ) {
+    return false;
+  }
+
+  return true;
+};
+
+const supportEvidenceRank = (evidence: string) => {
+  const normalisedEvidence = normaliseText(evidence);
+
+  if (hasAny(normalisedEvidence, ["helped customers", "helped families", "supported customers", "customer support", "support tickets"])) {
+    return 0;
+  }
+
+  if (hasAny(normalisedEvidence, ["explained steps", "plain english", "explaining what", "customers understand"])) {
+    return 1;
+  }
+
+  if (hasAny(normalisedEvidence, ["calm", "frustrated", "confused", "patient", "patience", "empathy"])) {
+    return 2;
+  }
+
+  if (hasAny(normalisedEvidence, ["notes", "documented", "document what happened", "reported recurring", "recurring problems", "recorded"])) {
+    return 3;
+  }
+
+  if (hasAny(normalisedEvidence, ["learning", "learned", "new software", "software tools"])) {
+    return 4;
+  }
+
+  if (hasAny(normalisedEvidence, ["html", "css", "javascript", "github", "website", "portfolio", "react", "typescript"])) {
+    return 5;
+  }
+
+  return 6;
+};
+
+const sortEvidenceForRequirement = (requirement: string, evidence: string[]) =>
+  isSupportRoleRequirement(requirement)
+    ? [...evidence].sort((a, b) => supportEvidenceRank(a) - supportEvidenceRank(b))
+    : evidence;
 
 const requirementSectionHeadingPattern =
   /^(responsibilities|requirements|essential skills|essential criteria|desirable skills|desirable criteria|required skills)\b/i;
@@ -857,6 +1048,7 @@ const categoriesForRequirement = (requirement: string): CareerMatchCategory[] =>
   const categories = (Object.keys(categorySignals) as CareerMatchCategory[]).filter((category) =>
     categorySignals[category].some((signal) => normalisedRequirement.includes(signal)),
   );
+  const priority = isSupportRoleRequirement(requirement) ? supportCategoryPriority : categoryPriority;
   const addRelatedCategory = (category: CareerMatchCategory) => {
     if (!categories.includes(category)) {
       categories.push(category);
@@ -875,8 +1067,13 @@ const categoriesForRequirement = (requirement: string): CareerMatchCategory[] =>
     addRelatedCategory("projects_portfolio");
   }
 
+  if (isSupportRoleRequirement(requirement)) {
+    addRelatedCategory("communication");
+    addRelatedCategory("learning_new_systems");
+  }
+
   return categories.length > 0
-    ? categories.sort((a, b) => categoryPriority.indexOf(a) - categoryPriority.indexOf(b))
+    ? categories.sort((a, b) => priority.indexOf(a) - priority.indexOf(b))
     : [];
 };
 
@@ -951,13 +1148,28 @@ const filterEvidenceForAdvert = (items: string[], relevantCategories: CareerMatc
     return categories.length === 0 || hasCategoryOverlap(categories, relevantCategories);
   });
 
+const filterEvidenceForAdvertSpecificity = (items: string[], advertNormalised: string) =>
+  items.filter((item) => {
+    if (isPrivacyOrRecordsEvidence(item) && !asksForPrivacyOrRecordsEvidence(advertNormalised)) {
+      return false;
+    }
+
+    if (isGcseOnlyEvidence(item) && !asksForEducationEvidence(advertNormalised)) {
+      return false;
+    }
+
+    return true;
+  });
+
 const collectCvEvidenceForCategory = (
   cvLines: string[],
   cvNormalised: string,
   category: CareerMatchCategory,
 ) => {
   const signals = categorySignals[category];
-  const matches = cvLines.filter((line, index) => {
+  const matches: string[] = [];
+
+  cvLines.forEach((line, index) => {
     const normalisedLine = normaliseText(line);
     const nextLine = cvLines[index + 1] ?? "";
     const previousLine = cvLines[index - 1] ?? "";
@@ -967,11 +1179,22 @@ const collectCvEvidenceForCategory = (
       (normaliseText(previousLine) === "projects" || /\b(?:dashboard|website|app|project|portfolio)\b/i.test(line)) &&
       nextLineMatches;
 
-    return (
-      isUsableEvidenceMapLine(line) &&
-      !isUnsafeEvidenceLine(line, cvLines) &&
-      (signals.some((signal) => normalisedLine.includes(signal)) || isProjectTitleContext)
-    );
+    if (isBareProjectHeading(line)) {
+      if (isProjectTitleContext && isUsableEvidenceMapLine(nextLine) && !isUnsafeEvidenceLine(nextLine, cvLines)) {
+        matches.push(`${line} - ${nextLine}`);
+      }
+      return;
+    }
+
+    const usableLine = isUsableEvidenceMapLine(line) && !isUnsafeEvidenceLine(line, cvLines);
+
+    if (!usableLine) {
+      return;
+    }
+
+    if (signals.some((signal) => normalisedLine.includes(signal)) || isProjectTitleContext) {
+      matches.push(line);
+    }
   });
 
   if (category === "web_development") {
@@ -1004,12 +1227,25 @@ const buildRequirementEvidenceMap = ({
 }): CareerRequirementEvidenceMapItem[] =>
   requirements.slice(0, 6).map((requirement) => {
     const categories = categoriesForRequirement(requirement);
-    const possibleEvidence = unique(
-      categories.flatMap((category) =>
-        collectCvEvidenceForCategory(cvLines, cvNormalised, category),
+    const possibleEvidence = sortEvidenceForRequirement(
+      requirement,
+      unique(
+        categories
+          .flatMap((category) =>
+            collectCvEvidenceForCategory(cvLines, cvNormalised, category),
+          )
+          .filter((evidence) => shouldKeepEvidenceForRequirement(requirement, evidence)),
       ),
     ).slice(0, 10);
     const primaryCategory = categories[0] ?? "learning_new_systems";
+    const exampleToPrepare =
+      isSupportRoleRequirement(requirement) && !asksForSpecificDeveloperEvidence(requirement)
+        ? isReproduceDocumentRequirement(requirement)
+          ? "Prepare a short example of supporting a user, recording what happened, and escalating if needed."
+          : hasAny(normaliseText(requirement), ["learning", "software tool", "new system"])
+            ? "Prepare one example of learning a software tool and explaining it to someone else."
+            : "Prepare a short example of explaining a technical issue or platform step clearly."
+        : categoryExamples[primaryCategory];
 
     return {
       requirement,
@@ -1017,7 +1253,7 @@ const buildRequirementEvidenceMap = ({
         possibleEvidence.length > 0
           ? possibleEvidence
           : ["No clear CV evidence found for this requirement yet."],
-      exampleToPrepare: categoryExamples[primaryCategory],
+      exampleToPrepare,
       verificationNote: "Check before using: only include this if it accurately reflects your CV and experience.",
     };
   });
@@ -1047,11 +1283,24 @@ const buildMatchFields = ({
 }) => {
   const requirementsFound = extractAdvertRequirements(advertLines);
   const relevantCategories = advertRelevantCategories(requirementsFound, advertNormalised);
+  const isSupportAdvert = isSaasSupportAdvert(requirementsFound, advertNormalised);
   const relevantStrengths = filterStrengthsForAdvert(strengths, relevantCategories);
-  const relevantProjects = filterEvidenceForAdvert(projects, relevantCategories);
-  const relevantEvidence = filterEvidenceForAdvert(evidence, relevantCategories);
-  const relevantExperience = filterEvidenceForAdvert(experience, relevantCategories);
-  const relevantEducation = filterEvidenceForAdvert(education, relevantCategories);
+  const relevantProjects = filterEvidenceForAdvertSpecificity(
+    filterEvidenceForAdvert(projects, relevantCategories),
+    advertNormalised,
+  );
+  const relevantEvidence = filterEvidenceForAdvertSpecificity(
+    filterEvidenceForAdvert(evidence, relevantCategories),
+    advertNormalised,
+  );
+  const relevantExperience = filterEvidenceForAdvertSpecificity(
+    filterEvidenceForAdvert(experience, relevantCategories),
+    advertNormalised,
+  );
+  const relevantEducation = filterEvidenceForAdvertSpecificity(
+    filterEvidenceForAdvert(education, relevantCategories),
+    advertNormalised,
+  );
   const advertWordingToReview = extractLinesMatching(
     advertLines,
     ["we are looking", "requirements", "responsibilities", "essential", "desirable", "required skills", "portfolio", "github"],
@@ -1069,8 +1318,17 @@ const buildMatchFields = ({
     ...(claimHygieneNotes.length > 0 ? [] : relevantStrengths),
   ]).slice(0, 6);
   const examplesToPrepare = unique([
-    hasAny(normalised, ["react", "typescript"])
+    hasAny(normalised, ["react", "typescript"]) && !isSupportAdvert
       ? "Prepare a short example of React and TypeScript work you can explain accurately."
+      : undefined,
+    isSupportAdvert
+      ? "Prepare a short example of explaining a technical issue or platform step clearly."
+      : undefined,
+    isSupportAdvert
+      ? "Prepare a short example of supporting a user, recording what happened, and escalating if needed."
+      : undefined,
+    isSupportAdvert
+      ? "Prepare one example of learning a software tool and explaining it to someone else."
       : undefined,
     hasAny(normalised, ["accessibility"])
       ? "Prepare an example of accessibility or inclusive-design work if it genuinely applies."

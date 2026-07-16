@@ -80,6 +80,7 @@ const opportunityTypeLabels: Record<string, string> = {
   receipt_guardian: "Proof saved",
   suspicious_email_risk: "Email safety",
   admin_dispute_check: "Admin/rights check",
+  career_support: "Career preparation",
   no_action_needed: "No action needed",
 };
 

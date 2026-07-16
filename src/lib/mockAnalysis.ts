@@ -476,7 +476,7 @@ const createSubscriptionFinding = (item: AdminItem): AdminFinding => ({
 });
 
 const careerDocumentTitles: Record<CareerSupportPack["documentType"], string> = {
-  cv: "Career support pack prepared",
+  cv: "CV preparation notes",
   cover_letter: "Cover letter review notes prepared",
   job_advert: "Job advert preparation notes",
   application_answer: "Application answer review notes prepared",
@@ -493,7 +493,9 @@ const createCareerSupportFinding = (
   title: careerDocumentTitles[pack.documentType],
   summary: pack.summary,
   whyItMatters:
-    "This looks like career or job-search material, so AdminAvenger is treating it as preparation work rather than a bill, subscription, complaint, or admin letter.",
+    pack.documentType === "cv"
+      ? "This appears to be a CV or career profile, so AdminAvenger is preparing review notes about strengths, evidence, gaps, and next steps before applying."
+      : "This looks like career or job-search material, so AdminAvenger is treating it as preparation work rather than a bill, subscription, complaint, or admin letter.",
   suggestedAction:
     pack.nextPreparationSteps[0] ??
     "Review the career support notes, check the evidence, and edit any wording before using it.",

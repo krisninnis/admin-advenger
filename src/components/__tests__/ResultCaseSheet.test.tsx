@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { buildAdviserExportPack } from "../../lib/adviserExportPack";
 import { buildBenefitsActionPack } from "../../lib/benefitsActionPack";
+import { buildCareerSupportPack } from "../../lib/careerSupportPack";
 import { analyseDecisionProblem } from "../../lib/decisionEngine/decisionEngine";
 import {
   goldenLetterFixtures,
@@ -147,6 +148,42 @@ Your payment this month: GBP 843.45`);
     ]) {
       expect(countOccurrences(html, title)).toBe(1);
     }
+  });
+
+  it("renders CV preparation results without admin-letter date or money panels", () => {
+    const careerSupportPack = buildCareerSupportPack({
+      text: `CV
+Professional profile
+Seeking an entry-level front-end developer role.
+Key Skills
+React, TypeScript, GitHub
+Projects
+Portfolio website and accessibility checklist app.
+Work Experience
+Volunteer experience supporting admin updates.
+Education & Training
+Web development course, 2026`,
+    });
+    const resultViewModel = buildResultViewModel({ careerSupportPack });
+    const html = renderToStaticMarkup(
+      <ResultCaseSheet
+        model={resultViewModel}
+        supportingDetailsOpen={false}
+        onToggleSupportingDetails={() => undefined}
+      />,
+    );
+    const text = normaliseGoldenText(html);
+
+    expect(html).toContain("CV preparation notes");
+    expect(html).toContain("Strengths to highlight");
+    expect(html).toContain("Projects to highlight");
+    expect(html).toContain("Experience to frame");
+    expect(html).toContain("Education/training to mention");
+    expect(html).not.toContain("Dates to check");
+    expect(html).not.toContain("Money mentioned");
+    expect(text).not.toContain("check against the original letter");
+    expect(text).not.toContain("check the sender, date, reference");
+    expect(findForbiddenSafetyPhrases(html)).toEqual([]);
   });
 
   it("selected golden fixtures render safely through Result Page v2", () => {

@@ -66,6 +66,9 @@ const hasReferenceSignal = (item: ResultEvidenceView) =>
     `${item.label} ${item.value}`,
   );
 
+const getSectionItems = (model: ResultViewModel, id: string) =>
+  model.sections.find((section) => section.id === id)?.items ?? [];
+
 const visibleItems = <Item,>(items: Item[], limit: number, expanded: boolean) =>
   expanded ? items : items.slice(0, limit);
 
@@ -316,6 +319,7 @@ export function ResultCaseSheet({
     () => model.evidenceFound.filter(hasReferenceSignal).slice(0, 3),
     [model.evidenceFound],
   );
+  const isCareerSupportResult = model.resultKind === "career_support";
   const caseProgress = useMemo(
     () =>
       buildCaseProgress({
@@ -337,12 +341,19 @@ export function ResultCaseSheet({
       communityHelperPack,
     ],
   );
-  const checkFirstItems = uniqueTextItems([
-    ...model.keyDates.slice(0, 2).map((date) => `${date.label}: ${date.value}`),
-    ...references.map((item) => `${item.label}: ${item.value}`),
-    ...model.moneyMentioned.slice(0, 2).map((line) => `${line.label}: ${line.amountText}`),
-    "Check these details against the original letter before acting.",
-  ]);
+  const checkFirstItems = uniqueTextItems(
+    isCareerSupportResult
+      ? [
+          ...getSectionItems(model, "career-next-steps").slice(0, 3),
+          "Review every claim before using or sharing it.",
+        ]
+      : [
+          ...model.keyDates.slice(0, 2).map((date) => `${date.label}: ${date.value}`),
+          ...references.map((item) => `${item.label}: ${item.value}`),
+          ...model.moneyMentioned.slice(0, 2).map((line) => `${line.label}: ${line.amountText}`),
+          "Check these details against the original letter before acting.",
+        ],
+  );
   const allActions = [primaryAction, ...secondaryActions].filter(
     (action): action is ResultCaseSheetAction => Boolean(action),
   );
@@ -384,7 +395,11 @@ export function ResultCaseSheet({
               </p>
             </div>
           ) : (
-            <p>Check the sender, date, reference, and requested action before deciding what to do.</p>
+            <p>
+              {isCareerSupportResult
+                ? "Review the target role, evidence, gaps, and wording before using or sharing anything."
+                : "Check the sender, date, reference, and requested action before deciding what to do."}
+            </p>
           )}
         </Section>
 
@@ -409,44 +424,88 @@ export function ResultCaseSheet({
         </div>
       ) : null}
 
-      <div className="mt-5 grid gap-4 lg:grid-cols-2">
-        <Section title="Dates to check">
-          <DateList dates={model.keyDates} />
-        </Section>
+      {isCareerSupportResult ? (
+        <div className="mt-5 grid gap-4 lg:grid-cols-2">
+          {[
+            "career-target-roles",
+            "career-strengths",
+            "career-evidence",
+            "career-projects",
+            "career-experience",
+            "career-education",
+            "career-gaps",
+            "career-safer-rewrites",
+          ].map((sectionId) => {
+            const section = model.sections.find((item) => item.id === sectionId);
 
-        <Section title="Money mentioned">
-          <MoneyList money={model.moneyMentioned} />
-        </Section>
+            return section ? (
+              <Section key={section.id} title={section.title} tone={section.id === "career-gaps" ? "amber" : "slate"}>
+                <TextList
+                  items={section.items}
+                  emptyText="No item was found for this section. Review the CV text manually."
+                  limit={limits.evidence}
+                />
+              </Section>
+            ) : null;
+          })}
 
-        <Section title="Evidence / documents to bring">
-          <EvidenceList found={model.evidenceFound} toGather={model.evidenceToGather} />
-        </Section>
+          <Section title="What AdminAvenger cannot know" tone="amber">
+            <TextList
+              items={model.cannotKnow}
+              emptyText="AdminAvenger cannot verify experience, qualifications, dates, or employer preferences."
+              limit={limits.cannotKnow}
+              minimumVisible={2}
+            />
+          </Section>
 
-        <Section title="Questions to answer">
-          <TextList
-            items={model.questionsToAnswer}
-            emptyText="No extra questions were listed. Check the original letter and ask someone you trust if unsure."
-            limit={limits.questions}
-          />
-        </Section>
+          <Section title="Uncertainty / double-check" tone="amber">
+            <TextList
+              items={[...model.uncertainty, ...model.risks]}
+              emptyText="Review the CV or career material before using it."
+              limit={limits.uncertainty}
+            />
+          </Section>
+        </div>
+      ) : (
+        <div className="mt-5 grid gap-4 lg:grid-cols-2">
+          <Section title="Dates to check">
+            <DateList dates={model.keyDates} />
+          </Section>
 
-        <Section title="What AdminAvenger cannot know" tone="amber">
-          <TextList
-            items={model.cannotKnow}
-            emptyText="AdminAvenger cannot verify anything outside the message, file, or photo you provided."
-            limit={limits.cannotKnow}
-            minimumVisible={2}
-          />
-        </Section>
+          <Section title="Money mentioned">
+            <MoneyList money={model.moneyMentioned} />
+          </Section>
 
-        <Section title="Uncertainty / double-check" tone="amber">
-          <TextList
-            items={[...model.uncertainty, ...model.risks]}
-            emptyText="Check the original document before deciding what to do."
-            limit={limits.uncertainty}
-          />
-        </Section>
-      </div>
+          <Section title="Evidence / documents to bring">
+            <EvidenceList found={model.evidenceFound} toGather={model.evidenceToGather} />
+          </Section>
+
+          <Section title="Questions to answer">
+            <TextList
+              items={model.questionsToAnswer}
+              emptyText="No extra questions were listed. Check the original letter and ask someone you trust if unsure."
+              limit={limits.questions}
+            />
+          </Section>
+
+          <Section title="What AdminAvenger cannot know" tone="amber">
+            <TextList
+              items={model.cannotKnow}
+              emptyText="AdminAvenger cannot verify anything outside the message, file, or photo you provided."
+              limit={limits.cannotKnow}
+              minimumVisible={2}
+            />
+          </Section>
+
+          <Section title="Uncertainty / double-check" tone="amber">
+            <TextList
+              items={[...model.uncertainty, ...model.risks]}
+              emptyText="Check the original document before deciding what to do."
+              limit={limits.uncertainty}
+            />
+          </Section>
+        </div>
+      )}
 
       <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_0.9fr]">
         <Section title="Draft/checklist" tone="emerald">
@@ -474,12 +533,12 @@ export function ResultCaseSheet({
           )}
         </Section>
 
-        <Section title="Adviser export action" tone="cyan">
-          <p id="result-case-sheet-adviser-helper">
-            Creates a Markdown file you can save, print, or share with someone you
-            trust. AdminAvenger does not send it anywhere.
-          </p>
-          {onDownloadAdviserPack ? (
+        {onDownloadAdviserPack ? (
+          <Section title="Adviser export action" tone="cyan">
+            <p id="result-case-sheet-adviser-helper">
+              Creates a Markdown file you can save, print, or share with someone you
+              trust. AdminAvenger does not send it anywhere.
+            </p>
             <button
               type="button"
               aria-describedby="result-case-sheet-adviser-helper"
@@ -488,13 +547,15 @@ export function ResultCaseSheet({
             >
               Download adviser pack
             </button>
-          ) : null}
-        </Section>
+          </Section>
+        ) : null}
       </div>
 
-      <div className="mt-5">
-        <CaseProgressCard summary={caseProgress} />
-      </div>
+      {isCareerSupportResult ? null : (
+        <div className="mt-5">
+          <CaseProgressCard summary={caseProgress} />
+        </div>
+      )}
 
       <div className="mt-5 rounded-lg border border-white/10 bg-slate-950/55 p-4">
         <button
@@ -505,8 +566,9 @@ export function ResultCaseSheet({
           {supportingDetailsOpen ? "Hide supporting detail" : "Show supporting detail"}
         </button>
         <p className="mt-2 text-xs leading-5 text-slate-500">
-          Supporting detail shows the underlying action pack, next-step planner, and
-          source-style panels for checking.
+          {isCareerSupportResult
+            ? "Supporting detail shows the underlying career preparation card for checking."
+            : "Supporting detail shows the underlying action pack, next-step planner, and source-style panels for checking."}
         </p>
       </div>
     </article>

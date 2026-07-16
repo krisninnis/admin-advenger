@@ -7,6 +7,7 @@ import type {
   OpportunityCard,
   OpportunityType,
 } from "../types";
+import { buildCareerSupportPack } from "./careerSupportPack";
 import {
   annualiseMonthlyAmount,
   extractEnergyAnnualCosts,
@@ -114,6 +115,13 @@ const getOpportunityType = (adminCase: AdminCase, item?: AdminItem): Opportunity
 
   if (adminCase.decisionResult) {
     return "admin_dispute_check";
+  }
+
+  if (
+    adminCase.careerSupportPack ||
+    /cv preparation|career support|cover letter|job advert preparation|application answer/i.test(adminCase.title)
+  ) {
+    return "career_support";
   }
 
   if (
@@ -389,6 +397,38 @@ export const deriveOpportunityCard = (
           : suspicious.overallLevel === "caution"
             ? "medium"
             : "low",
+      confidenceLabel: adminCase.confidence,
+      sourceCaseType: adminCase.category,
+      createdAt,
+      updatedAt,
+    };
+  }
+
+  if (opportunityType === "career_support") {
+    const careerSupportPack =
+      adminCase.careerSupportPack ?? buildCareerSupportPack({ text });
+    const isCv = careerSupportPack.documentType === "cv";
+
+    return {
+      id: `opportunity-${adminCase.id}`,
+      caseId: adminCase.id,
+      opportunityType,
+      title: isCv ? "CV preparation notes" : adminCase.title,
+      plainEnglishSummary: careerSupportPack.summary,
+      opportunityNote:
+        "Preparation only. AdminAvenger helps prepare. You stay in control.",
+      statusLabel: "Career preparation only - review before using",
+      evidenceFound: [
+        ...careerSupportPack.likelyTargetRoles.map((role) => `Target role: ${role}`),
+        ...careerSupportPack.strengthsToHighlight.slice(0, 4),
+        ...careerSupportPack.projectsToHighlight.slice(0, 3),
+      ],
+      missingInformation: careerSupportPack.possibleGapsToCheck,
+      nextBestAction:
+        careerSupportPack.nextPreparationSteps[0] ??
+        "Review the career preparation notes before using or sharing anything.",
+      recommendedPathSteps: careerSupportPack.nextPreparationSteps,
+      riskLevel: "low",
       confidenceLabel: adminCase.confidence,
       sourceCaseType: adminCase.category,
       createdAt,

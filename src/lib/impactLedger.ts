@@ -172,6 +172,7 @@ export const deriveImpactFromCase = (
   if (
     card.opportunityType === "delivery_update" ||
     card.opportunityType === "receipt_guardian" ||
+    card.opportunityType === "career_support" ||
     card.opportunityType === "no_action_needed"
   ) {
     return [
@@ -181,6 +182,8 @@ export const deriveImpactFromCase = (
         "not_applicable",
         card.opportunityType === "receipt_guardian"
           ? "Receipt evidence found. This is not counted as money saved."
+          : card.opportunityType === "career_support"
+            ? "Career preparation notes created. No saving or recovery is counted."
           : card.opportunityType === "delivery_update"
             ? "Delivery update found. No saving or action is counted."
             : "Checked: no obvious saving or action found. This is not counted as money saved.",

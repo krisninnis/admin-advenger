@@ -8,6 +8,7 @@ import type {
   FindingStatus,
 } from "../types";
 import { assessBroadbandPriceRise, isBroadbandPriceRiseScenario } from "./broadbandPriceRiseAssessment";
+import { buildCareerSupportPack } from "./careerSupportPack";
 import { assessUkTrainDelayRefund } from "./delayRepayAssessment";
 import { analyseDecisionProblem } from "./decisionEngine/decisionEngine";
 import {
@@ -78,6 +79,12 @@ const isEnergyPriceChangeFinding = (finding: AdminFinding, item: AdminItem) =>
 const isTravelRecoveryFinding = (finding: AdminFinding, item: AdminItem) =>
   /travel recovery|possible money recovery found/i.test(finding.title) ||
   isTravelDisruptionRecoveryText(`${item.title}\n${item.rawText}`);
+
+const isCareerSupportFinding = (finding: AdminFinding, item: AdminItem) => {
+  const pack = buildCareerSupportPack({ text: `${item.title}\n${item.rawText}` });
+
+  return pack.documentType !== "career_unknown" && /career|cv|cover letter|job advert|application answer/i.test(finding.title);
+};
 
 const createEvidence = (
   caseId: string,
@@ -536,6 +543,24 @@ const evidenceForFinding = (
     ];
   }
 
+  if (isCareerSupportFinding(finding, item)) {
+    const pack = buildCareerSupportPack({ text: `${item.title}\n${item.rawText}` });
+
+    return [
+      ...pack.likelyTargetRoles.map((role) => createEvidence(caseId, "Likely target role", role)),
+      ...pack.strengthsToHighlight.slice(0, 4).map((strength) =>
+        createEvidence(caseId, "Strength to highlight", strength),
+      ),
+      ...pack.projectsToHighlight.slice(0, 3).map((project) =>
+        createEvidence(caseId, "Project or portfolio evidence", project),
+      ),
+      ...pack.possibleGapsToCheck.slice(0, 4).map((gap) =>
+        createEvidence(caseId, "Gap to check", gap, "manual"),
+      ),
+      createEvidence(caseId, "Preparation boundary", "Preparation only. The user reviews and decides what to use.", "manual"),
+    ];
+  }
+
   return [
     createEvidence(caseId, "Source", item.title, "user_text"),
     createEvidence(caseId, "Review clue", "No exact evidence detected; review the pasted text manually.", "manual"),
@@ -551,6 +576,8 @@ export const createAdminCase = (finding: AdminFinding, item: AdminItem): AdminCa
   const isTravelRecoveryCase = isTravelRecoveryFinding(finding, item);
   const isEnergyPriceChangeCase = isEnergyPriceChangeFinding(finding, item);
   const isEmailSafetyCase = isSuspiciousEmailFinding(finding, item);
+  const careerSupportPack = buildCareerSupportPack({ text: `${item.title}\n${item.rawText}` });
+  const isCareerSupportCase = isCareerSupportFinding(finding, item);
   const isDecisionEngineCase = finding.category === "admin_dispute";
   const decisionResult = isDecisionEngineCase
     ? analyseDecisionProblem(`${item.title}\n${item.rawText}`)
@@ -601,6 +628,10 @@ export const createAdminCase = (finding: AdminFinding, item: AdminItem): AdminCa
             ? "Possible money recovery found"
           : isEnergyPriceChangeCase
             ? "Energy prices are changing"
+          : isCareerSupportCase && careerSupportPack.documentType === "cv"
+            ? "CV preparation notes"
+          : isCareerSupportCase
+            ? finding.title
           : isDecisionEngineCase
             ? decisionResult!.title
           : finding.title,
@@ -617,6 +648,8 @@ export const createAdminCase = (finding: AdminFinding, item: AdminItem): AdminCa
             ? "This looks like a travel disruption where an extra hotel night may have created a recoverable cost. AdminAvenger found the amount, booking reference, company replies, and missing proof needed before asking for repayment."
           : isEnergyPriceChangeCase
             ? "AdminAvenger found an energy price-change notice with old and new annual estimates. This is a checking opportunity, not a confirmed saving."
+          : isCareerSupportCase
+            ? careerSupportPack.summary
           : isDecisionEngineCase
             ? `${decisionResult!.plainEnglishSummary} ${decisionResult!.whatThisLooksLike}`
         : finding.summary,
@@ -634,6 +667,8 @@ export const createAdminCase = (finding: AdminFinding, item: AdminItem): AdminCa
           : "Potential recovery amount needs checking"
       : isEmailSafetyCase
         ? emailSafetyAssessment.overallLabel
+      : isCareerSupportCase
+        ? "Career preparation only"
       : isDecisionEngineCase
         ? decisionResult!.amountMentioned
           ? `${decisionResult!.amountMentioned} (${
@@ -658,6 +693,8 @@ export const createAdminCase = (finding: AdminFinding, item: AdminItem): AdminCa
             ? "Gather the proof of payment, loveholidays confirmation, booking reference, and any flight-change evidence. Then send Air Mauritius a concise reimbursement request for the extra hotel night. Ask them to confirm if anything else is needed."
           : isEnergyPriceChangeCase
             ? "Review whether a cheaper tariff, fixed deal, supplier switch, or support option is worth checking. Keep this as evidence of the new annual estimate."
+          : isCareerSupportCase
+            ? careerSupportPack.nextPreparationSteps[0]
           : isDecisionEngineCase
             ? decisionResult!.nextSteps.slice(0, 2).join(" ")
         : finding.suggestedAction,
@@ -668,6 +705,7 @@ export const createAdminCase = (finding: AdminFinding, item: AdminItem): AdminCa
     delayRepayAssessment: isDelayRepayCase ? delayRepayAssessment : undefined,
     emailSafetyAssessment: isEmailSafetyCase ? emailSafetyAssessment : undefined,
     decisionResult: isDecisionEngineCase ? decisionResult : undefined,
+    careerSupportPack: isCareerSupportCase ? careerSupportPack : undefined,
     createdAt: finding.createdAt,
     updatedAt: now,
     evidence: evidenceForFinding(caseId, finding, item),

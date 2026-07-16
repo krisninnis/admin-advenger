@@ -1,4 +1,5 @@
 import type { DecisionResult } from "./lib/decisionEngine/types";
+import type { CareerSupportPack } from "./lib/careerSupportPack";
 
 export type SourceType =
   | "email"
@@ -125,6 +126,7 @@ export type OpportunityType =
   | "bill_or_price_increase"
   | "suspicious_email_risk"
   | "admin_dispute_check"
+  | "career_support"
   | "no_action_needed"
   | "needs_human_check"
   | "unknown";
@@ -437,6 +439,7 @@ export type AdminCase = {
   broadbandPriceRiseAssessment?: BroadbandPriceRiseAssessment;
   emailSafetyAssessment?: EmailSafetyAssessment;
   decisionResult?: DecisionResult;
+  careerSupportPack?: CareerSupportPack;
   createdAt: string;
   updatedAt: string;
   evidence: EvidenceItem[];

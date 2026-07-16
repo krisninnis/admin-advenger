@@ -37,6 +37,25 @@ Web development bootcamp, 2025
 References available upon request
 `;
 
+const syntheticEntryLevelCv = `
+CV
+
+Professional profile
+Seeking an entry-level role in front-end development with a focus on accessible websites.
+
+Key Skills
+HTML, CSS, JavaScript, React, GitHub
+
+Projects
+Portfolio website and task planner app.
+
+Work Experience
+Volunteer experience supporting a community group with admin updates.
+
+Education & Training
+Software development course, 2026
+`;
+
 const syntheticJobAdvert = `
 Job advert: Frontend Developer
 
@@ -61,14 +80,38 @@ describe("Career Support Pack Core v1", () => {
     expect(pack.confidence.level).toBe("high");
   });
 
+  it("prioritises CV signals over job-advert wording when a CV says it is seeking a role", () => {
+    const text = `${syntheticEntryLevelCv}
+Responsibilities I am looking for include building interfaces and learning from a team.
+Required skills I am developing: React, JavaScript, accessibility.
+`;
+
+    expect(detectCareerSupportDocumentType(text)).toBe("cv");
+
+    const pack = buildCareerSupportPack({ text });
+
+    expect(pack.documentType).toBe("cv");
+    expect(pack.summary).toContain("CV or resume");
+  });
+
   it("does not turn a synthetic CV into a subscription finding", () => {
     const findings = analyseAdminItem(makeAdminItem("CV - front-end developer", syntheticCv));
 
     expect(findings).toHaveLength(1);
-    expect(findings[0].title).toBe("Career support pack prepared");
+    expect(findings[0].title).toBe("CV preparation notes");
     expect(findings[0].category).toBe("unknown");
     expect(findings.some((finding) => finding.category === "subscription")).toBe(false);
     expect(findings[0].summary).toContain("CV or resume");
+  });
+
+  it("produces CV review output for GitHub, projects, education, and work history", () => {
+    const pack = buildCareerSupportPack({ text: syntheticEntryLevelCv });
+
+    expect(pack.documentType).toBe("cv");
+    expect(pack.projectsToHighlight.join(" ")).toContain("Portfolio website");
+    expect(pack.educationAndTraining.join(" ")).toContain("Software development course");
+    expect(pack.experienceToFrame.join(" ")).toContain("Volunteer experience");
+    expect(pack.nextPreparationSteps.length).toBeGreaterThan(0);
   });
 
   it("prepares strengths, evidence, projects, and next steps from a synthetic CV", () => {

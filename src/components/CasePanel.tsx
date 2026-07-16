@@ -73,6 +73,7 @@ const opportunityTypeLabels: Record<string, string> = {
   subscription_renewal: "Subscription",
   suspicious_email_risk: "Email safety",
   admin_dispute_check: "Admin/rights check",
+  career_support: "Career preparation",
 };
 
 const caseTypeLabel = (adminCase: AdminCase, opportunityType: string) =>

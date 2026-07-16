@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildBenefitsActionPack } from "../benefitsActionPack";
+import { buildCareerSupportPack } from "../careerSupportPack";
 import { analyseDecisionProblem } from "../decisionEngine/decisionEngine";
 import type { DecisionDocumentType, DecisionResult } from "../decisionEngine/types";
 import {
@@ -240,6 +241,49 @@ You can ask us to look at this decision again.`);
 
     expect(model.safetyNotes.some((note) => note.includes("does not contact anyone"))).toBe(true);
     expect(safety.noContactSafetyNotePresent).toBe(true);
+  });
+
+  it("builds a career-specific view model for CV preparation notes", () => {
+    const careerSupportPack = buildCareerSupportPack({
+      text: `CV
+Professional profile
+Seeking an entry-level front-end developer role.
+Technical Skills
+React, TypeScript, GitHub
+Projects
+Portfolio website and accessibility checklist app.
+Work Experience
+Volunteer experience supporting admin updates.
+Education & Training
+Web development course, 2026`,
+    });
+    const model = buildResultViewModel({ careerSupportPack });
+    const flattened = flattenResultViewModelText(model).toLowerCase();
+
+    expect(careerSupportPack.documentType).toBe("cv");
+    expect(model.resultKind).toBe("career_support");
+    expect(model.title).toBe("CV preparation notes");
+    expect(model.primaryStatusLabel).toBe("Career preparation only - review before using");
+    expect(model.keyDates).toEqual([]);
+    expect(model.moneyMentioned).toEqual([]);
+    expect(model.sections.map((section) => section.id)).toEqual(
+      expect.arrayContaining([
+        "career-target-roles",
+        "career-strengths",
+        "career-evidence",
+        "career-projects",
+        "career-experience",
+        "career-education",
+        "career-gaps",
+        "career-safer-rewrites",
+        "career-next-steps",
+      ]),
+    );
+    expect(flattened).toContain("strengths to highlight");
+    expect(flattened).toContain("projects to highlight");
+    expect(flattened).not.toContain("money mentioned");
+    expect(flattened).not.toContain("check these details against the original letter");
+    expect(validateResultViewModelSafety(model).safe).toBe(true);
   });
 
   it("still produces a useful conservative fallback for unknown admin documents", () => {

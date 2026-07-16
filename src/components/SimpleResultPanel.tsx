@@ -45,6 +45,7 @@ const needsNoMoneyLine = (opportunity: OpportunityCard) =>
     "delivery_update",
     "receipt_guardian",
     "admin_dispute_check",
+    "career_support",
   ].includes(opportunity.opportunityType);
 
 const getDisplayTitle = (opportunity: OpportunityCard) =>

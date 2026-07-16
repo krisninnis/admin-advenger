@@ -613,6 +613,7 @@ export function HomeView({
         strategicNextStepPlan,
         opportunity: primaryOpportunity,
         adminCase: primaryCase,
+        careerSupportPack: primaryCase.careerSupportPack,
       })
     : undefined;
   const normalAdviserExportPack =

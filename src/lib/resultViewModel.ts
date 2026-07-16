@@ -1,5 +1,6 @@
 import type { AdminCase, MoneyImpact, OpportunityCard } from "../types";
 import type { BenefitsActionPack, BenefitsKeyDate, BenefitsMoneyLine } from "./benefitsActionPack";
+import type { CareerSupportPack } from "./careerSupportPack";
 import type { CommunityHelperPack } from "./communityHelperPack";
 import type { DecisionAmountTreatment, DecisionResult, DecisionSourceFact } from "./decisionEngine/types";
 import {
@@ -19,6 +20,7 @@ export type ResultViewSource =
   | "benefits_action_pack"
   | "workplace_support_pack"
   | "community_helper_pack"
+  | "career_support_pack"
   | "best_next_move"
   | "case"
   | "draft";
@@ -94,6 +96,7 @@ export type ResultBestNextMoveView = {
 };
 
 export type ResultViewModel = {
+  resultKind: "standard" | "career_support";
   title: string;
   summary: string;
   primaryStatusLabel?: string;
@@ -122,6 +125,7 @@ export type BuildResultViewModelInput = {
   benefitsActionPack?: BenefitsActionPack | null;
   workplaceSupportPack?: WorkplaceSupportPack;
   communityHelperPack?: CommunityHelperPack;
+  careerSupportPack?: CareerSupportPack;
   strategicNextStepPlan?: StrategicNextStepPlan;
   opportunity?: OpportunityCard;
   adminCase?: AdminCase;
@@ -432,16 +436,25 @@ export const buildResultViewModel = ({
   benefitsActionPack,
   workplaceSupportPack,
   communityHelperPack,
+  careerSupportPack,
   strategicNextStepPlan,
   opportunity,
   adminCase,
 }: BuildResultViewModelInput): ResultViewModel => {
   const bestNextMove = buildBestNextMove(strategicNextStepPlan);
+  const isCareerSupportResult = Boolean(careerSupportPack);
   const title = safeText(
     opportunity?.title ??
       benefitsActionPack?.title ??
       workplaceSupportPack?.title ??
       communityHelperPack?.title ??
+      (careerSupportPack
+        ? careerSupportPack.documentType === "cv"
+          ? "CV preparation notes"
+          : careerSupportPack.documentType === "job_advert"
+            ? "Job advert preparation notes"
+            : "Career preparation notes"
+        : undefined) ??
       decisionResult?.title ??
       adminCase?.title,
     fallbackTitle,
@@ -451,6 +464,7 @@ export const buildResultViewModel = ({
       benefitsActionPack?.summary ??
       workplaceSupportPack?.summary ??
       communityHelperPack?.summary ??
+      careerSupportPack?.summary ??
       strategicNextStepPlan?.plainEnglishSummary ??
       decisionResult?.plainEnglishSummary ??
       adminCase?.summary,
@@ -460,6 +474,7 @@ export const buildResultViewModel = ({
     opportunity?.statusLabel ??
       (workplaceSupportPack ? "Workplace preparation only" : undefined) ??
       (communityHelperPack ? "Community support preparation only" : undefined) ??
+      (careerSupportPack ? "Career preparation only - review before using" : undefined) ??
       decisionResult?.strengthLabel ??
       adminCase?.status,
     "Review before acting",
@@ -481,6 +496,28 @@ export const buildResultViewModel = ({
     ...moneyImpactsFor(opportunity).map(fromOpportunityMoney),
   ]);
   const evidenceFound = dedupeEvidence([
+    ...(careerSupportPack
+      ? [
+          ...careerSupportPack.likelyTargetRoles.map((role, index) => ({
+            id: `career-role-${index + 1}`,
+            label: "Likely target role",
+            value: safeText(role, "Check target role"),
+            source: "career_support_pack" as const,
+          })),
+          ...careerSupportPack.strengthsToHighlight.map((strength, index) => ({
+            id: `career-strength-${index + 1}`,
+            label: "Strength to highlight",
+            value: safeText(strength, "Check strength"),
+            source: "career_support_pack" as const,
+          })),
+          ...careerSupportPack.projectsToHighlight.map((project, index) => ({
+            id: `career-project-${index + 1}`,
+            label: "Project or portfolio evidence",
+            value: safeText(project, "Check project evidence"),
+            source: "career_support_pack" as const,
+          })),
+        ]
+      : []),
     ...(benefitsActionPack?.evidenceFound.map((item) => ({
       id: item.id,
       label: safeText(item.label, "Evidence found"),
@@ -495,6 +532,7 @@ export const buildResultViewModel = ({
     ...(benefitsActionPack?.evidenceMissing ?? []),
     ...(workplaceSupportPack?.evidenceToGather ?? []),
     ...(communityHelperPack?.evidenceToGather ?? []),
+    ...(careerSupportPack?.possibleGapsToCheck ?? []),
     ...(strategicNextStepPlan?.missingInformation ?? []),
     ...(decisionResult?.evidenceNeeded ?? []),
     ...(opportunity?.missingInformation ?? []),
@@ -510,6 +548,8 @@ export const buildResultViewModel = ({
             ? "workplace_support_pack"
             : communityHelperPack?.evidenceToGather.includes(value)
               ? "community_helper_pack"
+              : careerSupportPack?.possibleGapsToCheck.includes(value)
+                ? "career_support_pack"
               : "main_result",
       ),
     ),
@@ -518,6 +558,7 @@ export const buildResultViewModel = ({
     ...(benefitsActionPack?.questionsToAnswer.map((question) => question.question) ?? []),
     ...(workplaceSupportPack?.questionsToAsk ?? []),
     ...(communityHelperPack?.questionsToAsk ?? []),
+    ...(careerSupportPack?.possibleGapsToCheck ?? []),
     ...(decisionResult?.questionsToAnswer ?? []),
   ]);
   const risks = cleanStringItems([
@@ -531,6 +572,12 @@ export const buildResultViewModel = ({
     ...(benefitsActionPack?.cannotKnow ?? []),
     ...(workplaceSupportPack?.cannotKnow ?? []),
     ...(communityHelperPack?.cannotKnow ?? []),
+    ...(careerSupportPack
+      ? [
+          "AdminAvenger cannot know how an employer or recruiter will assess this material.",
+          "AdminAvenger cannot verify experience, qualifications, dates, references, or portfolio links outside the text provided.",
+        ]
+      : []),
     ...(strategicNextStepPlan?.cannotKnow ?? []),
     ...(decisionResult?.cannotKnow ?? []),
   ], fallbackCannotKnow);
@@ -544,6 +591,12 @@ export const buildResultViewModel = ({
     ...(communityHelperPack
       ? [
           "Community helper information may depend on the full situation, other documents, and advice from a suitable professional or trusted person.",
+        ]
+      : []),
+    ...(careerSupportPack
+      ? [
+          "Career material may need tailoring to a specific job advert, employer, or application form.",
+          "Some claims may need checking against the user's real experience, dates, projects, and training records.",
         ]
       : []),
     ...(strategicNextStepPlan?.uncertainty ?? []),
@@ -563,13 +616,107 @@ export const buildResultViewModel = ({
     ...(communityHelperPack?.preparationOnlyNotes ?? []),
     ...(communityHelperPack?.consentAndControlNotes ?? []),
     ...(communityHelperPack?.signposting ?? []),
+    ...(careerSupportPack?.safetyNotes ?? []),
     ...(strategicNextStepPlan?.safetyNotes ?? []),
     ...(benefitsActionPack?.safetyNotes ?? []),
     ...(decisionResult?.safetyNotes ?? []),
   ], RESULT_NO_CONTACT_SAFETY_NOTE);
   const draftOrChecklist = buildDraftView(benefitsActionPack, decisionResult, workplaceSupportPack);
+  const careerChecklist: ResultDraftView | undefined = careerSupportPack
+    ? {
+        title: "Career preparation checklist",
+        body: cleanStringItems([
+          ...careerSupportPack.nextPreparationSteps,
+          ...careerSupportPack.saferRewriteSuggestions,
+          "Review every claim before using or sharing it.",
+        ]).join("\n"),
+        source: "career_support_pack",
+      }
+    : undefined;
+  const effectiveDraftOrChecklist = careerChecklist ?? draftOrChecklist;
   const sections = [
     makeSection("summary", "Summary", [summary], "main_result", "summary"),
+    careerSupportPack
+      ? makeSection(
+          "career-target-roles",
+          "Likely target roles",
+          careerSupportPack.likelyTargetRoles,
+          "career_support_pack",
+          "summary",
+        )
+      : undefined,
+    careerSupportPack
+      ? makeSection(
+          "career-strengths",
+          "Strengths to highlight",
+          careerSupportPack.strengthsToHighlight,
+          "career_support_pack",
+          "summary",
+        )
+      : undefined,
+    careerSupportPack
+      ? makeSection(
+          "career-evidence",
+          "Evidence to use",
+          careerSupportPack.evidenceToUse,
+          "career_support_pack",
+          "summary",
+        )
+      : undefined,
+    careerSupportPack
+      ? makeSection(
+          "career-projects",
+          "Projects to highlight",
+          careerSupportPack.projectsToHighlight,
+          "career_support_pack",
+          "summary",
+        )
+      : undefined,
+    careerSupportPack
+      ? makeSection(
+          "career-experience",
+          "Experience to frame",
+          careerSupportPack.experienceToFrame,
+          "career_support_pack",
+          "summary",
+        )
+      : undefined,
+    careerSupportPack
+      ? makeSection(
+          "career-education",
+          "Education/training to mention",
+          careerSupportPack.educationAndTraining,
+          "career_support_pack",
+          "summary",
+        )
+      : undefined,
+    careerSupportPack
+      ? makeSection(
+          "career-gaps",
+          "Possible gaps to check",
+          careerSupportPack.possibleGapsToCheck,
+          "career_support_pack",
+          "summary",
+        )
+      : undefined,
+    careerSupportPack
+      ? makeSection(
+          "career-safer-rewrites",
+          "Safer rewrite suggestions",
+          careerSupportPack.saferRewriteSuggestions,
+          "career_support_pack",
+          "summary",
+        )
+      : undefined,
+    careerSupportPack
+      ? makeSection(
+          "career-next-steps",
+          "Next preparation steps",
+          careerSupportPack.nextPreparationSteps,
+          "career_support_pack",
+          "summary",
+        )
+      : undefined,
     workplaceSupportPack
       ? makeSection(
           "workplace-preparation",
@@ -745,8 +892,14 @@ export const buildResultViewModel = ({
           "summary",
         )
       : undefined,
-    draftOrChecklist
-      ? makeSection("draft-or-checklist", draftOrChecklist.title, [draftOrChecklist.body], "draft", "summary")
+    effectiveDraftOrChecklist
+      ? makeSection(
+          "draft-or-checklist",
+          effectiveDraftOrChecklist.title,
+          [effectiveDraftOrChecklist.body],
+          effectiveDraftOrChecklist.source,
+          "summary",
+        )
       : undefined,
     makeSection("safety", "Safety notes", safetyNotes, "main_result", "summary"),
   ].filter((section): section is ResultSectionView => Boolean(section));
@@ -786,6 +939,8 @@ export const buildResultViewModel = ({
           ? "workplace_support_pack"
           : communityHelperPack
             ? "community_helper_pack"
+            : careerSupportPack
+              ? "career_support_pack"
             : "case",
   };
   const safetyView: ResultSafetyView = {
@@ -796,6 +951,7 @@ export const buildResultViewModel = ({
   };
 
   return {
+    resultKind: isCareerSupportResult ? "career_support" : "standard",
     title,
     summary,
     primaryStatusLabel,
@@ -812,7 +968,7 @@ export const buildResultViewModel = ({
     uncertainty,
     safetyNotes,
     safetyView,
-    draftOrChecklist,
+    draftOrChecklist: effectiveDraftOrChecklist,
     sections,
     detailSections,
     showBenefitsActionPack: Boolean(benefitsActionPack),

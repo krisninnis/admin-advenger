@@ -47,6 +47,7 @@ const hasAny = (text: string, signals: string[]) =>
   signals.some((signal) => text.includes(signal));
 
 const directCvSignals = [
+  "github portfolio",
   "curriculum vitae",
   "resume",
   "professional profile",
@@ -58,8 +59,10 @@ const cvStructureSignals = [
   "technical skills",
   "professional experience",
   "work experience",
+  "volunteer experience",
   "employment history",
   "education and training",
+  "education & training",
   "portfolio",
   "github",
   "projects",
@@ -76,12 +79,19 @@ const coverLetterSignals = [
 const jobAdvertSignals = [
   "job advert",
   "job description",
+  "about the role",
   "responsibilities",
   "requirements",
   "essential criteria",
   "desirable criteria",
+  "required skills",
+  "desirable skills",
   "salary",
+  "location",
   "closing date",
+  "company is looking for",
+  "we are hiring",
+  "apply now",
 ];
 
 const applicationAnswerSignals = [
@@ -175,23 +185,28 @@ export const detectCareerSupportDocumentType = (
     return "career_unknown";
   }
 
-  if (hasAny(normalised, coverLetterSignals)) {
-    return "cover_letter";
-  }
-
-  if (hasAny(normalised, jobAdvertSignals) && hasAny(normalised, ["role", "apply", "candidate", "experience"])) {
-    return "job_advert";
-  }
-
-  if (hasAny(normalised, applicationAnswerSignals)) {
-    return "application_answer";
-  }
-
   const cvStructureCount = cvStructureSignals.filter((signal) => normalised.includes(signal)).length;
   const hasDirectCvSignal = hasAny(normalised, directCvSignals) || /\bcv\b/i.test(text);
 
   if (hasDirectCvSignal || cvStructureCount >= 3) {
     return "cv";
+  }
+
+  if (hasAny(normalised, coverLetterSignals)) {
+    return "cover_letter";
+  }
+
+  const jobAdvertSignalCount = jobAdvertSignals.filter((signal) => normalised.includes(signal)).length;
+
+  if (
+    jobAdvertSignalCount >= 2 &&
+    hasAny(normalised, ["role", "apply", "candidate", "company", "we are", "hiring"])
+  ) {
+    return "job_advert";
+  }
+
+  if (hasAny(normalised, applicationAnswerSignals)) {
+    return "application_answer";
   }
 
   return "career_unknown";
@@ -204,9 +219,21 @@ const extractMatchingSignals = (normalised: string, signals: string[]) =>
   unique(signals.filter((signal) => normalised.includes(signal)));
 
 const extractLinesMatching = (lines: string[], signals: string[], fallback: string) => {
-  const matches = lines.filter((line) => {
+  const matches: string[] = [];
+
+  lines.forEach((line, index) => {
     const normalisedLine = normaliseText(line);
-    return signals.some((signal) => normalisedLine.includes(signal));
+    const isMatch = signals.some((signal) => normalisedLine.includes(signal));
+
+    if (!isMatch) {
+      return;
+    }
+
+    matches.push(line);
+
+    if (line.length <= 40 && lines[index + 1]) {
+      matches.push(lines[index + 1]);
+    }
   });
 
   return unique(matches.length > 0 ? matches.slice(0, 5) : [fallback]);
@@ -297,7 +324,7 @@ export const buildCareerSupportPack = ({ text }: { text: string }): CareerSuppor
     ),
     experienceToFrame: extractLinesMatching(
       lines,
-      ["professional experience", "work experience", "employment history", "managed", "supported", "delivered"],
+      ["professional experience", "work experience", "volunteer experience", "employment history", "managed", "supported", "delivered"],
       "Frame experience around truthful responsibilities, actions taken, and outcomes where known.",
     ),
     educationAndTraining: extractLinesMatching(

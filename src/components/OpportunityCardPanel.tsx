@@ -22,6 +22,7 @@ const plainOpportunityLabel: Record<string, string> = {
   delivery_update: "Update",
   suspicious_email_risk: "Email safety",
   admin_dispute_check: "Admin/rights check",
+  career_support: "Career prep",
   no_action_needed: "No action found",
 };
 

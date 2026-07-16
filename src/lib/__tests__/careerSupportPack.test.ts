@@ -674,9 +674,13 @@ Required skills I am developing: React, JavaScript, accessibility.
     const issueItem = pack.requirementEvidenceMap?.find((item) =>
       item.requirement.toLowerCase().includes("reproduce simple issues"),
     );
+    const digitalItem = pack.requirementEvidenceMap?.find((item) =>
+      item.requirement.toLowerCase().includes("basic digital understanding"),
+    );
     const supportEvidence = supportItem?.possibleEvidence.join("\n").toLowerCase() ?? "";
     const explainEvidence = explainItem?.possibleEvidence.join("\n").toLowerCase() ?? "";
     const issueEvidence = issueItem?.possibleEvidence.join("\n").toLowerCase() ?? "";
+    const digitalEvidence = digitalItem?.possibleEvidence.join("\n").toLowerCase() ?? "";
     const examples = pack.examplesToPrepare?.join("\n").toLowerCase() ?? "";
     const allEvidence = [
       ...(pack.requirementEvidenceMap ?? []).flatMap((item) => item.possibleEvidence),
@@ -700,6 +704,11 @@ Required skills I am developing: React, JavaScript, accessibility.
       "reproducing an issue, recording the steps and outcome",
     );
     expect(issueItem?.exampleToPrepare.toLowerCase()).not.toContain("one project");
+    expect(digitalItem?.possibleEvidence[0].toLowerCase()).toContain("react");
+    expect(digitalEvidence).toContain("built a react and typescript dashboard");
+    expect(digitalEvidence).toContain("react, typescript, html, css, javascript, github");
+    expect(digitalEvidence).toContain("used github to document setup steps");
+    expect(digitalEvidence).not.toContain("no clear cv evidence found");
     expect(explainEvidence).not.toContain("gcses including english and maths");
     expect(allEvidence).not.toContain("gcses including english and maths");
     expect(examples).toContain("explaining a technical issue or platform step clearly");

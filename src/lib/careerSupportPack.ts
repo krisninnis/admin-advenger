@@ -957,6 +957,24 @@ const isDirectDigitalWebEvidence = (evidence: string) =>
     "web",
   ]);
 
+const isGeneratedEvidenceSummary = (evidence: string) =>
+  hasAny(normaliseText(evidence), [
+    "skills mentioned in the cv",
+    "project work mentioned in the cv",
+    "portfolio evidence mentioned in the cv",
+  ]);
+
+const collectDirectEvidence = (
+  cvLines: string[],
+  predicate: (line: string) => boolean,
+) =>
+  cvLines.filter(
+    (line) =>
+      isUsableEvidenceMapLine(line) &&
+      !isUnsafeEvidenceLine(line, cvLines) &&
+      predicate(line),
+  );
+
 const shouldKeepEvidenceForRequirement = (requirement: string, evidence: string) => {
   if (isGcseOnlyEvidence(evidence) && !asksForEducationEvidence(requirement)) {
     return false;
@@ -1009,7 +1027,7 @@ const issueDocumentationEvidenceRank = (evidence: string) => {
   }
 
   if (isDirectDigitalWebEvidence(evidence)) {
-    return 4;
+    return isGeneratedEvidenceSummary(evidence) ? 5 : 4;
   }
 
   return 6;
@@ -1035,7 +1053,7 @@ const privacyEvidenceRank = (evidence: string) => {
 
 const digitalWebEvidenceRank = (evidence: string) => {
   if (isDirectDigitalWebEvidence(evidence)) {
-    return 0;
+    return isGeneratedEvidenceSummary(evidence) ? 3 : 0;
   }
 
   if (hasAny(normaliseText(evidence), ["learning", "software tools", "digital"])) {
@@ -1374,13 +1392,27 @@ const buildRequirementEvidenceMap = ({
 }): CareerRequirementEvidenceMapItem[] =>
   requirements.slice(0, 6).map((requirement) => {
     const categories = categoriesForRequirement(requirement);
+    const reservedDirectEvidence = unique([
+      ...(isReproduceDocumentRequirement(requirement)
+        ? collectDirectEvidence(cvLines, isDirectIssueDocumentationEvidence)
+        : []),
+      ...(isPrivacyCustomerRecordRequirement(requirement)
+        ? collectDirectEvidence(cvLines, isPrivacyOrRecordsEvidence)
+        : []),
+      ...(isDigitalWebUnderstandingRequirement(requirement)
+        ? collectDirectEvidence(cvLines, isDirectDigitalWebEvidence)
+        : []),
+    ]);
     const possibleEvidence = sortEvidenceForRequirement(
       requirement,
       unique(
-        categories
-          .flatMap((category) =>
-            collectCvEvidenceForCategory(cvLines, cvNormalised, category),
-          )
+        [
+          ...reservedDirectEvidence,
+          ...categories
+            .flatMap((category) =>
+              collectCvEvidenceForCategory(cvLines, cvNormalised, category),
+            ),
+        ]
           .filter((evidence) => shouldKeepEvidenceForRequirement(requirement, evidence)),
       ),
     ).slice(0, 10);

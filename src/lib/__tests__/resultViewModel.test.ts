@@ -510,7 +510,8 @@ SaaS Support Specialist
 
 Responsibilities
 Help customers understand product settings and resolve simple issues.
-Reproduce simple issues and document what happened.`,
+Reproduce simple issues and document what happened.
+Basic digital understanding.`,
     });
     const model = buildResultViewModel({ careerSupportPack });
     const checklist = model.draftOrChecklist?.body.toLowerCase() ?? "";
@@ -520,7 +521,11 @@ Reproduce simple issues and document what happened.`,
     const issueDocumentation = model.careerRequirementEvidenceMap?.find((item) =>
       item.requirement.toLowerCase().includes("reproduce simple issues"),
     );
+    const digital = model.careerRequirementEvidenceMap?.find((item) =>
+      item.requirement.toLowerCase().includes("basic digital understanding"),
+    );
     const issueEvidence = issueDocumentation?.possibleEvidence.join("\n").toLowerCase() ?? "";
+    const digitalEvidence = digital?.possibleEvidence.join("\n").toLowerCase() ?? "";
 
     expect(customerHelp?.exampleToPrepare.toLowerCase()).toContain("helping a customer understand");
     expect(customerHelp?.exampleToPrepare.toLowerCase()).not.toContain("reproducing an issue");
@@ -533,6 +538,14 @@ Reproduce simple issues and document what happened.`,
     );
     expect(checklist).toContain("kept notes of recurring problems and shared them with the team");
     expect(checklist).toContain("reproducing an issue, recording the steps and outcome");
+    expect(checklist.indexOf("kept notes of recurring problems")).toBeLessThan(
+      checklist.indexOf("react and typescript"),
+    );
+    expect(digital?.possibleEvidence[0].toLowerCase()).toContain("react");
+    expect(digitalEvidence).toContain("built a react and typescript dashboard");
+    expect(digitalEvidence).toContain("react, typescript, html, css, javascript, github");
+    expect(digitalEvidence).toContain("used github to document setup steps");
+    expect(digitalEvidence).not.toContain("no clear cv evidence found");
     expect(validateResultViewModelSafety(model).safe).toBe(true);
   });
 
@@ -592,6 +605,11 @@ Show basic digital or web understanding.`,
     expect(digital?.possibleEvidence[0].toLowerCase()).toContain("html");
     expect(digitalEvidence).toContain("built a simple html and css portfolio page");
     expect(digitalEvidence).toContain("github portfolio in progress");
+    if (flattened.includes("github or portfolio evidence mentioned in the cv")) {
+      expect(flattened.indexOf("built a simple html and css portfolio page")).toBeLessThan(
+        flattened.indexOf("github or portfolio evidence mentioned in the cv"),
+      );
+    }
     expect(digitalEvidence).not.toContain("appointment and inbox management");
     expect(issueDocumentation?.possibleEvidence[0].toLowerCase()).toContain("kept notes of recurring problems");
     expect(flattened).not.toMatch(/(^|\n)family support role($|\n)/);

@@ -67,6 +67,8 @@ import {
   createAttachedFile,
   getFilesFromDroppedDataTransfer,
   hasReadableAttachedText,
+  VISIBLE_INPUT_DROP_HELPER,
+  VISIBLE_INPUT_DROP_LABEL,
   type AttachedFile,
 } from "../lib/documentAttachmentIntake";
 import { extractDocxText, extractPdfText } from "../lib/documentFileText";
@@ -1691,10 +1693,34 @@ export function HomeView({
         <div className="mt-5">
           {selectedInput === "paste" ? (
             <div>
+              <div
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  handleAttachmentDragOver();
+                }}
+                onDragLeave={(event) => {
+                  event.preventDefault();
+                  handleAttachmentDragLeave();
+                }}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  handleAttachmentDrop(event);
+                }}
+                className={`rounded-lg border border-dashed p-3 transition ${
+                  isDraggingOverAttachment
+                    ? "border-emerald-300/70 bg-emerald-300/10"
+                    : "border-white/10 bg-slate-950/25"
+                }`}
+              >
               <div className="flex items-center justify-between gap-3">
-                <label className="block text-sm font-semibold text-slate-300" htmlFor="paste-message">
-                  Paste your message
-                </label>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-300" htmlFor="paste-message">
+                    {VISIBLE_INPUT_DROP_LABEL}
+                  </label>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">
+                    {VISIBLE_INPUT_DROP_HELPER}
+                  </p>
+                </div>
                 <div
                   className="relative"
                   onBlur={(event) => {
@@ -1770,8 +1796,9 @@ export function HomeView({
                 }}
                 rows={9}
                 placeholder="Paste the email, bill, letter, or message here…"
-                className="mt-2 w-full resize-y rounded-lg border border-white/10 bg-slate-950 px-4 py-4 text-base leading-7 text-white outline-none transition placeholder:text-slate-600 focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20"
+                className="mt-3 w-full resize-y rounded-lg border border-white/10 bg-slate-950 px-4 py-4 text-base leading-7 text-white outline-none transition placeholder:text-slate-600 focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20"
               />
+              </div>
               {isDesktopPointer ? (
                 <p className="mt-1 text-xs text-slate-500">
                   Press Enter to check, Shift+Enter for a new line.
@@ -1793,13 +1820,18 @@ export function HomeView({
           ) : (
             <div className="rounded-lg border border-dashed border-white/15 bg-slate-950/60 p-5">
               <label className="block text-base font-bold text-white">
-                {selectedInput === "image" ? "Take or upload a photo" : "Choose a text file"}
+                {selectedInput === "image" ? "Take or upload a photo" : "Choose or drop a file"}
                 {selectedInput === "image" ? (
                   <span className="mt-2 block text-sm font-normal leading-6 text-slate-400">
                     Take a photo of a letter, bill, receipt, or email. AdminAvenger will try to
                     read the text on this device.
                   </span>
-                ) : null}
+                ) : (
+                  <span className="mt-2 block text-sm font-normal leading-6 text-slate-400">
+                    DOCX, PDF, TXT, images - read locally in your browser. You can also drag files
+                    into the attachment area below.
+                  </span>
+                )}
                 <input
                   key={`${selectedInput}-${inputResetKey}`}
                   type="file"
@@ -1831,6 +1863,19 @@ export function HomeView({
                 />
               ) : null}
               {uploadNote ? <p className="mt-2 text-sm leading-6 text-slate-400">{uploadNote}</p> : null}
+              {selectedInput === "file" ? (
+                <DocumentAttachmentArea
+                  files={attachedFiles}
+                  isDraggingOver={isDraggingOverAttachment}
+                  disabled={isChecking || isAiReading}
+                  showCombinedTextNote={showAttachmentCombinedTextNote}
+                  onFilesSelected={(files) => void handleAttachmentFilesSelected(files)}
+                  onRemoveFile={handleRemoveAttachedFile}
+                  onDragOver={handleAttachmentDragOver}
+                  onDragLeave={handleAttachmentDragLeave}
+                  onDrop={handleAttachmentDrop}
+                />
+              ) : null}
               {selectedInput === "image" && ocrStatus === "reading" ? (
                 <div className="mt-4 rounded-lg border border-cyan-300/20 bg-cyan-300/10 p-4">
                   <p className="text-sm font-bold text-cyan-50">

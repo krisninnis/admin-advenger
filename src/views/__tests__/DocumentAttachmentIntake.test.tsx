@@ -11,6 +11,8 @@ import {
   ATTACHMENT_OCR_CAUTION_NOTE,
   ATTACHMENT_READ_FAILED_MESSAGE,
   ATTACHMENT_TAKE_PHOTO_BUTTON_LABEL,
+  VISIBLE_INPUT_DROP_HELPER,
+  VISIBLE_INPUT_DROP_LABEL,
 } from "../../lib/documentAttachmentIntake";
 import {
   attachmentCameraAcceptAttribute,
@@ -24,7 +26,7 @@ describe("Document Attachment Intake v1 - HomeView wiring", () => {
   it("renders the attachment area beside the paste box, without replacing it", () => {
     expect(homeViewSource).toContain("DocumentAttachmentArea");
     expect(homeViewSource).toContain("paste-message");
-    expect(homeViewSource).toContain("Paste your message");
+    expect(homeViewSource).toContain("VISIBLE_INPUT_DROP_LABEL");
   });
 
   it("keeps the existing photo/file tabs and demo copy working alongside the new area", () => {
@@ -73,6 +75,28 @@ describe("Document Attachment Intake v1 - HomeView wiring", () => {
     expect(homeViewSource).toContain("getFilesFromDroppedDataTransfer(event.dataTransfer)");
     expect(homeViewSource).toContain("handleAttachmentFilesSelected(droppedFiles)");
     expect(homeViewSource).toContain("extractDocxText(entry.file)");
+  });
+
+  it("makes the visible paste input area a DOCX-capable drop target", () => {
+    expect(homeViewSource).toContain("VISIBLE_INPUT_DROP_LABEL");
+    expect(homeViewSource).toContain("VISIBLE_INPUT_DROP_HELPER");
+    expect(homeViewSource).toContain("handleAttachmentDrop(event)");
+    expect(homeViewSource).toContain("handleAttachmentDragOver()");
+    expect(homeViewSource).toContain("handleAttachmentDragLeave()");
+    expect(homeViewSource).toContain("paste-message");
+  });
+
+  it("keeps typing/paste behaviour unchanged while adding the visible drop target", () => {
+    expect(homeViewSource).toContain("value={rawText}");
+    expect(homeViewSource).toContain("onChange={(event) => setRawText(event.target.value)}");
+    expect(homeViewSource).toContain('onCheck("Pasted admin text", "email", textToCheck)');
+  });
+
+  it("reveals the attachment area from file mode so dropped DOCX files show status", () => {
+    expect(homeViewSource).toContain('"Choose or drop a file"');
+    expect(homeViewSource).toContain("into the attachment area below");
+    expect(homeViewSource).toContain('selectedInput === "file" ? (');
+    expect(homeViewSource).toContain("showCombinedTextNote={showAttachmentCombinedTextNote}");
   });
 });
 
@@ -181,6 +205,8 @@ describe("Document Attachment Intake v1 - required visible copy", () => {
     expect(ATTACHMENT_COMBINED_TEXT_NOTE).toBe(
       "Your typed text and attached document text will be checked together.",
     );
+    expect(VISIBLE_INPUT_DROP_LABEL).toBe("Paste text or drop a document here");
+    expect(VISIBLE_INPUT_DROP_HELPER).toBe("DOCX, PDF, TXT, images - read locally in your browser.");
   });
 
   it("mentions DOCX/PDF support directly in the attachment area's own copy", () => {
@@ -199,6 +225,8 @@ describe("Document Attachment Intake v1 - required visible copy", () => {
       ATTACHMENT_OCR_CAUTION_NOTE,
       ATTACHMENT_COMBINED_TEXT_NOTE,
       ATTACHMENT_READ_FAILED_MESSAGE,
+      VISIBLE_INPUT_DROP_LABEL,
+      VISIBLE_INPUT_DROP_HELPER,
       UNSUPPORTED_FILE_MESSAGE,
       DOC_UNSUPPORTED_MESSAGE,
     ].join("\n");

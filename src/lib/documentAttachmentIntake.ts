@@ -209,6 +209,11 @@ export const hasReadableAttachedText = (files: AttachedFile[]): boolean =>
 
 export const ATTACHMENT_HEADING = "Attach document photos";
 
+export const VISIBLE_INPUT_DROP_LABEL = "Paste text or drop a document here";
+
+export const VISIBLE_INPUT_DROP_HELPER =
+  "DOCX, PDF, TXT, images - read locally in your browser.";
+
 export const ATTACHMENT_HELPER =
   "Choose photos, text files, Word documents (.docx), or PDFs from your device, take a new photo, or drag files here. AdminAvenger reads them locally in this browser and does not send them anywhere.";
 

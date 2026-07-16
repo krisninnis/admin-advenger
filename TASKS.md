@@ -53,22 +53,23 @@ Source principles:
 
 ## Now
 
-1. Complete repository coverage audit.
-2. Create and validate `COVERAGE_MATRIX.md`.
-3. Define a standard decision-engine contract.
-4. Research authoritative UK complaint sources.
-5. Build golden fixtures for existing engines.
-6. Run cross-category regression testing.
-7. Fix only confirmed engine failures.
-8. Freeze stable engines after production verification.
+1. Complete Phase 1A official-source register.
+2. Review energy, telecom, banking and housing research.
+3. Confirm Wales-specific housing routes.
+4. Approve the fixture ideas.
+5. Choose one existing or new engine to harden.
+6. Create fixtures before changing engine behaviour.
+7. Run cross-domain regression tests.
+8. Perform production live tests.
+9. Freeze the engine after passing.
 
 ## Next
 
-- Research Wave 1 complaint categories.
-- Choose the first new vertical from evidence.
-- Implement one vertical.
-- Add positive, ambiguous, negative, cross-domain, OCR-error, and safety tests.
-- Deploy and perform live tests.
+- Phase 1B: consumer refunds and deliveries.
+- Phase 1B: Universal Credit, deductions and overpayments.
+- Phase 1B: workplace correspondence.
+- Phase 1B: water billing and supply.
+- Phase 1B: golden-fixture standard.
 
 ## Later
 

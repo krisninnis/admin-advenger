@@ -477,6 +477,7 @@ const createSubscriptionFinding = (item: AdminItem): AdminFinding => ({
 
 const careerDocumentTitles: Record<CareerSupportPack["documentType"], string> = {
   cv: "CV preparation notes",
+  cv_job_advert_match: "CV and job advert match notes",
   cover_letter: "Cover letter review notes prepared",
   job_advert: "Job advert preparation notes",
   application_answer: "Application answer review notes prepared",
@@ -495,11 +496,13 @@ const createCareerSupportFinding = (
   whyItMatters:
     pack.documentType === "cv"
       ? "This appears to be a CV or career profile, so AdminAvenger is preparing review notes about strengths, evidence, gaps, and next steps before applying."
+      : pack.documentType === "cv_job_advert_match"
+        ? "This appears to contain both CV evidence and job-advert requirements, so AdminAvenger is preparing notes to compare them without ranking or deciding suitability."
       : "This looks like career or job-search material, so AdminAvenger is treating it as preparation work rather than a bill, subscription, complaint, or admin letter.",
   suggestedAction:
     pack.nextPreparationSteps[0] ??
     "Review the career support notes, check the evidence, and edit any wording before using it.",
-  urgency: pack.documentType === "job_advert" ? "medium" : "low",
+  urgency: pack.documentType === "job_advert" || pack.documentType === "cv_job_advert_match" ? "medium" : "low",
   confidence: pack.confidence.level,
   status: "new",
   createdAt: new Date().toISOString(),

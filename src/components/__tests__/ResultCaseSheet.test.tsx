@@ -198,6 +198,52 @@ Web development course, 2026`,
     expect(findForbiddenSafetyPhrases(html)).toEqual([]);
   });
 
+  it("renders CV plus job advert match preparation sections", () => {
+    const careerSupportPack = buildCareerSupportPack({
+      text: `CV
+Professional profile
+Front-end developer with React and TypeScript experience.
+Technical Skills
+React, TypeScript, accessibility, GitHub
+Projects
+AdminAvenger - local-first document preparation prototype.
+Work Experience
+Supported customer service teams.
+
+Job advert: Front End Developer
+About the role
+We are looking for a candidate who can build user interfaces and maintain components.
+Requirements
+Essential skills: React, TypeScript, accessibility, and customer-facing communication.
+Desirable skills: Portfolio or GitHub examples.`,
+    });
+    const resultViewModel = buildResultViewModel({ careerSupportPack });
+    const html = renderToStaticMarkup(
+      <ResultCaseSheet
+        model={resultViewModel}
+        primaryAction={{ label: "Save career notes", onClick: () => undefined, emphasis: "primary" }}
+        supportingDetailsOpen={false}
+        onToggleSupportingDetails={() => undefined}
+      />,
+    );
+    const text = normaliseGoldenText(html);
+
+    expect(careerSupportPack.documentType).toBe("cv_job_advert_match");
+    expect(html).toContain("CV and job advert match notes");
+    expect(html).toContain("Requirements found in the advert");
+    expect(html).toContain("CV evidence that may match");
+    expect(html).toContain("Strong evidence to consider using");
+    expect(html).toContain("Wording from the advert to review");
+    expect(html).toContain("Examples to prepare before applying");
+    expect(html).toContain("Claims to verify before sending");
+    expect(text).toContain("may match");
+    expect(text).not.toContain("match score");
+    expect(text).not.toContain("percentage match");
+    expect(text).not.toContain("you are qualified");
+    expect(text).not.toContain("apply automatically");
+    expect(findForbiddenSafetyPhrases(html)).toEqual([]);
+  });
+
   it("selected golden fixtures render safely through Result Page v2", () => {
     const selectedFixtureIds = [
       "benefits-uc-statement-001",

@@ -628,6 +628,8 @@ export const createAdminCase = (finding: AdminFinding, item: AdminItem): AdminCa
             ? "Possible money recovery found"
           : isEnergyPriceChangeCase
             ? "Energy prices are changing"
+          : isCareerSupportCase && careerSupportPack.documentType === "cv_job_advert_match"
+            ? "CV and job advert match notes"
           : isCareerSupportCase && careerSupportPack.documentType === "cv"
             ? "CV preparation notes"
           : isCareerSupportCase

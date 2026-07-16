@@ -408,18 +408,21 @@ export const deriveOpportunityCard = (
     const careerSupportPack =
       adminCase.careerSupportPack ?? buildCareerSupportPack({ text });
     const isCv = careerSupportPack.documentType === "cv";
+    const isMatch = careerSupportPack.documentType === "cv_job_advert_match";
 
     return {
       id: `opportunity-${adminCase.id}`,
       caseId: adminCase.id,
       opportunityType,
-      title: isCv ? "CV preparation notes" : adminCase.title,
+      title: isMatch ? "CV and job advert match notes" : isCv ? "CV preparation notes" : adminCase.title,
       plainEnglishSummary: careerSupportPack.summary,
       opportunityNote:
         "Preparation only. AdminAvenger helps prepare. You stay in control.",
       statusLabel: "Career preparation only - review before using",
       evidenceFound: [
         ...careerSupportPack.likelyTargetRoles.map((role) => `Target role: ${role}`),
+        ...(careerSupportPack.requirementsFound ?? []).slice(0, 4),
+        ...(careerSupportPack.cvEvidenceThatMayMatch ?? []).slice(0, 4),
         ...careerSupportPack.strengthsToHighlight.slice(0, 4),
         ...careerSupportPack.projectsToHighlight.slice(0, 3),
       ],

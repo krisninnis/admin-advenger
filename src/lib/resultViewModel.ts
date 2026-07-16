@@ -398,14 +398,29 @@ const buildBestNextMove = (
   };
 };
 
-const buildCareerBestNextMove = (): ResultBestNextMoveView => ({
-  label: "Choose the target role before editing the CV",
-  description:
-    "Pick the job type or job advert first, then tailor the strongest evidence, projects, skills, and training to that role.",
-  whyThisHelps:
-    "A CV is stronger when it is tailored to a specific role instead of being reviewed in isolation.",
-  source: "best_next_move",
-});
+const buildCareerBestNextMove = (
+  careerSupportPack?: CareerSupportPack,
+): ResultBestNextMoveView => {
+  if (careerSupportPack?.documentType === "cv_job_advert_match") {
+    return {
+      label: "Compare advert requirements with truthful CV evidence",
+      description:
+        "Review the requirements found in the advert, then choose CV evidence that may match and can be explained accurately.",
+      whyThisHelps:
+        "This keeps the application preparation specific to the advert without pretending AdminAvenger can decide suitability or outcomes.",
+      source: "best_next_move",
+    };
+  }
+
+  return {
+    label: "Choose the target role before editing the CV",
+    description:
+      "Pick the job type or job advert first, then tailor the strongest evidence, projects, skills, and training to that role.",
+    whyThisHelps:
+      "A CV is stronger when it is tailored to a specific role instead of being reviewed in isolation.",
+    source: "best_next_move",
+  };
+};
 
 const buildDraftView = (
   benefitsActionPack: BenefitsActionPack | null | undefined,
@@ -452,7 +467,7 @@ export const buildResultViewModel = ({
 }: BuildResultViewModelInput): ResultViewModel => {
   const isCareerSupportResult = Boolean(careerSupportPack);
   const bestNextMove = isCareerSupportResult
-    ? buildCareerBestNextMove()
+    ? buildCareerBestNextMove(careerSupportPack)
     : buildBestNextMove(strategicNextStepPlan);
   const title = safeText(
     opportunity?.title ??
@@ -460,7 +475,9 @@ export const buildResultViewModel = ({
       workplaceSupportPack?.title ??
       communityHelperPack?.title ??
       (careerSupportPack
-        ? careerSupportPack.documentType === "cv"
+        ? careerSupportPack.documentType === "cv_job_advert_match"
+          ? "CV and job advert match notes"
+          : careerSupportPack.documentType === "cv"
           ? "CV preparation notes"
           : careerSupportPack.documentType === "job_advert"
             ? "Job advert preparation notes"
@@ -513,6 +530,18 @@ export const buildResultViewModel = ({
             id: `career-role-${index + 1}`,
             label: "Likely target role",
             value: safeText(role, "Check target role"),
+            source: "career_support_pack" as const,
+          })),
+          ...(careerSupportPack.requirementsFound ?? []).map((requirement, index) => ({
+            id: `career-requirement-${index + 1}`,
+            label: "Requirement found",
+            value: safeText(requirement, "Check advert requirement"),
+            source: "career_support_pack" as const,
+          })),
+          ...(careerSupportPack.cvEvidenceThatMayMatch ?? []).map((evidence, index) => ({
+            id: `career-match-evidence-${index + 1}`,
+            label: "CV evidence that may match",
+            value: safeText(evidence, "Check CV evidence"),
             source: "career_support_pack" as const,
           })),
           ...careerSupportPack.strengthsToHighlight.map((strength, index) => ({
@@ -639,6 +668,10 @@ export const buildResultViewModel = ({
     ? {
         title: "Career preparation checklist",
         body: cleanStringItems([
+          ...(careerSupportPack.requirementsFound ?? []).map((item) => `Advert requirement to review: ${item}`),
+          ...(careerSupportPack.cvEvidenceThatMayMatch ?? []).map((item) => `CV evidence that may match: ${item}`),
+          ...(careerSupportPack.examplesToPrepare ?? []),
+          ...(careerSupportPack.claimsToVerify ?? []),
           ...careerSupportPack.nextPreparationSteps,
           ...careerSupportPack.saferRewriteSuggestions,
           "Review every claim before using or sharing it.",
@@ -649,6 +682,69 @@ export const buildResultViewModel = ({
   const effectiveDraftOrChecklist = careerChecklist ?? draftOrChecklist;
   const sections = [
     makeSection("summary", "Summary", [summary], "main_result", "summary"),
+    careerSupportPack
+      ? makeSection(
+          "career-role-clues",
+          "Role/title clues found",
+          careerSupportPack.roleClues ?? [],
+          "career_support_pack",
+          "summary",
+        )
+      : undefined,
+    careerSupportPack
+      ? makeSection(
+          "career-requirements-found",
+          "Requirements found in the advert",
+          careerSupportPack.requirementsFound ?? [],
+          "career_support_pack",
+          "summary",
+        )
+      : undefined,
+    careerSupportPack
+      ? makeSection(
+          "career-cv-evidence-may-match",
+          "CV evidence that may match",
+          careerSupportPack.cvEvidenceThatMayMatch ?? [],
+          "career_support_pack",
+          "summary",
+        )
+      : undefined,
+    careerSupportPack
+      ? makeSection(
+          "career-strong-evidence-to-consider",
+          "Strong evidence to consider using",
+          careerSupportPack.strongEvidenceToConsider ?? [],
+          "career_support_pack",
+          "summary",
+        )
+      : undefined,
+    careerSupportPack
+      ? makeSection(
+          "career-advert-wording-to-review",
+          "Wording from the advert to review",
+          careerSupportPack.advertWordingToReview ?? [],
+          "career_support_pack",
+          "summary",
+        )
+      : undefined,
+    careerSupportPack
+      ? makeSection(
+          "career-examples-to-prepare",
+          "Examples to prepare before applying",
+          careerSupportPack.examplesToPrepare ?? [],
+          "career_support_pack",
+          "summary",
+        )
+      : undefined,
+    careerSupportPack
+      ? makeSection(
+          "career-claims-to-verify",
+          "Claims to verify before sending",
+          careerSupportPack.claimsToVerify ?? [],
+          "career_support_pack",
+          "summary",
+        )
+      : undefined,
     careerSupportPack
       ? makeSection(
           "career-target-roles",

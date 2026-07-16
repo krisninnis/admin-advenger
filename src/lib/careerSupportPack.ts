@@ -1,5 +1,6 @@
 export type CareerSupportDocumentType =
   | "cv"
+  | "cv_job_advert_match"
   | "cover_letter"
   | "job_advert"
   | "application_answer"
@@ -12,8 +13,16 @@ export type CareerSupportConfidence = {
 
 export type CareerSupportPack = {
   documentType: CareerSupportDocumentType;
+  matchMode?: "cv_job_advert_match";
   summary: string;
   likelyTargetRoles: string[];
+  roleClues?: string[];
+  requirementsFound?: string[];
+  cvEvidenceThatMayMatch?: string[];
+  strongEvidenceToConsider?: string[];
+  advertWordingToReview?: string[];
+  examplesToPrepare?: string[];
+  claimsToVerify?: string[];
   strengthsToHighlight: string[];
   evidenceToUse: string[];
   projectsToHighlight: string[];
@@ -82,6 +91,7 @@ const jobAdvertSignals = [
   "about the role",
   "responsibilities",
   "requirements",
+  "essential skills",
   "essential criteria",
   "desirable criteria",
   "required skills",
@@ -104,6 +114,7 @@ const applicationAnswerSignals = [
 ];
 
 const roleSignals = [
+  "front end developer",
   "frontend developer",
   "front-end developer",
   "software developer",
@@ -192,16 +203,33 @@ export const detectCareerSupportDocumentType = (
 
   const cvStructureCount = cvStructureSignals.filter((signal) => normalised.includes(signal)).length;
   const hasDirectCvSignal = hasAny(normalised, directCvSignals) || /\bcv\b/i.test(text);
+  const hasCvSignal = hasDirectCvSignal || cvStructureCount >= 3;
+  const jobAdvertSignalCount = jobAdvertSignals.filter((signal) => normalised.includes(signal)).length;
+  const hasJobAdvertContext =
+    jobAdvertSignalCount >= 2 &&
+    hasAny(normalised, [
+      "job advert",
+      "job description",
+      "about the role",
+      "we are looking",
+      "company is looking for",
+      "we are hiring",
+      "apply now",
+      "salary",
+      "location",
+    ]);
 
-  if (hasDirectCvSignal || cvStructureCount >= 3) {
+  if (hasCvSignal && hasJobAdvertContext) {
+    return "cv_job_advert_match";
+  }
+
+  if (hasCvSignal) {
     return "cv";
   }
 
   if (hasAny(normalised, coverLetterSignals)) {
     return "cover_letter";
   }
-
-  const jobAdvertSignalCount = jobAdvertSignals.filter((signal) => normalised.includes(signal)).length;
 
   if (
     jobAdvertSignalCount >= 2 &&
@@ -245,6 +273,19 @@ const sectionHeadingSignals = [
   "education and training",
   "training",
   "references",
+  "cv",
+  "curriculum vitae",
+  "resume",
+  "job advert",
+  "job description",
+  "about the role",
+  "responsibilities",
+  "requirements",
+  "essential skills",
+  "desirable skills",
+  "required skills",
+  "salary",
+  "location",
 ];
 
 const isLikelySectionHeading = (line: string) => {
@@ -309,6 +350,9 @@ const isUsableProjectDetail = (line: string) =>
 
 const isUsableEducationDetail = (line: string) =>
   isUsableCvDetail(line) && !isGenericAwarenessLine(line);
+
+const isUsableRequirementDetail = (line: string) =>
+  !isLikelySectionHeading(line) && !isContactDetail(line) && !isProfileLine(line);
 
 const buildStrengthLabels = (normalised: string, skills: string[]) => {
   const labels: string[] = [];
@@ -405,7 +449,110 @@ const extractLinesMatching = (lines: string[], signals: string[], fallback: stri
   return unique(matches.length > 0 ? matches.slice(0, 5) : [fallback]);
 };
 
+const extractRoleClues = (lines: string[], normalised: string) =>
+  unique([
+    ...extractMatchingSignals(normalised, roleSignals),
+    ...lines
+      .filter((line) => /\b(job advert|job title|role|position)\b/i.test(line))
+      .filter((line) => line.length <= 90)
+      .map((line) => line.replace(/^(job advert|job title|role|position)\s*:\s*/i, "").trim()),
+  ]).slice(0, 5);
+
+const requirementSignals = [
+  "react",
+  "typescript",
+  "javascript",
+  "accessibility",
+  "customer-facing",
+  "customer facing",
+  "portfolio",
+  "github",
+  "build user interfaces",
+  "maintain components",
+  "work with designers",
+  "responsibilities",
+  "requirements",
+  "essential",
+  "desirable",
+];
+
+const buildMatchFields = ({
+  lines,
+  strengths,
+  evidence,
+  projects,
+  experience,
+  education,
+  normalised,
+}: {
+  lines: string[];
+  strengths: string[];
+  evidence: string[];
+  projects: string[];
+  experience: string[];
+  education: string[];
+  normalised: string;
+}) => {
+  const advertStartIndex = lines.findIndex((line) =>
+    /\b(job advert|job description|about the role|we are looking|company is looking|we are hiring)\b/i.test(line),
+  );
+  const advertLines = advertStartIndex >= 0 ? lines.slice(advertStartIndex) : lines;
+  const requirementsFound = collectSectionLines(
+    advertLines,
+    ["about the role", "responsibilities", "requirements", "essential skills", "desirable skills", "required skills"],
+    requirementSignals,
+    "Review the job advert requirements and copy out the parts that matter most.",
+    isUsableRequirementDetail,
+  );
+  const advertWordingToReview = extractLinesMatching(
+    advertLines,
+    ["we are looking", "requirements", "responsibilities", "essential", "desirable", "required skills", "portfolio", "github"],
+    "Review the advert wording and tailor only where accurate.",
+  );
+  const cvEvidenceThatMayMatch = unique([
+    ...strengths.map((strength) => `${strength} may match advert wording if backed by examples.`),
+    ...projects,
+    ...experience,
+    ...education,
+  ]).slice(0, 7);
+  const strongEvidenceToConsider = unique([
+    ...projects,
+    ...evidence,
+    ...strengths,
+  ]).slice(0, 6);
+  const examplesToPrepare = unique([
+    hasAny(normalised, ["react", "typescript"])
+      ? "Prepare a short example of React and TypeScript work you can explain accurately."
+      : undefined,
+    hasAny(normalised, ["accessibility"])
+      ? "Prepare an example of accessibility or inclusive-design work if it genuinely applies."
+      : undefined,
+    hasAny(normalised, ["customer-facing", "customer facing", "customer service"])
+      ? "Prepare an example of customer-facing communication or support work."
+      : undefined,
+    "Prepare one truthful example for each important advert requirement before applying.",
+  ].filter((item): item is string => Boolean(item)));
+  const claimsToVerify = [
+    "Check every requirement match against your actual experience before sending.",
+    "Verify dates, qualifications, project links, and role titles against your records.",
+    "Tailor only where accurate; do not imply experience you cannot honestly explain.",
+  ];
+
+  return {
+    requirementsFound,
+    advertWordingToReview,
+    cvEvidenceThatMayMatch,
+    strongEvidenceToConsider,
+    examplesToPrepare,
+    claimsToVerify,
+  };
+};
+
 const buildSummary = (documentType: CareerSupportDocumentType) => {
+  if (documentType === "cv_job_advert_match") {
+    return "This appears to contain both CV evidence and job-advert requirements. AdminAvenger has prepared match notes to help compare requirements with truthful evidence before applying.";
+  }
+
   if (documentType === "cv") {
     return "This appears to be a CV or resume. AdminAvenger has prepared review notes so the user can highlight strengths, evidence, projects, and gaps before applying.";
   }
@@ -464,9 +611,47 @@ export const buildCareerSupportPack = ({ text }: { text: string }): CareerSuppor
   ]);
   const skills = extractMatchingSignals(normalised, skillSignals);
   const targetRoles = extractMatchingSignals(normalised, roleSignals);
+  const strengthsToHighlight = buildStrengthLabels(normalised, skills);
+  const evidenceToUse = extractLinesMatching(
+    lines,
+    evidenceVerbs,
+    "Add specific examples of work, projects, volunteering, training, or responsibilities the user can evidence.",
+  );
+  const projectsToHighlight = collectSectionLines(
+    lines,
+    ["projects", "portfolio", "github projects"],
+    ["memephant", "adminavenger", "portfolio project", "portfolio app", "github"],
+    "If relevant, add project, portfolio, GitHub, or work-sample evidence.",
+    isUsableProjectDetail,
+  );
+  const experienceToFrame = extractLinesMatching(
+    lines,
+    ["professional experience", "work experience", "volunteer experience", "employment history", "managed", "supported", "delivered"],
+    "Frame experience around truthful responsibilities, actions taken, and outcomes where known.",
+  );
+  const educationAndTraining = collectSectionLines(
+    lines,
+    ["education", "education & training", "education and training", "training"],
+    ["bsc computing and it", "bsc", "open university", "completed modules", "module", "modules", "excel skills training", "gdpr essentials course", "gdpr", "nvq", "degree", "certificate", "certification", "bootcamp", "gcse", "a level", "course", "training", "university"],
+    "Add relevant education, training, certificates, or courses if they support the target role.",
+    isUsableEducationDetail,
+  );
+  const matchFields =
+    documentType === "cv_job_advert_match"
+      ? buildMatchFields({
+          lines,
+          strengths: strengthsToHighlight,
+          evidence: evidenceToUse,
+          projects: projectsToHighlight,
+          experience: experienceToFrame,
+          education: educationAndTraining,
+          normalised,
+        })
+      : undefined;
 
   return {
     documentType,
+    matchMode: documentType === "cv_job_advert_match" ? "cv_job_advert_match" : undefined,
     summary: buildSummary(documentType),
     likelyTargetRoles:
       targetRoles.length > 0
@@ -474,31 +659,18 @@ export const buildCareerSupportPack = ({ text }: { text: string }): CareerSuppor
         : documentType === "job_advert"
           ? ["Check the job title and role family from the advert."]
           : ["Check which role this CV or application is being prepared for."],
-    strengthsToHighlight: buildStrengthLabels(normalised, skills),
-    evidenceToUse: extractLinesMatching(
-      lines,
-      evidenceVerbs,
-      "Add specific examples of work, projects, volunteering, training, or responsibilities the user can evidence.",
-    ),
-    projectsToHighlight: collectSectionLines(
-      lines,
-      ["projects", "portfolio", "github projects"],
-      ["memephant", "adminavenger", "portfolio project", "portfolio app", "github"],
-      "If relevant, add project, portfolio, GitHub, or work-sample evidence.",
-      isUsableProjectDetail,
-    ),
-    experienceToFrame: extractLinesMatching(
-      lines,
-      ["professional experience", "work experience", "volunteer experience", "employment history", "managed", "supported", "delivered"],
-      "Frame experience around truthful responsibilities, actions taken, and outcomes where known.",
-    ),
-    educationAndTraining: collectSectionLines(
-      lines,
-      ["education", "education & training", "education and training", "training"],
-      ["bsc computing and it", "bsc", "open university", "completed modules", "module", "modules", "excel skills training", "gdpr essentials course", "gdpr", "nvq", "degree", "certificate", "certification", "bootcamp", "gcse", "a level", "course", "training", "university"],
-      "Add relevant education, training, certificates, or courses if they support the target role.",
-      isUsableEducationDetail,
-    ),
+    roleClues: documentType === "cv_job_advert_match" ? extractRoleClues(lines, normalised) : undefined,
+    requirementsFound: matchFields?.requirementsFound,
+    cvEvidenceThatMayMatch: matchFields?.cvEvidenceThatMayMatch,
+    strongEvidenceToConsider: matchFields?.strongEvidenceToConsider,
+    advertWordingToReview: matchFields?.advertWordingToReview,
+    examplesToPrepare: matchFields?.examplesToPrepare,
+    claimsToVerify: matchFields?.claimsToVerify,
+    strengthsToHighlight,
+    evidenceToUse,
+    projectsToHighlight,
+    experienceToFrame,
+    educationAndTraining,
     possibleGapsToCheck: buildGaps(documentType, normalised),
     saferRewriteSuggestions: [
       "Turn broad claims into specific examples the user can honestly explain.",

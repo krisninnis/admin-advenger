@@ -332,6 +332,51 @@ Web development course, 2026`,
     expect(validateResultViewModelSafety(model).safe).toBe(true);
   });
 
+  it("builds a match-preparation view model for a CV plus job advert", () => {
+    const careerSupportPack = buildCareerSupportPack({
+      text: `CV
+Professional profile
+Front-end developer with React and TypeScript experience.
+Technical Skills
+React, TypeScript, accessibility, GitHub
+Projects
+AdminAvenger - local-first document preparation prototype.
+Work Experience
+Supported customer service teams.
+
+Job advert: Front End Developer
+About the role
+We are looking for a candidate who can build user interfaces and maintain components.
+Requirements
+Essential skills: React, TypeScript, accessibility, and customer-facing communication.
+Desirable skills: Portfolio or GitHub examples.`,
+    });
+    const model = buildResultViewModel({ careerSupportPack });
+    const flattened = flattenResultViewModelText(model).toLowerCase();
+
+    expect(careerSupportPack.documentType).toBe("cv_job_advert_match");
+    expect(model.title).toBe("CV and job advert match notes");
+    expect(model.bestNextMove?.label).toBe("Compare advert requirements with truthful CV evidence");
+    expect(model.sections.map((section) => section.id)).toEqual(
+      expect.arrayContaining([
+        "career-role-clues",
+        "career-requirements-found",
+        "career-cv-evidence-may-match",
+        "career-strong-evidence-to-consider",
+        "career-advert-wording-to-review",
+        "career-examples-to-prepare",
+        "career-claims-to-verify",
+      ]),
+    );
+    expect(flattened).toContain("requirements found in the advert");
+    expect(flattened).toContain("cv evidence that may match");
+    expect(flattened).not.toContain("match score");
+    expect(flattened).not.toContain("percentage match");
+    expect(flattened).not.toContain("you are qualified");
+    expect(flattened).not.toContain("apply automatically");
+    expect(validateResultViewModelSafety(model).safe).toBe(true);
+  });
+
   it("still produces a useful conservative fallback for unknown admin documents", () => {
     const decision = makeDecision("unknown_admin_dispute", {
       title: "",

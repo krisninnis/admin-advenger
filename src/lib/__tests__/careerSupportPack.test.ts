@@ -71,6 +71,38 @@ Portfolio or GitHub examples preferred.
 Closing date: 30 August 2026
 `;
 
+const syntheticCvWithJobAdvert = `
+CV
+
+Professional profile
+Front-end developer with experience building accessible React and TypeScript interfaces.
+
+Technical Skills
+React, TypeScript, JavaScript, accessibility, GitHub
+
+Projects
+AdminAvenger - local-first document preparation prototype using React and TypeScript.
+
+Work Experience
+Supported customer service teams and improved internal admin workflows.
+
+Education & Training
+Web development bootcamp, 2025
+
+Job advert: Front End Developer
+
+About the role
+We are looking for a candidate who can build user interfaces, maintain components, and work with designers.
+
+Requirements
+Essential skills: React, TypeScript, accessibility, and customer-facing communication.
+Desirable skills: Portfolio or GitHub examples.
+
+Salary: Example salary band
+Location: Remote
+Apply now with your CV.
+`;
+
 const syntheticNoisyCv = `
 CV
 
@@ -120,6 +152,35 @@ Required skills I am developing: React, JavaScript, accessibility.
 
     expect(pack.documentType).toBe("cv");
     expect(pack.summary).toContain("CV or resume");
+  });
+
+  it("detects CV and job advert together as match preparation", () => {
+    expect(detectCareerSupportDocumentType(syntheticCvWithJobAdvert)).toBe("cv_job_advert_match");
+
+    const pack = buildCareerSupportPack({ text: syntheticCvWithJobAdvert });
+
+    expect(pack.documentType).toBe("cv_job_advert_match");
+    expect(pack.matchMode).toBe("cv_job_advert_match");
+    expect(pack.summary).toContain("both CV evidence and job-advert requirements");
+    expect(pack.roleClues?.join(" ").toLowerCase()).toContain("front end developer");
+  });
+
+  it("extracts advert requirements and CV evidence for match preparation", () => {
+    const pack = buildCareerSupportPack({ text: syntheticCvWithJobAdvert });
+    const requirements = pack.requirementsFound?.join("\n").toLowerCase() ?? "";
+    const evidence = pack.cvEvidenceThatMayMatch?.join("\n").toLowerCase() ?? "";
+    const strongEvidence = pack.strongEvidenceToConsider?.join("\n").toLowerCase() ?? "";
+    const advertWording = pack.advertWordingToReview?.join("\n").toLowerCase() ?? "";
+
+    expect(requirements).toContain("react");
+    expect(requirements).toContain("typescript");
+    expect(requirements).toContain("accessibility");
+    expect(evidence).toContain("may match");
+    expect(evidence).toContain("adminavenger");
+    expect(strongEvidence).toContain("adminavenger");
+    expect(advertWording).toContain("we are looking");
+    expect(pack.examplesToPrepare?.join(" ").toLowerCase()).toContain("react and typescript");
+    expect(pack.claimsToVerify?.join(" ").toLowerCase()).toContain("tailor only where accurate");
   });
 
   it("does not turn a synthetic CV into a subscription finding", () => {
@@ -226,6 +287,15 @@ Record keeping, scheduling, data checks, troubleshooting, and practical problem 
     );
   });
 
+  it("creates a match finding instead of a plain CV or plain job-advert finding", () => {
+    const findings = analyseAdminItem(makeAdminItem("CV and advert", syntheticCvWithJobAdvert));
+
+    expect(findings).toHaveLength(1);
+    expect(findings[0].title).toBe("CV and job advert match notes");
+    expect(findings[0].summary).toContain("both CV evidence and job-advert requirements");
+    expect(findings[0].summary).not.toContain("subscription");
+  });
+
   it("still lets normal recurring subscription text use the existing admin finding", () => {
     const subscriptionText = `
 Google Play receipt
@@ -242,12 +312,15 @@ Learn how to cancel.
   });
 
   it("keeps unsafe career promises and automation wording out of generated packs", () => {
-    const pack = buildCareerSupportPack({ text: syntheticCv });
+    const pack = buildCareerSupportPack({ text: syntheticCvWithJobAdvert });
     const text = JSON.stringify(pack).toLowerCase();
 
+    expect(text).not.toContain("match score");
+    expect(text).not.toContain("percentage match");
     expect(text).not.toContain("you will get the job");
     expect(text).not.toContain("guaranteed interviews");
     expect(text).not.toContain("you qualify");
+    expect(text).not.toContain("you are qualified");
     expect(text).not.toContain("employer will like this");
     expect(text).not.toContain("this is the best cv");
     expect(text).not.toContain("this proves experience");

@@ -427,6 +427,13 @@ export function ResultCaseSheet({
       {isCareerSupportResult ? (
         <div className="mt-5 grid gap-4 lg:grid-cols-2">
           {[
+            "career-role-clues",
+            "career-requirements-found",
+            "career-cv-evidence-may-match",
+            "career-strong-evidence-to-consider",
+            "career-advert-wording-to-review",
+            "career-examples-to-prepare",
+            "career-claims-to-verify",
             "career-target-roles",
             "career-strengths",
             "career-evidence",

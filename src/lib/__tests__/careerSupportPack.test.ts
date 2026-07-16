@@ -245,11 +245,93 @@ Portfolio or GitHub examples.
 Build accessible user interfaces.
 `;
 
+const syntheticStrongFrontendCvWithAdvert = `
+CV
+
+Professional Profile
+Junior front-end developer building practical portfolio projects.
+
+Technical Skills
+React, TypeScript, HTML, CSS, JavaScript, GitHub, Vite, Vitest
+
+Projects
+TaskFlow Dashboard
+Built reusable React and TypeScript components for a responsive dashboard.
+Used Vite and Vitest for local development and component tests.
+Published the project on GitHub with notes about the UI patterns.
+
+JOB ADVERT
+Junior Front-End Developer
+
+About the role
+We are hiring a Junior Front-End Developer to help build simple, usable web interfaces for customers.
+
+Responsibilities
+- Build user interfaces using HTML, CSS, JavaScript and React.
+- Work with TypeScript components and reusable UI patterns.
+- Use GitHub, Vite and tests to keep front-end work organised.
+
+Requirements
+- Portfolio projects showing responsive design and accessibility awareness.
+`;
+
+const syntheticStrongDataAdminCvWithAdvert = `
+CV
+
+Professional Profile
+Data administrator with practical spreadsheet and records experience.
+
+Key Skills
+Microsoft Excel, CRM updates, data validation, GDPR, process notes
+
+Work Experience
+Data Administrator
+Maintained CRM records and checked data quality.
+Used Excel formulas, filters and simple reports.
+Wrote process notes for repeat admin tasks.
+Handled GDPR and sensitive records carefully.
+
+JOB ADVERT
+Data Operations Specialist
+
+Responsibilities
+- Maintain CRM records and accurate admin data.
+- Use Excel formulas, filters and data validation checks.
+- Follow GDPR and privacy processes for sensitive information.
+- Write clear process notes and documentation.
+`;
+
+const syntheticDataAdminCvWithFrontendAdvert = `
+CV
+
+Professional Profile
+Data administrator with spreadsheet and records experience.
+
+Key Skills
+Microsoft Excel, CRM updates, records, GDPR
+
+Work Experience
+Data Administrator
+Maintained CRM records and checked data quality.
+Used Excel formulas, filters and simple reports.
+
+JOB ADVERT
+Junior Front-End Developer
+
+Responsibilities
+- Build user interfaces using HTML, CSS, JavaScript and React.
+- Work with TypeScript components and reusable UI patterns.
+- Communicate clearly with designers and support users when needed.
+`;
+
 const syntheticWeakCvWithTechnicalAdvert = `
 CV
 
 Professional Profile
 Looking for a first office role.
+
+Interests
+Technology, gaming and learning about computers.
 
 Work Experience
 Helped at a community event.
@@ -459,6 +541,73 @@ Required skills I am developing: React, JavaScript, accessibility.
     expect(allEvidence).not.toContain("we are looking for someone");
   });
 
+  it("prioritises actionable front-end requirements over about-role intro paragraphs", () => {
+    const pack = buildCareerSupportPack({ text: syntheticStrongFrontendCvWithAdvert });
+    const requirements = pack.requirementsFound ?? [];
+    const requirementText = requirements.join("\n").toLowerCase();
+    const evidenceMapText = pack.requirementEvidenceMap
+      ?.flatMap((item) => [item.requirement, ...item.possibleEvidence])
+      .join("\n")
+      .toLowerCase() ?? "";
+    const cvEvidence = pack.cvEvidenceThatMayMatch?.join("\n").toLowerCase() ?? "";
+
+    expect(pack.documentType).toBe("cv_job_advert_match");
+    expect(requirements[0]?.toLowerCase()).toContain("build user interfaces using html, css, javascript and react");
+    expect(requirements[1]?.toLowerCase()).toContain("typescript components and reusable ui patterns");
+    expect(requirementText).not.toContain("we are hiring a junior front-end developer");
+    expect(evidenceMapText).toContain("taskflow dashboard");
+    expect(evidenceMapText).toContain("react and typescript components");
+    expect(evidenceMapText).toContain("vite and vitest");
+    expect(evidenceMapText).toContain("github");
+    expect(cvEvidence).not.toContain("excel and data handling");
+  });
+
+  it("keeps data/admin evidence focused and removes helper text or headings", () => {
+    const pack = buildCareerSupportPack({ text: syntheticStrongDataAdminCvWithAdvert });
+    const evidenceText = [
+      ...(pack.requirementEvidenceMap ?? []).flatMap((item) => item.possibleEvidence),
+      ...(pack.cvEvidenceThatMayMatch ?? []),
+      ...(pack.strongEvidenceToConsider ?? []),
+    ].join("\n").toLowerCase();
+
+    expect(pack.documentType).toBe("cv_job_advert_match");
+    expect(evidenceText).toContain("crm records");
+    expect(evidenceText).toContain("excel formulas");
+    expect(evidenceText).toContain("gdpr");
+    expect(evidenceText).toContain("process notes");
+    expect(evidenceText).not.toContain("if relevant, add project");
+    expect(evidenceText).not.toContain("add specific examples of work");
+    expect(evidenceText).not.toContain("relevant skills to evidence");
+    expect(evidenceText).not.toMatch(/^work experience$/m);
+    expect(evidenceText).not.toMatch(/^data administrator$/m);
+    expect(evidenceText).not.toMatch(/^education$/m);
+  });
+
+  it("does not use data/admin evidence as developer evidence", () => {
+    const pack = buildCareerSupportPack({ text: syntheticDataAdminCvWithFrontendAdvert });
+    const webItem = pack.requirementEvidenceMap?.find((item) =>
+      item.requirement.toLowerCase().includes("html, css, javascript and react"),
+    );
+    const typeScriptItem = pack.requirementEvidenceMap?.find((item) =>
+      item.requirement.toLowerCase().includes("typescript components"),
+    );
+    const communicationItem = pack.requirementEvidenceMap?.find((item) =>
+      item.requirement.toLowerCase().includes("communicate clearly"),
+    );
+    const cvEvidence = pack.cvEvidenceThatMayMatch?.join("\n").toLowerCase() ?? "";
+
+    expect(pack.documentType).toBe("cv_job_advert_match");
+    expect(webItem?.possibleEvidence.join(" ").toLowerCase()).toContain("no clear cv evidence found");
+    expect(typeScriptItem?.possibleEvidence.join(" ").toLowerCase()).toContain("no clear cv evidence found");
+    expect(webItem?.possibleEvidence.join(" ").toLowerCase()).not.toContain("excel");
+    expect(webItem?.possibleEvidence.join(" ").toLowerCase()).not.toContain("crm");
+    expect(typeScriptItem?.possibleEvidence.join(" ").toLowerCase()).not.toContain("records");
+    expect(communicationItem?.possibleEvidence.join(" ").toLowerCase()).toContain("no clear cv evidence found");
+    expect(communicationItem?.possibleEvidence.join(" ").toLowerCase()).not.toContain("excel");
+    expect(cvEvidence).not.toContain("excel and data handling");
+    expect(cvEvidence).not.toContain("crm records");
+  });
+
   it("moves overclaiming CV match claims into verification notes instead of strong evidence", () => {
     const pack = buildCareerSupportPack({ text: syntheticOverclaimingCvWithAdvert });
     const output = JSON.stringify(pack).toLowerCase();
@@ -506,11 +655,19 @@ Required skills I am developing: React, JavaScript, accessibility.
       ?.flatMap((item) => item.possibleEvidence)
       .join("\n")
       .toLowerCase() ?? "";
+    const allEvidence = [
+      mapText,
+      pack.cvEvidenceThatMayMatch?.join("\n").toLowerCase() ?? "",
+      pack.strongEvidenceToConsider?.join("\n").toLowerCase() ?? "",
+    ].join("\n");
 
     expect(pack.documentType).toBe("cv_job_advert_match");
     expect(mapText).toContain("no clear cv evidence found");
     expect(mapText).not.toContain("react and typescript project work mentioned");
     expect(mapText).not.toContain("github or portfolio evidence mentioned");
+    expect(allEvidence).not.toContain("technology, gaming and learning about computers");
+    expect(allEvidence).not.toContain("if relevant, add project");
+    expect(allEvidence).not.toContain("add specific examples of work");
   });
 
   it("does not turn a synthetic CV into a subscription finding", () => {

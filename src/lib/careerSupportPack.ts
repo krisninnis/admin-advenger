@@ -225,16 +225,22 @@ const skillSignals = [
 
 const evidenceVerbs = [
   "built",
+  "building",
   "created",
+  "creating",
   "managed",
   "supported",
+  "supporting",
   "improved",
+  "improving",
   "reduced",
   "organised",
+  "organising",
   "trained",
   "volunteered",
   "delivered",
   "maintained",
+  "maintaining",
 ];
 
 const confidenceFromSignals = (
@@ -321,10 +327,13 @@ const extractMatchingSignals = (normalised: string, signals: string[]) =>
   unique(signals.filter((signal) => normalised.includes(signal)));
 
 const sectionHeadingSignals = [
+  "about me",
   "contact",
   "professional profile",
   "profile",
+  "interests",
   "personal statement",
+  "skills",
   "key skills",
   "technical skills",
   "other technical skills",
@@ -365,6 +374,31 @@ const isLikelySectionHeading = (line: string) => {
     sectionHeadingSignals.some((signal) => normalisedLine === signal)
   );
 };
+
+const templateEvidencePatterns = [
+  /^if relevant, add project, portfolio, github, or work-sample evidence\.?$/i,
+  /^add specific examples of work, projects, volunteering, training, or responsibilities the user can evidence\.?$/i,
+  /^identify 3 to 5 strengths that match the target role and can be backed up with examples\.?$/i,
+  /^relevant skills to evidence with truthful examples\.?$/i,
+  /^frame experience around truthful responsibilities, actions taken, and outcomes where known\.?$/i,
+  /^add relevant education, training, certificates, or courses if they support the target role\.?$/i,
+];
+
+const isTemplateEvidenceLine = (line: string) =>
+  templateEvidencePatterns.some((pattern) => pattern.test(line.trim()));
+
+const bareRoleTitlePattern =
+  /^(?:data|office|care|retail|customer|family support|freelance|front[- ]?end|frontend|software|web|project|operations|marketing)\s+(?:administrator|assistant|developer|support role|support assistant|analyst|specialist|coordinator|manager)$/i;
+
+const hasConcreteEvidenceVerb = (line: string) =>
+  /\b(?:built|created|used|maintained|organised|organized|supported|helped|handled|delivered|improved|managed|updated|tracked|tested|wrote|designed|developed|implemented|stored|checked)\b/i.test(
+    line,
+  );
+
+const isBareRoleTitle = (line: string) =>
+  line.trim().length <= 60 &&
+  bareRoleTitlePattern.test(line.trim()) &&
+  !hasConcreteEvidenceVerb(line);
 
 const isContactDetail = (line: string) =>
   /@/.test(line) ||
@@ -410,6 +444,8 @@ const isGenericAwarenessLine = (line: string) => {
 
 const isUsableCvDetail = (line: string) =>
   !isLikelySectionHeading(line) &&
+  !isTemplateEvidenceLine(line) &&
+  !isBareRoleTitle(line) &&
   !isContactDetail(line) &&
   !isProfileLine(line) &&
   !isBroadSkillsLine(line);
@@ -420,11 +456,12 @@ const isUsableProjectDetail = (line: string) =>
 const isUsableEducationDetail = (line: string) =>
   isUsableCvDetail(line) && !isGenericAwarenessLine(line);
 
-const isUsableRequirementDetail = (line: string) =>
-  !isLikelySectionHeading(line) && !isContactDetail(line) && !isProfileLine(line);
-
 const isUsableEvidenceMapLine = (line: string) =>
-  !isLikelySectionHeading(line) && !isContactDetail(line) && !isProfileLine(line);
+  !isLikelySectionHeading(line) &&
+  !isTemplateEvidenceLine(line) &&
+  !isBareRoleTitle(line) &&
+  !isContactDetail(line) &&
+  !isProfileLine(line);
 
 const riskyClaimPatterns = [
   /\bbest\b/i,
@@ -461,7 +498,11 @@ const hasUnsupportedProjectContext = (line: string, lines: string[]) => {
 };
 
 const isUnsafeEvidenceLine = (line: string, lines: string[]) =>
-  isRiskyClaimLine(line) || hasUnsupportedProjectContext(line, lines);
+  isTemplateEvidenceLine(line) ||
+  isLikelySectionHeading(line) ||
+  isBareRoleTitle(line) ||
+  isRiskyClaimLine(line) ||
+  hasUnsupportedProjectContext(line, lines);
 
 const filterSafeEvidenceLines = (items: string[], sourceLines: string[]) =>
   items.filter((item) => !isUnsafeEvidenceLine(item, sourceLines));
@@ -662,10 +703,10 @@ type CareerMatchCategory =
   | "education_computing";
 
 const categorySignals: Record<CareerMatchCategory, string[]> = {
-  records_admin_data: ["record", "records", "admin", "data", "document", "documents", "letter", "letters", "spreadsheet", "spreadsheets", "crm"],
-  excel_spreadsheets: ["excel", "spreadsheet", "spreadsheets", "formula", "formulas", "pivot"],
+  records_admin_data: ["record", "records", "admin", "data", "validation", "validated", "document", "documents", "documentation", "process notes", "letter", "letters", "spreadsheet", "spreadsheets", "crm"],
+  excel_spreadsheets: ["excel", "spreadsheet", "spreadsheets", "formula", "formulas", "filter", "filters", "pivot"],
   it_software_support: ["software", "systems", "support", "technical", "helpdesk", "information technology"],
-  web_development: ["web", "website", "html", "css", "javascript", "typescript", "react", "python", "development"],
+  web_development: ["web", "website", "html", "css", "javascript", "typescript", "react", "python", "development", "vite", "vitest", "testing", "test", "tests", "ui", "interface", "interfaces", "component", "components", "responsive"],
   communication: ["communication", "customer", "support requests", "respond", "escalation", "stakeholder"],
   gdpr_privacy: ["gdpr", "privacy", "sensitive data", "sensitive information", "confidential", "data protection"],
   organisation: ["organised", "organized", "organisation", "organization", "scheduling", "appointments", "medication"],
@@ -703,6 +744,99 @@ const categoryPriority: CareerMatchCategory[] = [
   "learning_new_systems",
 ];
 
+const requirementSectionHeadingPattern =
+  /^(responsibilities|requirements|essential skills|essential criteria|desirable skills|desirable criteria|required skills)\b/i;
+
+const aboutRoleHeadingPattern = /^about the role\b/i;
+
+const cleanListLine = (line: string) =>
+  line
+    .replace(/^\s*[-*•]\s*/, "")
+    .replace(/^(?:responsibilities|requirements|essential skills|essential criteria|desirable skills|desirable criteria|required skills)\s*:\s*/i, "")
+    .trim();
+
+const isBulletLikeLine = (line: string) => /^\s*[-*•]\s+/.test(line);
+
+const isActionableRequirementLine = (line: string) => {
+  const cleanedLine = cleanListLine(line);
+
+  return (
+    cleanedLine.length > 0 &&
+    !aboutRoleHeadingPattern.test(cleanedLine) &&
+    !isLikelySectionHeading(cleanedLine) &&
+    !isContactDetail(cleanedLine) &&
+    !isProfileLine(cleanedLine)
+  );
+};
+
+const extractAdvertRequirements = (advertLines: string[]) => {
+  const sectionRequirements: { line: string; bullet: boolean }[] = [];
+  const fallbackRequirements: string[] = [];
+  let inRequirementSection = false;
+
+  advertLines.forEach((line) => {
+    const trimmedLine = line.trim();
+
+    if (aboutRoleHeadingPattern.test(trimmedLine)) {
+      inRequirementSection = false;
+      return;
+    }
+
+    if (requirementSectionHeadingPattern.test(trimmedLine)) {
+      inRequirementSection = true;
+      const inlineRequirement = cleanListLine(trimmedLine);
+
+      if (
+        inlineRequirement &&
+        inlineRequirement !== trimmedLine &&
+        isActionableRequirementLine(inlineRequirement)
+      ) {
+        sectionRequirements.push({
+          line: inlineRequirement,
+          bullet: isBulletLikeLine(trimmedLine),
+        });
+      }
+      return;
+    }
+
+    if (advertSectionMarkerPattern.test(trimmedLine) && !requirementSectionHeadingPattern.test(trimmedLine)) {
+      inRequirementSection = false;
+      return;
+    }
+
+    if (inRequirementSection && isActionableRequirementLine(trimmedLine)) {
+      sectionRequirements.push({
+        line: cleanListLine(trimmedLine),
+        bullet: isBulletLikeLine(trimmedLine),
+      });
+      return;
+    }
+
+    const normalisedLine = normaliseText(trimmedLine);
+    const isRequirementSignal = requirementSignals.some((signal) => normalisedLine.includes(signal));
+
+    if (
+      !inRequirementSection &&
+      isRequirementSignal &&
+      isActionableRequirementLine(trimmedLine) &&
+      !aboutRoleHeadingPattern.test(trimmedLine)
+    ) {
+      fallbackRequirements.push(cleanListLine(trimmedLine));
+    }
+  });
+
+  const bulletRequirements = sectionRequirements
+    .filter((item) => item.bullet)
+    .map((item) => item.line);
+  const sectionLines = sectionRequirements.map((item) => item.line);
+  const requirements =
+    bulletRequirements.length > 0
+      ? [...bulletRequirements, ...sectionLines.filter((line) => !bulletRequirements.includes(line))]
+      : sectionLines;
+
+  return unique(requirements.length > 0 ? requirements : fallbackRequirements).slice(0, 8);
+};
+
 const categoriesForRequirement = (requirement: string): CareerMatchCategory[] => {
   const normalisedRequirement = normaliseText(requirement);
   const categories = (Object.keys(categorySignals) as CareerMatchCategory[]).filter((category) =>
@@ -731,19 +865,91 @@ const categoriesForRequirement = (requirement: string): CareerMatchCategory[] =>
     : ["learning_new_systems"];
 };
 
+const categoriesForText = (text: string): CareerMatchCategory[] => {
+  const normalised = normaliseText(text);
+  const categories = (Object.keys(categorySignals) as CareerMatchCategory[]).filter((category) =>
+    categorySignals[category].some((signal) => normalised.includes(signal)),
+  );
+
+  if (/\bit\b/.test(normalised) || hasAny(normalised, ["software", "technical", "technology", "technologies"])) {
+    categories.push("it_software_support", "education_computing");
+  }
+
+  if (hasAny(normalised, ["front-end", "frontend", "front end", "developer", "interface", "interfaces", "ui", "component", "components", "responsive"])) {
+    categories.push("web_development", "projects_portfolio");
+  }
+
+  if (hasAny(normalised, ["accessibility", "accessible"])) {
+    categories.push("web_development");
+  }
+
+  return Array.from(new Set(categories)).sort(
+    (a, b) => categoryPriority.indexOf(a) - categoryPriority.indexOf(b),
+  );
+};
+
+const advertRelevantCategories = (requirements: string[], advertNormalised: string) =>
+  Array.from(new Set([
+    ...requirements.flatMap((requirement) => categoriesForRequirement(requirement)),
+    ...categoriesForText(advertNormalised),
+  ]));
+
+const relevantStrengthCategories: Record<string, CareerMatchCategory[]> = {
+  "React and TypeScript project work": ["web_development", "projects_portfolio"],
+  "Web development fundamentals": ["web_development", "projects_portfolio"],
+  "Excel and data handling": ["excel_spreadsheets", "records_admin_data"],
+  "Record keeping and organisation": ["records_admin_data", "organisation"],
+  "Technical/practical problem solving": ["it_software_support", "problem_solving", "web_development"],
+  "GitHub portfolio evidence": ["projects_portfolio", "web_development"],
+  "Relevant skills to evidence with truthful examples": [],
+};
+
+const hasCategoryOverlap = (itemCategories: CareerMatchCategory[], relevantCategories: CareerMatchCategory[]) =>
+  itemCategories.length > 0 &&
+  itemCategories.some((category) => relevantCategories.includes(category));
+
+const filterStrengthsForAdvert = (strengths: string[], relevantCategories: CareerMatchCategory[]) =>
+  strengths.filter((strength) => {
+    if (isTemplateEvidenceLine(strength)) {
+      return false;
+    }
+
+    const categories = relevantStrengthCategories[strength] ?? categoriesForText(strength);
+
+    return hasCategoryOverlap(categories, relevantCategories);
+  });
+
+const filterEvidenceForAdvert = (items: string[], relevantCategories: CareerMatchCategory[]) =>
+  items.filter((item) => {
+    if (isTemplateEvidenceLine(item) || isLikelySectionHeading(item) || isBareRoleTitle(item)) {
+      return false;
+    }
+
+    const categories = categoriesForText(item);
+
+    return categories.length === 0 || hasCategoryOverlap(categories, relevantCategories);
+  });
+
 const collectCvEvidenceForCategory = (
   cvLines: string[],
   cvNormalised: string,
   category: CareerMatchCategory,
 ) => {
   const signals = categorySignals[category];
-  const matches = cvLines.filter((line) => {
+  const matches = cvLines.filter((line, index) => {
     const normalisedLine = normaliseText(line);
+    const nextLine = cvLines[index + 1] ?? "";
+    const previousLine = cvLines[index - 1] ?? "";
+    const nextLineMatches = signals.some((signal) => normaliseText(nextLine).includes(signal));
+    const isProjectTitleContext =
+      (category === "web_development" || category === "projects_portfolio") &&
+      (normaliseText(previousLine) === "projects" || /\b(?:dashboard|website|app|project|portfolio)\b/i.test(line)) &&
+      nextLineMatches;
 
     return (
       isUsableEvidenceMapLine(line) &&
       !isUnsafeEvidenceLine(line, cvLines) &&
-      signals.some((signal) => normalisedLine.includes(signal))
+      (signals.some((signal) => normalisedLine.includes(signal)) || isProjectTitleContext)
     );
   });
 
@@ -798,6 +1004,7 @@ const buildRequirementEvidenceMap = ({
 const buildMatchFields = ({
   advertLines,
   cvLines,
+  advertNormalised,
   strengths,
   evidence,
   projects,
@@ -808,6 +1015,7 @@ const buildMatchFields = ({
 }: {
   advertLines: string[];
   cvLines: string[];
+  advertNormalised: string;
   strengths: string[];
   evidence: string[];
   projects: string[];
@@ -816,28 +1024,28 @@ const buildMatchFields = ({
   claimHygieneNotes: string[];
   normalised: string;
 }) => {
-  const requirementsFound = collectSectionLines(
-    advertLines,
-    ["about the role", "responsibilities", "requirements", "essential skills", "desirable skills", "required skills"],
-    requirementSignals,
-    "Review the job advert requirements and copy out the parts that matter most.",
-    isUsableRequirementDetail,
-  );
+  const requirementsFound = extractAdvertRequirements(advertLines);
+  const relevantCategories = advertRelevantCategories(requirementsFound, advertNormalised);
+  const relevantStrengths = filterStrengthsForAdvert(strengths, relevantCategories);
+  const relevantProjects = filterEvidenceForAdvert(projects, relevantCategories);
+  const relevantEvidence = filterEvidenceForAdvert(evidence, relevantCategories);
+  const relevantExperience = filterEvidenceForAdvert(experience, relevantCategories);
+  const relevantEducation = filterEvidenceForAdvert(education, relevantCategories);
   const advertWordingToReview = extractLinesMatching(
     advertLines,
     ["we are looking", "requirements", "responsibilities", "essential", "desirable", "required skills", "portfolio", "github"],
     "Review the advert wording and tailor only where accurate.",
   );
   const cvEvidenceThatMayMatch = unique([
-    ...strengths.map((strength) => `${strength} may match advert wording if backed by examples.`),
-    ...projects,
-    ...experience,
-    ...education,
+    ...relevantStrengths.map((strength) => `${strength} may match advert wording if backed by examples.`),
+    ...relevantProjects,
+    ...relevantExperience,
+    ...relevantEducation,
   ]).slice(0, 7);
   const strongEvidenceToConsider = unique([
-    ...projects,
-    ...evidence,
-    ...(claimHygieneNotes.length > 0 ? [] : strengths),
+    ...relevantProjects,
+    ...relevantEvidence,
+    ...(claimHygieneNotes.length > 0 ? [] : relevantStrengths),
   ]).slice(0, 6);
   const examplesToPrepare = unique([
     hasAny(normalised, ["react", "typescript"])
@@ -990,6 +1198,7 @@ export const buildCareerSupportPack = ({ text }: { text: string }): CareerSuppor
       ? buildMatchFields({
           advertLines,
           cvLines,
+          advertNormalised,
           strengths: strengthsToHighlight,
           evidence: evidenceToUse,
           projects: projectsToHighlight,

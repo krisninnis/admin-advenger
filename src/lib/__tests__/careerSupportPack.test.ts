@@ -214,6 +214,54 @@ Requirements
 - Clear communication and willingness to learn new systems.
 `;
 
+const syntheticOverclaimingCvWithAdvert = `
+CV
+
+Professional Profile
+I am the best junior developer available and guaranteed to be a strong hire.
+
+Technical Skills
+Expert React
+Expert TypeScript
+Expert-level skills in everything
+
+Projects
+AI Business Platform
+Built a complete AI SaaS platform.
+Automated all business processes.
+No public link available.
+No code available.
+
+Trading Bot
+Generated profitable trades and automated financial decisions.
+Delivered perfect results.
+
+JOB ADVERT
+Junior Front End Developer
+
+Requirements
+React and TypeScript project experience.
+Portfolio or GitHub examples.
+Build accessible user interfaces.
+`;
+
+const syntheticWeakCvWithTechnicalAdvert = `
+CV
+
+Professional Profile
+Looking for a first office role.
+
+Work Experience
+Helped at a community event.
+
+JOB ADVERT
+Junior Front End Developer
+
+Requirements
+React and TypeScript project experience.
+Portfolio or GitHub examples.
+`;
+
 const syntheticNoisyCv = `
 CV
 
@@ -409,6 +457,60 @@ Required skills I am developing: React, JavaScript, accessibility.
     expect(allEvidence).not.toContain("support users with basic it");
     expect(allEvidence).not.toContain("maintain accurate records, spreadsheets and admin data");
     expect(allEvidence).not.toContain("we are looking for someone");
+  });
+
+  it("moves overclaiming CV match claims into verification notes instead of strong evidence", () => {
+    const pack = buildCareerSupportPack({ text: syntheticOverclaimingCvWithAdvert });
+    const output = JSON.stringify(pack).toLowerCase();
+    const evidenceMapText = pack.requirementEvidenceMap
+      ?.flatMap((item) => item.possibleEvidence)
+      .join("\n")
+      .toLowerCase() ?? "";
+    const strongEvidence = pack.strongEvidenceToConsider?.join("\n").toLowerCase() ?? "";
+    const verificationText = [
+      ...(pack.claimsToVerify ?? []),
+      ...pack.possibleGapsToCheck,
+    ].join("\n").toLowerCase();
+
+    expect(pack.documentType).toBe("cv_job_advert_match");
+    expect(evidenceMapText).not.toContain("expert react");
+    expect(evidenceMapText).not.toContain("expert typescript");
+    expect(evidenceMapText).not.toContain("guaranteed");
+    expect(evidenceMapText).not.toContain("best junior developer");
+    expect(evidenceMapText).not.toContain("delivered perfect results");
+    expect(evidenceMapText).not.toContain("built a complete ai saas platform");
+    expect(evidenceMapText).not.toContain("automated all business processes");
+    expect(evidenceMapText).toContain("claim needs concrete project evidence");
+    expect(strongEvidence).not.toContain("ai business platform");
+    expect(strongEvidence).not.toContain("complete ai saas platform");
+    expect(strongEvidence).not.toContain("automated all business processes");
+    expect(strongEvidence).not.toContain("profitable trades");
+    expect(strongEvidence).not.toContain("trading bot");
+    expect(strongEvidence).not.toContain("perfect results");
+    expect(verificationText).toContain("claim mentioned in cv");
+    expect(verificationText).toContain("advanced-skill claims");
+    expect(verificationText).toContain("project claim needs a link");
+    expect(verificationText).toContain("financial-performance claims");
+    expect(output).not.toContain("match score");
+    expect(output).not.toContain("percentage match");
+    expect(output).not.toContain("you qualify");
+    expect(output).not.toContain("you are qualified");
+    expect(output).not.toContain("apply automatically");
+    expect(output).not.toContain("submit automatically");
+    expect(output).not.toContain("contact employers automatically");
+  });
+
+  it("keeps weak CV match evidence cautious instead of inventing technical proof", () => {
+    const pack = buildCareerSupportPack({ text: syntheticWeakCvWithTechnicalAdvert });
+    const mapText = pack.requirementEvidenceMap
+      ?.flatMap((item) => item.possibleEvidence)
+      .join("\n")
+      .toLowerCase() ?? "";
+
+    expect(pack.documentType).toBe("cv_job_advert_match");
+    expect(mapText).toContain("no clear cv evidence found");
+    expect(mapText).not.toContain("react and typescript project work mentioned");
+    expect(mapText).not.toContain("github or portfolio evidence mentioned");
   });
 
   it("does not turn a synthetic CV into a subscription finding", () => {

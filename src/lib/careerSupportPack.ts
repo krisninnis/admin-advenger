@@ -426,6 +426,81 @@ const isUsableRequirementDetail = (line: string) =>
 const isUsableEvidenceMapLine = (line: string) =>
   !isLikelySectionHeading(line) && !isContactDetail(line) && !isProfileLine(line);
 
+const riskyClaimPatterns = [
+  /\bbest\b/i,
+  /\bguaranteed?\b/i,
+  /\bexpert(?:-level)?\b/i,
+  /\bperfect\b/i,
+  /\bcomplete\s+(?:ai\s+)?saas\s+platform\b/i,
+  /\bcomplete\s+ai\s+.*\bplatform\b/i,
+  /\bautomated\s+all\s+business\s+processes\b/i,
+  /\bno\s+public\s+link\s+available\b/i,
+  /\bno\s+code\s+available\b/i,
+  /\bprofitable\s+trades?\b/i,
+  /\btrading\s+bot\b/i,
+  /\bautomated\s+financial\s+decisions?\b/i,
+  /\bdelivered\s+perfect\s+results\b/i,
+  /\bai\s+business\s+platform\b/i,
+];
+
+const isRiskyClaimLine = (line: string) =>
+  riskyClaimPatterns.some((pattern) => pattern.test(line));
+
+const hasUnsupportedProjectContext = (line: string, lines: string[]) => {
+  const lineIndex = lines.findIndex((candidate) => candidate === line);
+
+  if (lineIndex === -1) {
+    return false;
+  }
+
+  const nearbyText = lines
+    .slice(Math.max(0, lineIndex - 1), Math.min(lines.length, lineIndex + 4))
+    .join(" ");
+
+  return /no\s+public\s+link\s+available|no\s+code\s+available/i.test(nearbyText);
+};
+
+const isUnsafeEvidenceLine = (line: string, lines: string[]) =>
+  isRiskyClaimLine(line) || hasUnsupportedProjectContext(line, lines);
+
+const filterSafeEvidenceLines = (items: string[], sourceLines: string[]) =>
+  items.filter((item) => !isUnsafeEvidenceLine(item, sourceLines));
+
+const hasRiskySkillClaim = (normalised: string) =>
+  /\bexpert(?:-level)?\s+(?:react|typescript|javascript|developer|skills?)\b/.test(normalised) ||
+  /\bexpert-level\s+skills\b/.test(normalised);
+
+const buildClaimHygieneNotes = (lines: string[]) => {
+  const text = lines.join("\n");
+  const notes: string[] = [];
+
+  if (/\bbest\b|\bguaranteed?\b|\bperfect\b/i.test(text)) {
+    notes.push("Avoid certainty or market-leading wording in an application; use specific, truthful examples instead.");
+  }
+
+  if (/\bexpert(?:-level)?\b/i.test(text)) {
+    notes.push("Verify advanced-skill claims before using them; add specific projects, dates, tools, or examples.");
+  }
+
+  if (
+    /\bcomplete\s+(?:ai\s+)?saas\s+platform\b|\bcomplete\s+ai\s+.*\bplatform\b|\bautomated\s+all\s+business\s+processes\b|\bno\s+public\s+link\s+available\b|\bno\s+code\s+available\b|\bai\s+business\s+platform\b/i.test(
+      text,
+    )
+  ) {
+    notes.push("Project claim needs a link, example, repo, screenshot, or specific explanation before using.");
+  }
+
+  if (/\bprofitable\s+trades?\b|\bautomated\s+financial\s+decisions?\b/i.test(text)) {
+    notes.push("Do not include trading or financial-performance claims unless they are relevant, accurate, and safe to evidence for the role.");
+  }
+
+  if (notes.length > 0) {
+    notes.unshift("Claim mentioned in CV - verify before using.");
+  }
+
+  return unique(notes);
+};
+
 const buildStrengthLabels = (normalised: string, skills: string[]) => {
   const labels: string[] = [];
 
@@ -667,6 +742,7 @@ const collectCvEvidenceForCategory = (
 
     return (
       isUsableEvidenceMapLine(line) &&
+      !isUnsafeEvidenceLine(line, cvLines) &&
       signals.some((signal) => normalisedLine.includes(signal))
     );
   });
@@ -676,7 +752,9 @@ const collectCvEvidenceForCategory = (
       matches.push("HTML, CSS, JavaScript, or Python skills mentioned in the CV.");
     }
 
-    if (hasAny(cvNormalised, ["react", "typescript"])) {
+    if (hasRiskySkillClaim(cvNormalised)) {
+      matches.push("React or TypeScript is claimed in the CV, but the claim needs concrete project evidence before use.");
+    } else if (hasAny(cvNormalised, ["react", "typescript"])) {
       matches.push("React and TypeScript project work mentioned in the CV.");
     }
   }
@@ -725,6 +803,7 @@ const buildMatchFields = ({
   projects,
   experience,
   education,
+  claimHygieneNotes,
   normalised,
 }: {
   advertLines: string[];
@@ -734,6 +813,7 @@ const buildMatchFields = ({
   projects: string[];
   experience: string[];
   education: string[];
+  claimHygieneNotes: string[];
   normalised: string;
 }) => {
   const requirementsFound = collectSectionLines(
@@ -757,7 +837,7 @@ const buildMatchFields = ({
   const strongEvidenceToConsider = unique([
     ...projects,
     ...evidence,
-    ...strengths,
+    ...(claimHygieneNotes.length > 0 ? [] : strengths),
   ]).slice(0, 6);
   const examplesToPrepare = unique([
     hasAny(normalised, ["react", "typescript"])
@@ -775,6 +855,7 @@ const buildMatchFields = ({
     "Check every requirement match against your actual experience before sending.",
     "Verify dates, qualifications, project links, and role titles against your records.",
     "Tailor only where accurate; do not imply experience you cannot honestly explain.",
+    ...claimHygieneNotes,
   ];
   const requirementEvidenceMap = buildRequirementEvidenceMap({
     requirements: requirementsFound,
@@ -877,30 +958,33 @@ export const buildCareerSupportPack = ({ text }: { text: string }): CareerSuppor
     documentType === "cv_job_advert_match" ? cvNormalised : normalised,
     skills,
   );
-  const evidenceToUse = extractLinesMatching(
+  const claimHygieneNotes =
+    documentType === "cv_job_advert_match" ? buildClaimHygieneNotes(cvLines) : [];
+  const evidenceSourceLines = documentType === "cv_job_advert_match" ? cvLines : lines;
+  const evidenceToUse = filterSafeEvidenceLines(extractLinesMatching(
     documentType === "cv_job_advert_match" ? cvLines : lines,
     evidenceVerbs,
     "Add specific examples of work, projects, volunteering, training, or responsibilities the user can evidence.",
-  );
-  const projectsToHighlight = collectSectionLines(
+  ), evidenceSourceLines);
+  const projectsToHighlight = filterSafeEvidenceLines(collectSectionLines(
     documentType === "cv_job_advert_match" ? cvLines : lines,
     ["projects", "portfolio", "github projects"],
     ["memephant", "adminavenger", "portfolio project", "portfolio app", "github"],
     "If relevant, add project, portfolio, GitHub, or work-sample evidence.",
     isUsableProjectDetail,
-  );
-  const experienceToFrame = extractLinesMatching(
+  ), evidenceSourceLines);
+  const experienceToFrame = filterSafeEvidenceLines(extractLinesMatching(
     documentType === "cv_job_advert_match" ? cvLines : lines,
     ["professional experience", "work experience", "volunteer experience", "employment history", "managed", "supported", "delivered"],
     "Frame experience around truthful responsibilities, actions taken, and outcomes where known.",
-  );
-  const educationAndTraining = collectSectionLines(
+  ), evidenceSourceLines);
+  const educationAndTraining = filterSafeEvidenceLines(collectSectionLines(
     documentType === "cv_job_advert_match" ? cvLines : lines,
     ["education", "education & training", "education and training", "training"],
     ["bsc computing and it", "bsc", "open university", "completed modules", "module", "modules", "excel skills training", "gdpr essentials course", "gdpr", "nvq", "degree", "certificate", "certification", "bootcamp", "gcse", "a level", "course", "training", "university"],
     "Add relevant education, training, certificates, or courses if they support the target role.",
     isUsableEducationDetail,
-  );
+  ), evidenceSourceLines);
   const matchFields =
     documentType === "cv_job_advert_match"
       ? buildMatchFields({
@@ -911,6 +995,7 @@ export const buildCareerSupportPack = ({ text }: { text: string }): CareerSuppor
           projects: projectsToHighlight,
           experience: experienceToFrame,
           education: educationAndTraining,
+          claimHygieneNotes,
           normalised: cvNormalised,
         })
       : undefined;
@@ -938,7 +1023,10 @@ export const buildCareerSupportPack = ({ text }: { text: string }): CareerSuppor
     projectsToHighlight,
     experienceToFrame,
     educationAndTraining,
-    possibleGapsToCheck: buildGaps(documentType, normalised),
+    possibleGapsToCheck: unique([
+      ...buildGaps(documentType, normalised),
+      ...claimHygieneNotes,
+    ]),
     saferRewriteSuggestions: [
       "Turn broad claims into specific examples the user can honestly explain.",
       "Use wording from the job advert only where it genuinely matches the user's experience.",

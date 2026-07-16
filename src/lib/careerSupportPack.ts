@@ -69,10 +69,40 @@ const cvSectionMarkerPattern =
 const advertSectionMarkerPattern =
   /^(job advert|job description|about the role|responsibilities|requirements|essential skills|desirable skills|required skills|how to apply|salary|location)\b/i;
 
+const explicitCvMarkerPattern =
+  /^(cv|curriculum vitae|resume)\b/i;
+
+const explicitAdvertMarkerPattern =
+  /^(job advert|job description)\b/i;
+
 const splitCareerMatchText = (text: string) => {
   const rawLines = text.split(/\r?\n/);
+  const firstExplicitCvIndex = rawLines.findIndex((line) =>
+    explicitCvMarkerPattern.test(line.trim()),
+  );
+  const firstExplicitAdvertIndex = rawLines.findIndex((line) =>
+    explicitAdvertMarkerPattern.test(line.trim()),
+  );
   const cvIndex = rawLines.findIndex((line) => cvSectionMarkerPattern.test(line.trim()));
   const advertIndex = rawLines.findIndex((line) => advertSectionMarkerPattern.test(line.trim()));
+  const hasExplicitBoundary =
+    firstExplicitCvIndex !== -1 &&
+    firstExplicitAdvertIndex !== -1 &&
+    firstExplicitCvIndex !== firstExplicitAdvertIndex;
+
+  if (hasExplicitBoundary) {
+    if (firstExplicitCvIndex < firstExplicitAdvertIndex) {
+      return {
+        cvText: rawLines.slice(firstExplicitCvIndex, firstExplicitAdvertIndex).join("\n"),
+        advertText: rawLines.slice(firstExplicitAdvertIndex).join("\n"),
+      };
+    }
+
+    return {
+      cvText: rawLines.slice(firstExplicitCvIndex).join("\n"),
+      advertText: rawLines.slice(firstExplicitAdvertIndex, firstExplicitCvIndex).join("\n"),
+    };
+  }
 
   if (cvIndex === -1 || advertIndex === -1 || cvIndex === advertIndex) {
     return {
@@ -557,12 +587,12 @@ type CareerMatchCategory =
   | "education_computing";
 
 const categorySignals: Record<CareerMatchCategory, string[]> = {
-  records_admin_data: ["record", "records", "admin", "data", "spreadsheet", "spreadsheets", "crm"],
+  records_admin_data: ["record", "records", "admin", "data", "document", "documents", "letter", "letters", "spreadsheet", "spreadsheets", "crm"],
   excel_spreadsheets: ["excel", "spreadsheet", "spreadsheets", "formula", "formulas", "pivot"],
   it_software_support: ["software", "systems", "support", "technical", "helpdesk", "information technology"],
   web_development: ["web", "website", "html", "css", "javascript", "typescript", "react", "python", "development"],
   communication: ["communication", "customer", "support requests", "respond", "escalation", "stakeholder"],
-  gdpr_privacy: ["gdpr", "privacy", "sensitive data", "confidential", "data protection"],
+  gdpr_privacy: ["gdpr", "privacy", "sensitive data", "sensitive information", "confidential", "data protection"],
   organisation: ["organised", "organized", "organisation", "organization", "scheduling", "appointments", "medication"],
   problem_solving: ["problem", "troubleshooting", "solving", "debug", "fixed", "resolved"],
   learning_new_systems: ["learn", "learning", "new systems", "training", "course", "bootcamp", "module"],
@@ -655,7 +685,7 @@ const collectCvEvidenceForCategory = (
     matches.push("GitHub or portfolio evidence mentioned in the CV.");
   }
 
-  return unique(matches).slice(0, 4);
+  return unique(matches).slice(0, 6);
 };
 
 const buildRequirementEvidenceMap = ({
@@ -673,7 +703,7 @@ const buildRequirementEvidenceMap = ({
       categories.flatMap((category) =>
         collectCvEvidenceForCategory(cvLines, cvNormalised, category),
       ),
-    ).slice(0, 7);
+    ).slice(0, 10);
     const primaryCategory = categories[0];
 
     return {

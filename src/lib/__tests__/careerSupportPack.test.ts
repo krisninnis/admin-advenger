@@ -160,6 +160,60 @@ Requirements
 GDPR handling, privacy awareness, and accurate record keeping.
 `;
 
+const syntheticCvFirstThenAdvert = `
+CV
+Name: Sam Taylor
+
+Professional Profile
+Entry-level IT and data support applicant with practical admin experience.
+
+Key Skills
+- HTML, CSS and basic JavaScript
+- GitHub portfolio in progress
+- Microsoft Excel, including formulas, filters and simple reports
+- GDPR and handling sensitive information
+
+Projects
+Personal Portfolio Website
+Built a simple website using HTML, CSS and JavaScript.
+Used GitHub to store code and track changes.
+Study Tracker Spreadsheet
+Used filters, formulas and conditional formatting.
+
+Work Experience
+Care Administrator
+Maintained appointment records and care-related notes.
+Organised documents, letters and important dates.
+Handled sensitive information carefully.
+
+Family Support Role
+Helped organise appointments and paperwork.
+
+Customer Assistant
+Supported customers and kept basic records accurate.
+
+Education and Training
+Excel Skills Training
+GDPR Essentials Course
+
+JOB ADVERT
+Junior IT & Data Support Assistant
+
+About the role
+We are looking for someone to support internal users and help keep data accurate.
+
+Responsibilities
+- Support users with basic IT, software and digital system queries.
+- Maintain accurate records, spreadsheets and admin data.
+- Help clean, organise and check data for accuracy.
+- Use Microsoft Excel for data entry, formulas, filtering and simple reports.
+- Follow GDPR and privacy processes when handling sensitive information.
+
+Requirements
+- Good attention to detail.
+- Clear communication and willingness to learn new systems.
+`;
+
 const syntheticNoisyCv = `
 CV
 
@@ -311,6 +365,50 @@ Required skills I am developing: React, JavaScript, accessibility.
     expect(evidence).toContain("gdpr essentials course");
     expect(evidence).toContain("confidential customer records");
     expect(gdprItem?.verificationNote.toLowerCase()).toContain("check before using");
+  });
+
+  it("keeps CV-first and JOB-ADVERT-second source splitting clean", () => {
+    const pack = buildCareerSupportPack({ text: syntheticCvFirstThenAdvert });
+    const roleClues = pack.roleClues?.join("\n").toLowerCase() ?? "";
+    const requirements = pack.requirementsFound?.join("\n").toLowerCase() ?? "";
+    const evidenceMap = pack.requirementEvidenceMap ?? [];
+    const allEvidence = evidenceMap
+      .flatMap((item) => item.possibleEvidence)
+      .join("\n")
+      .toLowerCase();
+    const recordsItem = evidenceMap.find((item) =>
+      item.requirement.toLowerCase().includes("maintain accurate records"),
+    );
+    const excelItem = evidenceMap.find((item) =>
+      item.requirement.toLowerCase().includes("microsoft excel"),
+    );
+    const gdprItem = evidenceMap.find((item) =>
+      item.requirement.toLowerCase().includes("gdpr"),
+    );
+
+    expect(pack.documentType).toBe("cv_job_advert_match");
+    expect(roleClues).toContain("junior it & data support assistant");
+    expect(roleClues).not.toContain("care administrator");
+    expect(roleClues).not.toContain("family support role");
+    expect(roleClues).not.toContain("customer assistant");
+    expect(requirements).toContain("support users with basic it, software and digital system queries");
+    expect(requirements).toContain("maintain accurate records, spreadsheets and admin data");
+    expect(requirements).toContain("use microsoft excel for data entry, formulas, filtering and simple reports");
+    expect(requirements).not.toContain("html, css and basic javascript");
+    expect(requirements).not.toContain("github portfolio in progress");
+    expect(requirements).not.toContain("personal portfolio website");
+    expect(requirements).not.toContain("built a simple website");
+    expect(requirements).not.toContain("used github to store code");
+    expect(recordsItem?.possibleEvidence.join(" ").toLowerCase()).toContain("maintained appointment records");
+    expect(recordsItem?.possibleEvidence.join(" ").toLowerCase()).toContain("organised documents");
+    expect(excelItem?.possibleEvidence.join(" ").toLowerCase()).toContain("microsoft excel");
+    expect(excelItem?.possibleEvidence.join(" ").toLowerCase()).toContain("study tracker spreadsheet");
+    expect(excelItem?.possibleEvidence.join(" ").toLowerCase()).toContain("used filters, formulas");
+    expect(gdprItem?.possibleEvidence.join(" ").toLowerCase()).toContain("gdpr and handling sensitive information");
+    expect(gdprItem?.possibleEvidence.join(" ").toLowerCase()).toContain("handled sensitive information carefully");
+    expect(allEvidence).not.toContain("support users with basic it");
+    expect(allEvidence).not.toContain("maintain accurate records, spreadsheets and admin data");
+    expect(allEvidence).not.toContain("we are looking for someone");
   });
 
   it("does not turn a synthetic CV into a subscription finding", () => {

@@ -1420,6 +1420,8 @@ const buildRequirementEvidenceMap = ({
     const exampleToPrepare =
       isReproduceDocumentRequirement(requirement) && !asksForSpecificDeveloperEvidence(requirement)
         ? "Prepare a short example of reproducing an issue, recording the steps and outcome, and explaining what happened."
+        : isPrivacyCustomerRecordRequirement(requirement)
+          ? "Prepare a short example of following a privacy or confidentiality process when updating or handling customer records."
         : isSupportRoleRequirement(requirement) && !asksForSpecificDeveloperEvidence(requirement)
           ? isCustomerHelpRequirement(requirement)
             ? "Prepare a short example of helping a customer understand the issue, what you did, and what happened next."

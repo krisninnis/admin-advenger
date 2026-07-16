@@ -744,6 +744,11 @@ Required skills I am developing: React, JavaScript, accessibility.
     expect(privacyItem?.possibleEvidence[0].toLowerCase()).toContain("gdpr and customer records");
     expect(privacyItem?.possibleEvidence.join(" ").toLowerCase()).toContain("gdpr essentials course");
     expect(privacyItem?.possibleEvidence.join(" ").toLowerCase()).toContain("confidential customer records");
+    expect(privacyItem?.exampleToPrepare.toLowerCase()).toContain("privacy or confidentiality");
+    expect(privacyItem?.exampleToPrepare.toLowerCase()).toContain("customer records");
+    expect(privacyItem?.exampleToPrepare.toLowerCase()).not.toContain("technical issue");
+    expect(privacyItem?.exampleToPrepare.toLowerCase()).not.toContain("platform step");
+    expect(privacyItem?.exampleToPrepare.toLowerCase()).not.toContain("reproduce an issue");
     expect(digitalItem?.possibleEvidence[0].toLowerCase()).toContain("html");
     expect(digitalItem?.possibleEvidence.join(" ").toLowerCase()).toContain("built a simple html and css portfolio page");
     expect(digitalItem?.possibleEvidence.join(" ").toLowerCase()).toContain("github portfolio");

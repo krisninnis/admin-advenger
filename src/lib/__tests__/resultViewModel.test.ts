@@ -626,11 +626,26 @@ Show basic digital or web understanding.`,
       item.requirement.toLowerCase().includes("reproduce simple issues"),
     );
     const digitalEvidence = digital?.possibleEvidence.join("\n").toLowerCase() ?? "";
+    const privacyChecklistBlock = extractChecklistRequirementBlock(
+      model.draftOrChecklist?.body ?? "",
+      "Follow privacy processes when updating customer records.",
+    );
 
     expect(privacy?.possibleEvidence[0].toLowerCase()).toContain("gdpr and customer records");
     expect(privacy?.possibleEvidence.join(" ").toLowerCase()).toContain("confidential customer records");
     expect(privacy?.possibleEvidence.join(" ").toLowerCase()).toContain("gdpr essentials course");
     expect(privacy?.possibleEvidence.join(" ").toLowerCase()).not.toContain("learning new software tools");
+    expect(privacy?.exampleToPrepare.toLowerCase()).toContain("privacy or confidentiality");
+    expect(privacy?.exampleToPrepare.toLowerCase()).toContain("customer records");
+    expect(privacy?.exampleToPrepare.toLowerCase()).not.toContain("technical issue");
+    expect(privacy?.exampleToPrepare.toLowerCase()).not.toContain("platform step");
+    expect(privacy?.exampleToPrepare.toLowerCase()).not.toContain("reproduce an issue");
+    expect(privacyChecklistBlock).toContain(
+      "prepare a short example of following a privacy or confidentiality process when updating or handling customer records",
+    );
+    expect(privacyChecklistBlock).not.toContain("technical issue");
+    expect(privacyChecklistBlock).not.toContain("platform step");
+    expect(privacyChecklistBlock).not.toContain("reproduce an issue");
     expect(digital?.possibleEvidence[0].toLowerCase()).toContain("html");
     expect(digitalEvidence).toContain("built a simple html and css portfolio page");
     expect(digitalEvidence).toContain("github portfolio in progress");

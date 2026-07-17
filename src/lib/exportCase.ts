@@ -2,6 +2,11 @@ import type { TrustedGuidanceCard } from "../data/trustedGuidanceCards";
 import type { AdminCase, AdminDraft, AdminFinding, AdminItem, ImpactEntry, MoneyImpact, OpportunityCard } from "../types";
 import { formatMoneyImpact as formatOpportunityMoney } from "./opportunityCards";
 import { formatMoneyImpact } from "./impactLedger";
+import {
+  getEmailSafetyOrdinarySignals,
+  getEmailSafetyRiskBandExplanation,
+  getEmailSafetyRiskBandLabel,
+} from "./suspiciousEmail";
 
 type ExportCaseOptions = {
   adminCase: AdminCase;
@@ -294,15 +299,18 @@ const createEmailSafetySection = (adminCase: AdminCase) => {
   }
 
   const assessment = adminCase.emailSafetyAssessment;
+  const cannotKnow = assessment.cannotKnow ?? [
+    "AdminAvenger cannot confirm who sent the message.",
+    "AdminAvenger cannot confirm whether links, payment details, or account warnings should be trusted.",
+    "AdminAvenger cannot determine whether this is a scam.",
+  ];
 
   return `## Email Safety Check
 
-AdminAvenger does not confirm fraud or safety. It flags risk signals so the user can verify before acting.
+AdminAvenger does not determine whether a message is a scam. It flags recognised signals so the user can verify before acting.
 
-- **Overall risk label:** ${assessment.overallLabel}
-- **Normal/lower-risk signals:** ${assessment.safePercent}%
-- **Caution signals:** ${assessment.cautionPercent}%
-- **Threat signals:** ${assessment.threatPercent}%
+- **Plain-language band:** ${getEmailSafetyRiskBandLabel(assessment)}
+- **Band explanation:** ${getEmailSafetyRiskBandExplanation(assessment)}
 - **Sender:** ${fallback(assessment.senderAddress)}
 - **Reply-to:** ${fallback(assessment.replyToAddress)}
 - **Next safety action:** ${assessment.nextAction}
@@ -312,9 +320,13 @@ AdminAvenger does not confirm fraud or safety. It flags risk signals so the user
 
 ${asMarkdownList([...assessment.riskSignals, ...assessment.cautionSignals])}
 
-### Safe/Normal Signals
+### Ordinary Or Inconclusive Details
 
-${asMarkdownList(assessment.safeSignals)}
+${asMarkdownList(getEmailSafetyOrdinarySignals(assessment))}
+
+### What AdminAvenger Cannot Confirm
+
+${asMarkdownList(cannotKnow)}
 
 `;
 };

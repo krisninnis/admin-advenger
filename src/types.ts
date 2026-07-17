@@ -160,23 +160,28 @@ export type OpportunityCard = {
   updatedAt: string;
 };
 
-export type EmailSafetyLevel = "lower_risk" | "caution" | "high_risk";
+export type EmailSafetyRiskBand =
+  | "lower_risk_verify"
+  | "verify_before_acting"
+  | "high_risk_signals";
 
 export type EmailSafetyAssessment = {
   isEmailLike: boolean;
-  overallLevel: EmailSafetyLevel;
-  overallLabel: "Looks lower risk" | "Caution - verify before acting" | "High risk signals found";
-  safePercent: number;
-  cautionPercent: number;
-  threatPercent: number;
+  riskBand: EmailSafetyRiskBand;
+  riskBandLabel:
+    | "Looks lower risk, but still verify"
+    | "Caution - verify before acting"
+    | "High-risk signals found";
+  riskBandExplanation: string;
   riskSignals: string[];
   cautionSignals: string[];
-  safeSignals: string[];
+  ordinarySignals: string[];
   senderAddress?: string;
   replyToAddress?: string;
   senderDomain?: string;
   replyToDomain?: string;
   replyToMismatch: boolean;
+  cannotKnow: string[];
   nextAction: string;
   disclaimer: string;
 };

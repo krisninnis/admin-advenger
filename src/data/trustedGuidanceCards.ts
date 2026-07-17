@@ -170,7 +170,7 @@ export const trustedGuidanceCards: TrustedGuidanceCard[] = [
     caseType: "suspicious_email_risk",
     title: "Suspicious email checklist",
     shortSummary:
-      "Use this to check an email that has warning signs before you click, reply, or share any details. AdminAvenger cannot prove an email is a scam or safe — it helps you verify before acting.",
+      "Use this to check an email that has warning signs before you click, reply, or share any details. AdminAvenger cannot determine whether a message is a scam - it helps you verify before acting.",
     safeChecklist: [
       "Check the sender address and the reply-to address.",
       "Do not click payment or login links from unexpected emails.",

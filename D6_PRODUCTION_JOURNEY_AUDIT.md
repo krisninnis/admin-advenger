@@ -82,7 +82,7 @@ Notes:
 - [x] Confirm the document is not described as uploaded
 - [x] Confirm an adviser export can be created
 
-Result: [!] Core production journey passed; polish retest required after deployment.
+Result: [x] Passed in production on 2026-07-17.
 
 Notes:
 
@@ -94,7 +94,8 @@ Notes:
 - Low issue found: source title was recorded as pasted text.
 - Low issue found: doubled bullets and punctuation appeared in Markdown export.
 - Local fixes implemented for guidance matching, guided draft persistence, flattened-PDF sender extraction, attachment source titles, and Markdown export formatting.
-- Production retest required after deployment.
+- Production polish deployed and retested successfully. Sender/provider and PDF source title were preserved, the exact edited draft was saved and included in Draft History, refund guidance was absent, Markdown bullets and punctuation were correct, no saving or recovery was counted, and nothing was sent automatically.
+- Minor cosmetic note: the Markdown export contains some extra blank lines, with no functional or safety impact.
 
 ## Journey 3 - Upload a DOCX or TXT file
 

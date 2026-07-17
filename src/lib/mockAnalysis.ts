@@ -21,7 +21,7 @@ import {
   isTravelDisruptionRecoveryText,
   isTravelEvidenceCheckText,
 } from "./moneyParsers";
-import { assessEmailSafety, createEmailSafetyFinding } from "./suspiciousEmail";
+import { assessEmailSafety, createEmailSafetyFinding, getEmailSafetyRiskBand } from "./suspiciousEmail";
 
 type CategoryRule = {
   category: FindingCategory;
@@ -282,9 +282,7 @@ const hasStrongEmailSafetyOverride = (
   assessment: ReturnType<typeof assessEmailSafety>,
 ) =>
   assessment.isEmailLike &&
-  (assessment.overallLabel === "High risk signals found" ||
-    assessment.overallLevel === "high_risk" ||
-    assessment.threatPercent >= 50 ||
+  (getEmailSafetyRiskBand(assessment) === "high_risk_signals" ||
     (assessment.riskSignals.includes("Asks for bank details") &&
       assessment.riskSignals.includes("Reply-to mismatch") &&
       assessment.cautionSignals.includes("Urgent pressure")));

@@ -8,6 +8,7 @@ import type { OutcomeConfirmationValues } from "../components/OutcomeConfirmatio
 import { formatMoneyImpact } from "../lib/impactLedger";
 import { createPreparedMessageDraft } from "../lib/messageDrafts";
 import { deriveOpportunityCard } from "../lib/opportunityCards";
+import { getEmailSafetyRiskBandLabel } from "../lib/suspiciousEmail";
 import { getTrustedGuidanceForOpportunity } from "../lib/trustedGuidanceMatcher";
 import { useEffect, useMemo, useState } from "react";
 import type { ServiceStatus } from "../services/analysisService";
@@ -126,7 +127,9 @@ const getCaseSwitcherLabel = (adminCase: AdminCase, allImpactEntries: ImpactEntr
   const moneyLabel = getSwitcherMoneyLabel(adminCase, allImpactEntries);
   const referenceOrContext =
     getSwitcherReference(adminCase) ??
-    adminCase.emailSafetyAssessment?.overallLabel ??
+    (adminCase.emailSafetyAssessment
+      ? getEmailSafetyRiskBandLabel(adminCase.emailSafetyAssessment)
+      : undefined) ??
     adminCase.valueLabel;
 
   return [label, moneyLabel, referenceOrContext].filter(Boolean).join(" - ");

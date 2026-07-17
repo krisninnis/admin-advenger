@@ -1,8 +1,8 @@
-import type { AdminFinding, AdminItem, EmailSafetyAssessment } from "../types";
+import type { AdminFinding, AdminItem, EmailSafetyAssessment, EmailSafetyRiskBand } from "../types";
 
 // Deterministic, local email safety assessor.
 //
-// It never says an email is definitely safe or definitely fraud. It only
+// It never decides whether an email is a scam or actually from the organisation. It only
 // surfaces signals so the user can verify before acting.
 
 const emailAddressPattern = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
@@ -76,18 +76,84 @@ export const isEmailLikeText = (text: string, sourceType?: AdminItem["sourceType
   /\bmailto:/i.test(text) ||
   (text.match(emailAddressPattern)?.length ?? 0) > 0;
 
-const percentParts = (safeScore: number, cautionScore: number, threatScore: number) => {
-  const total = Math.max(1, safeScore + cautionScore + threatScore);
-  const safePercent = Math.round((safeScore / total) * 100);
-  const cautionPercent = Math.round((cautionScore / total) * 100);
-  const threatPercent = Math.max(0, 100 - safePercent - cautionPercent);
+type LegacyEmailSafetyLevel = "lower_risk" | "caution" | "high_risk";
 
-  return {
-    safePercent,
-    cautionPercent,
-    threatPercent,
-  };
+const riskBandContent: Record<
+  EmailSafetyRiskBand,
+  {
+    label: EmailSafetyAssessment["riskBandLabel"];
+    explanation: string;
+    nextAction: string;
+  }
+> = {
+  high_risk_signals: {
+    label: "High-risk signals found",
+    explanation:
+      "Several warning signs were found. Do not use links, phone numbers or payment details from this message until you have verified the organisation independently.",
+    nextAction:
+      "Do not use links, phone numbers, attachments, or payment details from this message. Verify through an official website, statement, trusted account, or another independently sourced contact route.",
+  },
+  verify_before_acting: {
+    label: "Caution - verify before acting",
+    explanation:
+      "Some details need checking. Verify the sender using contact details from an official website, statement or trusted account before acting.",
+    nextAction:
+      "Do not rely on links or contact details in this message. Open the organisation's official website or app yourself, or use contact details from a trusted statement or account.",
+  },
+  lower_risk_verify: {
+    label: "Looks lower risk, but still verify",
+    explanation:
+      "Fewer recognised warning signs were found, but AdminAvenger cannot confirm who actually sent the message. Verify important requests independently before acting.",
+    nextAction:
+      "Fewer warning signs were recognised, but still verify important requests through an official website, trusted account, or independent contact route before sharing personal, payment, or login details.",
+  },
 };
+
+const riskBandFromScores = (
+  cautionScore: number,
+  threatScore: number,
+  threatSignals: string[],
+): EmailSafetyRiskBand => {
+  if (threatScore >= 9 || threatSignals.length >= 4) {
+    return "high_risk_signals";
+  }
+
+  if (threatScore >= 3 || cautionScore >= 4) {
+    return "verify_before_acting";
+  }
+
+  return "lower_risk_verify";
+};
+
+const legacyLevelToRiskBand = (level?: LegacyEmailSafetyLevel): EmailSafetyRiskBand | undefined => {
+  if (level === "high_risk") {
+    return "high_risk_signals";
+  }
+
+  if (level === "caution") {
+    return "verify_before_acting";
+  }
+
+  if (level === "lower_risk") {
+    return "lower_risk_verify";
+  }
+
+  return undefined;
+};
+
+export const getEmailSafetyRiskBand = (assessment: EmailSafetyAssessment): EmailSafetyRiskBand =>
+  assessment.riskBand ??
+  legacyLevelToRiskBand((assessment as { overallLevel?: LegacyEmailSafetyLevel }).overallLevel) ??
+  "verify_before_acting";
+
+export const getEmailSafetyRiskBandLabel = (assessment: EmailSafetyAssessment) =>
+  assessment.riskBandLabel ?? riskBandContent[getEmailSafetyRiskBand(assessment)].label;
+
+export const getEmailSafetyRiskBandExplanation = (assessment: EmailSafetyAssessment) =>
+  assessment.riskBandExplanation ?? riskBandContent[getEmailSafetyRiskBand(assessment)].explanation;
+
+export const getEmailSafetyOrdinarySignals = (assessment: EmailSafetyAssessment) =>
+  assessment.ordinarySignals ?? (assessment as { safeSignals?: string[] }).safeSignals ?? [];
 
 export const assessEmailSafety = (
   text: string,
@@ -137,7 +203,7 @@ export const assessEmailSafety = (
     spellingConcernPattern.test(text) ? "Generic or unusual wording" : undefined,
   ].filter((signal): signal is string => Boolean(signal));
 
-  const safeSignals = [
+  const ordinarySignals = [
     knownProviderPattern.test(text) && !urgentPressurePattern.test(text)
       ? "Known provider wording without urgent pressure"
       : undefined,
@@ -157,54 +223,38 @@ export const assessEmailSafety = (
 
   const threatScore = threatSignals.length * 3;
   const cautionScore = cautionSignals.length * 2 + (senderAddress ? 0 : 1);
-  const safeScore = Math.max(1, safeSignals.length * 2);
-  const { safePercent, cautionPercent, threatPercent } = percentParts(
-    safeScore,
-    cautionScore,
-    threatScore,
-  );
-  const overallLevel =
-    threatScore >= 9 || threatSignals.length >= 4
-      ? "high_risk"
-      : threatScore >= 3 || cautionScore >= 4
-        ? "caution"
-        : "lower_risk";
-  const overallLabel =
-    overallLevel === "high_risk"
-      ? "High risk signals found"
-      : overallLevel === "caution"
-        ? "Caution - verify before acting"
-        : "Looks lower risk";
-  const nextAction =
-    overallLevel === "high_risk"
-      ? "Do not click links, open attachments, or share login/payment details from this email. Verify through the official website/app or contact the provider using a trusted number."
-      : overallLevel === "caution"
-        ? "Do not use links in the email if unsure. Open the provider's official website or app directly and check your account there."
-        : "This email does not show obvious high-risk signals, but still check before sharing personal or payment details.";
+  const riskBand = riskBandFromScores(cautionScore, threatScore, threatSignals);
+  const bandContent = riskBandContent[riskBand];
 
   return {
     isEmailLike: isEmailLikeText(text, sourceType),
-    overallLevel,
-    overallLabel,
-    safePercent,
-    cautionPercent,
-    threatPercent,
+    riskBand,
+    riskBandLabel: bandContent.label,
+    riskBandExplanation: bandContent.explanation,
     riskSignals: threatSignals,
     cautionSignals,
-    safeSignals,
+    ordinarySignals,
     senderAddress,
     replyToAddress,
     senderDomain,
     replyToDomain,
     replyToMismatch,
-    nextAction,
+    cannotKnow: [
+      "AdminAvenger cannot confirm the sender's identity.",
+      "AdminAvenger cannot confirm whether an organisation actually sent this message.",
+      "AdminAvenger cannot confirm whether any link is trustworthy.",
+      "AdminAvenger cannot confirm whether payment details actually belong to the organisation.",
+      "AdminAvenger cannot determine whether this is a scam.",
+      "AdminAvenger cannot confirm whether you owe money or whether an account is actually at risk.",
+    ],
+    nextAction: bandContent.nextAction,
     disclaimer:
-      "AdminAvenger flags risk signals only. It does not confirm fraud and does not confirm that an email is safe.",
+      "AdminAvenger flags recognised signals only. It cannot confirm who sent the message, payment details, links, money owed, or account risk.",
   };
 };
 
 export const isSuspiciousEmail = (text: string) =>
-  assessEmailSafety(text).overallLevel === "high_risk";
+  assessEmailSafety(text).riskBand === "high_risk_signals";
 
 export const assessSuspiciousEmail = assessEmailSafety;
 
@@ -216,21 +266,21 @@ export const createEmailSafetyFinding = (
   itemId: item.id,
   category: "unknown",
   title:
-    assessment.overallLevel === "high_risk"
+    getEmailSafetyRiskBand(assessment) === "high_risk_signals"
       ? "Email needs safety check"
       : "Email safety check",
   summary:
-    assessment.overallLevel === "high_risk"
+    getEmailSafetyRiskBand(assessment) === "high_risk_signals"
       ? "This message has warning signs. Check carefully before clicking links, replying, opening attachments, or sharing payment/login details."
-      : "This email has safety signals worth recording. AdminAvenger does not confirm fraud or safety.",
+      : "This message has signals worth recording. AdminAvenger cannot confirm who sent it or whether it actually came from the organisation.",
   whyItMatters:
     "Risky emails can pressure people into sharing sensitive information. This case records the safety signals so the user can decide what to do.",
   suggestedAction:
-    assessment.overallLevel === "high_risk"
+    getEmailSafetyRiskBand(assessment) === "high_risk_signals"
       ? "Use the email safety check. If unsure, open the provider's official website or app directly instead of using links in this email."
       : assessment.nextAction,
-  urgency: assessment.overallLevel === "high_risk" ? "high" : "medium",
-  confidence: assessment.overallLevel === "lower_risk" ? "low" : "medium",
+  urgency: getEmailSafetyRiskBand(assessment) === "high_risk_signals" ? "high" : "medium",
+  confidence: getEmailSafetyRiskBand(assessment) === "lower_risk_verify" ? "low" : "medium",
   status: "new",
   createdAt: new Date().toISOString(),
 });

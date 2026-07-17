@@ -21,7 +21,12 @@ import {
   isTravelDisruptionRecoveryText,
   parseMoneyAmount,
 } from "./moneyParsers";
-import { assessEmailSafety } from "./suspiciousEmail";
+import {
+  assessEmailSafety,
+  getEmailSafetyOrdinarySignals,
+  getEmailSafetyRiskBandExplanation,
+  getEmailSafetyRiskBandLabel,
+} from "./suspiciousEmail";
 
 const emailSafetyNextAction =
   "Use the email safety check. If unsure, open the provider's official website or app directly instead of using links in this email.";
@@ -140,18 +145,16 @@ const evidenceForFinding = (
     const suspicious = assessEmailSafety(`${item.title}\n${item.rawText}`, item.sourceType);
 
     return [
-      createEvidence(caseId, "Overall result", suspicious.overallLabel, "detected"),
-      createEvidence(caseId, "Normal/lower-risk signals", `${suspicious.safePercent}%`, "detected"),
-      createEvidence(caseId, "Caution signals", `${suspicious.cautionPercent}%`, "detected"),
-      createEvidence(caseId, "Threat signals", `${suspicious.threatPercent}%`, "detected"),
+      createEvidence(caseId, "Overall result", getEmailSafetyRiskBandLabel(suspicious), "detected"),
+      createEvidence(caseId, "Band explanation", getEmailSafetyRiskBandExplanation(suspicious), "detected"),
       ...suspicious.riskSignals.map((signal) =>
         createEvidence(caseId, "Risk signal", signal, "detected"),
       ),
       ...suspicious.cautionSignals.map((signal) =>
         createEvidence(caseId, "Caution signal", signal, "detected"),
       ),
-      ...suspicious.safeSignals.map((signal) =>
-        createEvidence(caseId, "Safe/normal signal", signal, "detected"),
+      ...getEmailSafetyOrdinarySignals(suspicious).map((signal) =>
+        createEvidence(caseId, "Ordinary or inconclusive detail", signal, "detected"),
       ),
       ...(suspicious.senderAddress
         ? [createEvidence(caseId, "Sender address", suspicious.senderAddress)]
@@ -172,7 +175,7 @@ const evidenceForFinding = (
       createEvidence(
         caseId,
         "Safety disclaimer",
-        "Risk warning — user should verify before acting. Not confirmed as fraud.",
+        "Detected-signal warning - user should verify independently before acting. Not a scam determination.",
         "manual",
       ),
       createEvidence(
@@ -668,7 +671,7 @@ export const createAdminCase = (finding: AdminFinding, item: AdminItem): AdminCa
           ? `${formatCurrency(travelRecovery.recoveryAmount)} potential recovery`
           : "Potential recovery amount needs checking"
       : isEmailSafetyCase
-        ? emailSafetyAssessment.overallLabel
+        ? getEmailSafetyRiskBandLabel(emailSafetyAssessment)
       : isCareerSupportCase
         ? "Career preparation only"
       : isDecisionEngineCase

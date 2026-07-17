@@ -23,7 +23,12 @@ import {
   isTravelEvidenceCheckText,
   parseMoneyAmount,
 } from "./moneyParsers";
-import { assessEmailSafety } from "./suspiciousEmail";
+import {
+  assessEmailSafety,
+  getEmailSafetyRiskBand,
+  getEmailSafetyRiskBandExplanation,
+  getEmailSafetyRiskBandLabel,
+} from "./suspiciousEmail";
 
 const pound = String.fromCharCode(163);
 const moneyPattern = /(?:GBP\s*|\u00a3\s*|\?\s*)?(\d+(?:,\d{3})*(?:\.\d{1,2})?)/i;
@@ -361,17 +366,17 @@ export const deriveOpportunityCard = (
 
   if (opportunityType === "suspicious_email_risk") {
     const suspicious = adminCase.emailSafetyAssessment ?? assessEmailSafety(text);
+    const riskBand = getEmailSafetyRiskBand(suspicious);
 
     return {
       id: `opportunity-${adminCase.id}`,
       caseId: adminCase.id,
       opportunityType,
       title: "Email needs safety check",
-      plainEnglishSummary:
-        "This message has warning signs. Check carefully before clicking links, replying, opening attachments, or sharing payment/login details.",
+      plainEnglishSummary: `${getEmailSafetyRiskBandLabel(suspicious)}. ${getEmailSafetyRiskBandExplanation(suspicious)}`,
       opportunityNote:
-        "AdminAvenger does not count this as a saving or recovery. It is a risk warning so you can verify before acting.",
-      statusLabel: "Risk warning - verify before acting",
+        "AdminAvenger does not count this as a saving or recovery. It is a detected-signal warning so you can verify before acting.",
+      statusLabel: getEmailSafetyRiskBandLabel(suspicious),
       evidenceFound: [
         ...suspicious.riskSignals,
         ...suspicious.cautionSignals,
@@ -379,11 +384,11 @@ export const deriveOpportunityCard = (
         suspicious.replyToAddress ? `Reply-to: ${suspicious.replyToAddress}` : undefined,
       ].filter((entry): entry is string => Boolean(entry)),
       missingInformation: [
+        ...(suspicious.cannotKnow ?? []),
         "Whether you were expecting this message",
-        "Whether the sender address matches the real provider",
+        "Whether the sender address matches an independently checked contact route",
       ],
-      nextBestAction:
-        "Use the email safety check. If unsure, open the provider's official website or app directly instead of using links in this email.",
+      nextBestAction: suspicious.nextAction,
       recommendedPathSteps: [
         "Do not click links or open attachments from the email.",
         "Check the sender address and reply-to address.",
@@ -392,9 +397,9 @@ export const deriveOpportunityCard = (
         "Report or delete the email only after you have decided.",
       ],
       riskLevel:
-        suspicious.overallLevel === "high_risk"
+        riskBand === "high_risk_signals"
           ? "high"
-          : suspicious.overallLevel === "caution"
+          : riskBand === "verify_before_acting"
             ? "medium"
             : "low",
       confidenceLabel: adminCase.confidence,

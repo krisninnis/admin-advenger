@@ -1,4 +1,10 @@
 import type { EmailSafetyAssessment } from "../types";
+import {
+  getEmailSafetyOrdinarySignals,
+  getEmailSafetyRiskBand,
+  getEmailSafetyRiskBandExplanation,
+  getEmailSafetyRiskBandLabel,
+} from "../lib/suspiciousEmail";
 
 type EmailSafetyModalProps = {
   assessment: EmailSafetyAssessment;
@@ -6,10 +12,10 @@ type EmailSafetyModalProps = {
   onSaveCase?: () => void;
 };
 
-const levelStyles: Record<EmailSafetyAssessment["overallLevel"], string> = {
-  lower_risk: "border-emerald-300/30 bg-emerald-300/10 text-emerald-50",
-  caution: "border-amber-300/30 bg-amber-300/10 text-amber-50",
-  high_risk: "border-rose-300/30 bg-rose-300/10 text-rose-50",
+const levelStyles: Record<ReturnType<typeof getEmailSafetyRiskBand>, string> = {
+  lower_risk_verify: "border-emerald-300/30 bg-emerald-300/10 text-emerald-50",
+  verify_before_acting: "border-amber-300/30 bg-amber-300/10 text-amber-50",
+  high_risk_signals: "border-rose-300/30 bg-rose-300/10 text-rose-50",
 };
 
 function SignalList({ title, items }: { title: string; items: string[] }) {
@@ -30,12 +36,14 @@ export function EmailSafetyModal({
   onClose,
   onSaveCase,
 }: EmailSafetyModalProps) {
-  const donutStyle = {
-    background: `conic-gradient(#10b981 0 ${assessment.safePercent}%, #f59e0b ${assessment.safePercent}% ${
-      assessment.safePercent + assessment.cautionPercent
-    }%, #fb7185 ${assessment.safePercent + assessment.cautionPercent}% 100%)`,
-  };
-  const meaningfulRisk = assessment.overallLevel !== "lower_risk";
+  const riskBand = getEmailSafetyRiskBand(assessment);
+  const meaningfulRisk = riskBand !== "lower_risk_verify";
+  const ordinarySignals = getEmailSafetyOrdinarySignals(assessment);
+  const cannotKnow = assessment.cannotKnow ?? [
+    "AdminAvenger cannot confirm who sent the message.",
+    "AdminAvenger cannot confirm whether links, payment details, or account warnings should be trusted.",
+    "AdminAvenger cannot determine whether this is a scam.",
+  ];
 
   return (
     <div
@@ -64,23 +72,29 @@ export function EmailSafetyModal({
           </button>
         </div>
 
-        <div className={`mt-5 rounded-lg border p-4 ${levelStyles[assessment.overallLevel]}`}>
+        <div className={`mt-5 rounded-lg border p-4 ${levelStyles[riskBand]}`}>
           <p className="text-sm font-bold uppercase tracking-wider">Overall result</p>
-          <p className="mt-2 text-xl font-bold">{assessment.overallLabel}</p>
+          <p className="mt-2 text-xl font-bold">{getEmailSafetyRiskBandLabel(assessment)}</p>
+          <p className="mt-2 text-sm leading-6 opacity-90">
+            {getEmailSafetyRiskBandExplanation(assessment)}
+          </p>
           <p className="mt-2 text-sm leading-6 opacity-90">{assessment.disclaimer}</p>
         </div>
 
         <div className="mt-5 grid gap-5 lg:grid-cols-[220px_1fr]">
           <div className="rounded-lg border border-white/10 bg-slate-950/60 p-4">
-            <div className="mx-auto flex h-40 w-40 items-center justify-center rounded-full" style={donutStyle}>
-              <div className="flex h-24 w-24 items-center justify-center rounded-full bg-slate-950 text-center text-xs font-bold leading-5 text-white">
-                Signal<br />mix
-              </div>
-            </div>
-            <div className="mt-4 space-y-2 text-sm leading-6 text-slate-300">
-              <p>Normal signals: {assessment.safePercent}%</p>
-              <p>Caution signals: {assessment.cautionPercent}%</p>
-              <p>Threat signals: {assessment.threatPercent}%</p>
+            <h3 className="text-sm font-bold uppercase tracking-wider text-slate-300">
+              What this means
+            </h3>
+            <div className="mt-3 space-y-3 text-sm leading-6 text-slate-300">
+              <p>
+                AdminAvenger compares recognised warning signs with ordinary-looking details.
+                It does not decide whether the message actually came from the organisation.
+              </p>
+              <p>
+                Use contact details from an official website, trusted account, statement, or
+                another independent source before acting.
+              </p>
             </div>
           </div>
 
@@ -89,8 +103,19 @@ export function EmailSafetyModal({
               title="Risk signals found"
               items={[...assessment.riskSignals, ...assessment.cautionSignals]}
             />
-            <SignalList title="Normal or lower-risk signals found" items={assessment.safeSignals} />
+            <SignalList title="Ordinary or inconclusive details found" items={ordinarySignals} />
           </div>
+        </div>
+
+        <div className="mt-5 rounded-lg border border-white/10 bg-slate-950/60 p-4">
+          <h3 className="text-sm font-bold uppercase tracking-wider text-slate-300">
+            What AdminAvenger cannot confirm
+          </h3>
+          <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-300">
+            {cannotKnow.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
         </div>
 
         <div className="mt-5 rounded-lg border border-cyan-300/20 bg-cyan-300/10 p-4">

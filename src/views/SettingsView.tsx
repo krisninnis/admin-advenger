@@ -328,7 +328,7 @@ const trustSections = [
   {
     title: "Risky emails",
     body:
-      "AdminAvenger flags warning signs. It cannot prove an email is definitely a scam or definitely safe.",
+      "AdminAvenger flags warning signs. It cannot determine whether a message is a scam or actually from the organisation.",
   },
   {
     title: "Photo proof",

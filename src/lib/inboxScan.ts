@@ -12,7 +12,7 @@ import { createAdminCase } from "./caseFactory";
 import { deriveImpactFromCase } from "./impactLedger";
 import { analyseAdminItem } from "./mockAnalysis";
 import { deriveOpportunityCard } from "./opportunityCards";
-import { assessEmailSafety, createEmailSafetyFinding } from "./suspiciousEmail";
+import { assessEmailSafety, createEmailSafetyFinding, getEmailSafetyRiskBand } from "./suspiciousEmail";
 import type {
   AdminCase,
   AdminFinding,
@@ -163,7 +163,7 @@ const buildPreview = (sample: InboxScanSample): InboxScanPreview => {
   // navigating away and back) does not create duplicate saved cases.
   const emailSafety = assessEmailSafety(`${item.title}\n${item.rawText}`, item.sourceType);
   const analysedFindings =
-    emailSafety.overallLevel === "high_risk"
+    getEmailSafetyRiskBand(emailSafety) === "high_risk_signals"
       ? [createEmailSafetyFinding(item, emailSafety)]
       : analyseAdminItem(item);
   const findings = analysedFindings.map((finding, index) => ({

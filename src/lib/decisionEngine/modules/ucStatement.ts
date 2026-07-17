@@ -29,9 +29,59 @@ const deductionsHeaderPattern = /what we take off/i;
 const paymentThisMonthPattern = /(?:your\s+)?payment this month:?\s*(£\d+(?:,\d{3})*(?:\.\d{1,2})?)/i;
 const totalPaymentPattern = /total payment:?\s*(£\d+(?:,\d{3})*(?:\.\d{1,2})?)/i;
 
+const fictionalScenarioPattern =
+  /fictional demo scenario\s*[-:]\s*([^]+?)(?=\s+this is|\s+claimant:|\s+reference:|\s+assessment period:|$)/i;
+const claimantPattern = /claimant:?\s*([A-Z][A-Za-z .'-]+?)(?=\s+reference:|\s+assessment period:|$)/i;
+const referencePattern = /reference:?\s*([A-Z0-9-]{4,})/i;
+const paidOnPattern =
+  /(?:it )?will be paid on\s*(\d{1,2}\s+[A-Za-z]+\s+\d{4}|\d{1,2}\/\d{1,2}\/\d{2,4})/i;
+const housingCostsPattern =
+  /housing costs:?\s*((?:\u00c2\u00a3|GBP\s?)\d+(?:,\d{3})*(?:\.\d{1,2})?)/i;
+const standardAllowanceAmountPattern =
+  /standard allowance:?\s*((?:\u00c2\u00a3|GBP\s?)\d+(?:,\d{3})*(?:\.\d{1,2})?)/i;
+const totalBeforeDeductionsAmountPattern =
+  /total before deductions:?\s*((?:\u00c2\u00a3|GBP\s?)\d+(?:,\d{3})*(?:\.\d{1,2})?)/i;
+const advanceRepaymentAmountPattern =
+  /advance repayment:?\s*((?:\u00c2\u00a3|GBP\s?)\d+(?:,\d{3})*(?:\.\d{1,2})?)/i;
+const benefitOverpaymentRecoveryPattern =
+  /(?:benefit\s+)?overpayment recovery:?\s*((?:\u00c2\u00a3|GBP\s?)\d+(?:,\d{3})*(?:\.\d{1,2})?)/i;
+const totalDeductionsPattern =
+  /total deductions:?\s*((?:\u00c2\u00a3|GBP\s?)\d+(?:,\d{3})*(?:\.\d{1,2})?)/i;
+const universalCreditPaymentPattern =
+  /your universal credit payment is\s*((?:\u00c2\u00a3|GBP\s?)\d+(?:,\d{3})*(?:\.\d{1,2})?)/i;
+const unexplainedOverpaymentPattern =
+  /(?:statement|source|letter)[^.]*does not explain[^.]*overpayment[^.]*\./i;
+
 export const analyseUcStatement = ({ normalisedText }: DecisionModuleInput): DecisionResult => {
   const sourceFacts: DecisionSourceFact[] = [];
   const uncertainty: string[] = [];
+
+  const fictionalScenarioMatch = normalisedText.match(fictionalScenarioPattern);
+  if (fictionalScenarioMatch) {
+    sourceFacts.push({
+      label: "Fictional scenario label",
+      value: `Fictional demo scenario - ${fictionalScenarioMatch[1].trim()}`,
+      sourceQuote: fictionalScenarioMatch[0].trim(),
+    });
+  }
+
+  const claimantMatch = normalisedText.match(claimantPattern);
+  if (claimantMatch) {
+    sourceFacts.push({
+      label: "Claimant shown",
+      value: claimantMatch[1].trim(),
+      sourceQuote: claimantMatch[0].trim(),
+    });
+  }
+
+  const referenceMatch = normalisedText.match(referencePattern);
+  if (referenceMatch) {
+    sourceFacts.push({
+      label: "Reference shown",
+      value: referenceMatch[1].trim(),
+      sourceQuote: referenceMatch[0].trim(),
+    });
+  }
 
   const assessmentPeriodMatch = normalisedText.match(assessmentPeriodPattern);
   if (assessmentPeriodMatch) {
@@ -44,7 +94,7 @@ export const analyseUcStatement = ({ normalisedText }: DecisionModuleInput): Dec
     uncertainty.push("Exact dates of the assessment period are not confirmed.");
   }
 
-  const paymentDateMatch = normalisedText.match(paymentDatePattern);
+  const paymentDateMatch = normalisedText.match(paymentDatePattern) ?? normalisedText.match(paidOnPattern);
   if (paymentDateMatch) {
     sourceFacts.push({
       label: "Payment date",
@@ -53,25 +103,32 @@ export const analyseUcStatement = ({ normalisedText }: DecisionModuleInput): Dec
     });
   }
 
-  const standardAllowanceMatch = normalisedText.match(standardAllowancePattern);
+  const standardAllowanceMatch =
+    normalisedText.match(standardAllowancePattern) ?? normalisedText.match(standardAllowanceAmountPattern);
   if (standardAllowanceMatch) {
     sourceFacts.push({ label: "Standard allowance", value: standardAllowanceMatch[1] });
   }
 
-  const housingMatch = normalisedText.match(housingPattern);
+  const housingMatch = normalisedText.match(housingPattern) ?? normalisedText.match(housingCostsPattern);
   if (housingMatch) {
     sourceFacts.push({ label: "Housing element", value: housingMatch[1] });
   }
 
-  const totalBeforeMatch = normalisedText.match(totalBeforeDeductionsPattern);
+  const totalBeforeMatch =
+    normalisedText.match(totalBeforeDeductionsPattern) ??
+    normalisedText.match(totalBeforeDeductionsAmountPattern);
   if (totalBeforeMatch) {
     sourceFacts.push({ label: "Total before deductions", value: totalBeforeMatch[1] });
   }
 
-  const advanceMatch = normalisedText.match(advanceRepaymentPattern);
-  const overpaymentMatch = normalisedText.match(overpaymentRecoveryPattern);
+  const advanceMatch =
+    normalisedText.match(advanceRepaymentPattern) ?? normalisedText.match(advanceRepaymentAmountPattern);
+  const overpaymentMatch =
+    normalisedText.match(overpaymentRecoveryPattern) ??
+    normalisedText.match(benefitOverpaymentRecoveryPattern);
   const thirdPartyMatch = normalisedText.match(thirdPartyDeductionPattern);
   const deductionsAmountMatch = normalisedText.match(deductionsAmountPattern);
+  const totalDeductionsMatch = normalisedText.match(totalDeductionsPattern);
   const hasDeductionsHeader = deductionsHeaderPattern.test(normalisedText);
 
   if (advanceMatch) {
@@ -94,8 +151,34 @@ export const analyseUcStatement = ({ normalisedText }: DecisionModuleInput): Dec
     sourceFacts.push({ label: "Deductions", value: deductionsAmountMatch[1], sourceQuote: deductionsAmountMatch[0].trim() });
   }
 
+  if (totalDeductionsMatch) {
+    sourceFacts.push({
+      label: "Total deductions",
+      value: totalDeductionsMatch[1],
+      sourceQuote: totalDeductionsMatch[0].trim(),
+    });
+  }
+
+  const unexplainedOverpaymentMatch = normalisedText.match(unexplainedOverpaymentPattern);
+  if (unexplainedOverpaymentMatch) {
+    const unexplainedOverpayment =
+      "The statement does not explain which earlier payment or period the benefit overpayment recovery relates to.";
+
+    sourceFacts.push({
+      label: "Overpayment detail not explained",
+      value: unexplainedOverpayment,
+      sourceQuote: unexplainedOverpaymentMatch[0].trim(),
+    });
+    uncertainty.push(unexplainedOverpayment);
+  }
+
   const hasAnyDeduction = Boolean(
-    advanceMatch || overpaymentMatch || thirdPartyMatch || deductionsAmountMatch || hasDeductionsHeader,
+    advanceMatch ||
+      overpaymentMatch ||
+      thirdPartyMatch ||
+      deductionsAmountMatch ||
+      totalDeductionsMatch ||
+      hasDeductionsHeader,
   );
 
   // Only note a deductions section when the itemised "what we take off" header is
@@ -105,7 +188,8 @@ export const analyseUcStatement = ({ normalisedText }: DecisionModuleInput): Dec
     sourceFacts.push({ label: "Deductions section found", value: "Yes", sourceQuote: "What we take off" });
   }
 
-  const paymentThisMonthMatch = normalisedText.match(paymentThisMonthPattern);
+  const paymentThisMonthMatch =
+    normalisedText.match(paymentThisMonthPattern) ?? normalisedText.match(universalCreditPaymentPattern);
   const totalPaymentMatch = normalisedText.match(totalPaymentPattern);
   let amountMentioned: string | undefined;
 
@@ -132,6 +216,7 @@ export const analyseUcStatement = ({ normalisedText }: DecisionModuleInput): Dec
       overpaymentMatch ||
       thirdPartyMatch ||
       deductionsAmountMatch ||
+      totalDeductionsMatch ||
       paymentThisMonthMatch ||
       totalPaymentMatch,
   );
@@ -175,13 +260,20 @@ export const analyseUcStatement = ({ normalisedText }: DecisionModuleInput): Dec
     uncertainty,
     cannotKnow: [
       "Whether each deduction rate is correct, or is being taken at the maximum rate DWP allows.",
+      "Whether the advance repayment balance is correct.",
+      "Whether the overpayment exists, why it arose, or whether recovery is valid.",
       "Your full Universal Credit calculation before these deductions were applied.",
+      "What amount you should receive after all entitlement rules and deductions are checked.",
+      "Whether Mandatory Reconsideration is available or appropriate from this statement alone.",
       "Whether anything on this statement has changed since a later assessment period.",
     ],
     evidenceNeeded: [
       "The full Universal Credit statement (PDF or screenshot), not just an extract.",
       "Your previous statement, to compare deductions and amounts.",
       "Any letter that explains a deduction (advance, overpayment, or third-party deduction).",
+      ...(overpaymentMatch
+        ? ["Any UC journal message or letter explaining the overpayment period and calculation."]
+        : []),
     ],
     // A statement has no confirmed response deadline of its own, so this stays
     // empty rather than listing "as soon as possible" urgency copy as if it were
@@ -204,6 +296,9 @@ export const analyseUcStatement = ({ normalisedText }: DecisionModuleInput): Dec
     questionsToAnswer: [
       "Does the assessment period match the one you expected?",
       "Are all the deduction figures ones you recognise?",
+      ...(overpaymentMatch
+        ? ["What earlier payment or period does the overpayment recovery relate to?"]
+        : []),
       "Has anything changed since your last statement?",
     ],
   };

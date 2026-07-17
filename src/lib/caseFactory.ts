@@ -21,6 +21,7 @@ import {
   isTravelDisruptionRecoveryText,
   parseMoneyAmount,
 } from "./moneyParsers";
+import { assessPaymentReminder } from "./paymentReminderAssessment";
 import {
   assessEmailSafety,
   getEmailSafetyOrdinarySignals,
@@ -90,6 +91,10 @@ const isCareerSupportFinding = (finding: AdminFinding, item: AdminItem) => {
 
   return pack.documentType !== "career_unknown" && /career|cv|cover letter|job advert|application answer/i.test(finding.title);
 };
+
+const isPaymentReminderFinding = (finding: AdminFinding, item: AdminItem) =>
+  /^payment reminder to check$/i.test(finding.title) &&
+  assessPaymentReminder(item).isPaymentReminder;
 
 const createEvidence = (
   caseId: string,
@@ -182,6 +187,44 @@ const evidenceForFinding = (
         caseId,
         "Next action",
         emailSafetyNextAction,
+        "manual",
+      ),
+      createEvidence(caseId, "Source", item.title, "user_text"),
+    ];
+  }
+
+  if (isPaymentReminderFinding(finding, item)) {
+    const paymentReminder = assessPaymentReminder(item);
+
+    return [
+      ...(paymentReminder.sender
+        ? [createEvidence(caseId, "Sender/provider clue", paymentReminder.sender)]
+        : []),
+      ...(paymentReminder.letterDate
+        ? [createEvidence(caseId, "Letter date", paymentReminder.letterDate)]
+        : []),
+      ...(paymentReminder.accountReference
+        ? [createEvidence(caseId, "Account reference", paymentReminder.accountReference)]
+        : []),
+      ...(paymentReminder.amountDue
+        ? [createEvidence(caseId, "Amount due", paymentReminder.amountDue)]
+        : []),
+      ...(paymentReminder.paymentDueDate
+        ? [createEvidence(caseId, "Payment due date", paymentReminder.paymentDueDate)]
+        : []),
+      ...(paymentReminder.responseDeadline
+        ? [createEvidence(caseId, "Response/contact deadline", paymentReminder.responseDeadline)]
+        : []),
+      ...(paymentReminder.requestedAction
+        ? [createEvidence(caseId, "Requested action", paymentReminder.requestedAction)]
+        : []),
+      ...(paymentReminder.alternativeEvidenceAction
+        ? [createEvidence(caseId, "Alternative evidence action", paymentReminder.alternativeEvidenceAction)]
+        : []),
+      createEvidence(
+        caseId,
+        "Payment reminder safety note",
+        "Amount being requested only. AdminAvenger has not decided whether it is owed.",
         "manual",
       ),
       createEvidence(caseId, "Source", item.title, "user_text"),

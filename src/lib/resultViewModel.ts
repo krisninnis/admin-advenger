@@ -300,6 +300,18 @@ const fromDeadline = (deadline: string, index: number): ResultDateView => ({
   source: "main_result",
 });
 
+const fromOpportunityDeadline = (opportunity?: OpportunityCard): ResultDateView | undefined =>
+  opportunity?.deadline
+    ? {
+        id: "opportunity-deadline-1",
+        label: safeText(opportunity.deadlineLabel, "Date or deadline to check"),
+        value: safeText(opportunity.deadline, "Check the original document"),
+        caution: RESULT_DATE_CAUTION,
+        userMustCheck: true,
+        source: "main_result",
+      }
+    : undefined;
+
 const formatMoneyImpact = (money: MoneyImpact) => {
   const amount = money.amount === undefined ? "" : `: GBP ${money.amount.toFixed(2)}`;
   const frequency =
@@ -706,7 +718,8 @@ export const buildResultViewModel = ({
     ...(benefitsActionPack?.possibleDatesToCheck.map(fromBenefitsDate) ?? []),
     ...getDateFacts(decisionResult?.sourceFacts ?? []).map(fromDecisionDate),
     ...(decisionResult?.deadlines.map(fromDeadline) ?? []),
-  ]);
+    fromOpportunityDeadline(opportunity),
+  ].filter((date): date is ResultDateView => Boolean(date)));
   const moneyMentioned = dedupeMoney([
     ...(benefitsActionPack?.moneyMentioned.map(fromBenefitsMoneyLine) ?? []),
     ...moneyImpactsFor(opportunity).map(fromOpportunityMoney),

@@ -354,4 +354,97 @@ describe("AdminAvenger deterministic money safety", () => {
     expect(totals.pendingRecovery).toBe(0);
     expect(totals.confirmedSavedRecovered).toBe(0);
   });
+
+  it("recognises a dated payment reminder without treating money owed as a saving", () => {
+    const text = [
+      "Greenfield Water Services",
+      "Payment reminder",
+      "Date: 14 July 2026",
+      "Account reference: GW-48291",
+      "Our records show an unpaid balance of \u00a384.60.",
+      "Payment was due on 10 July 2026.",
+      "Please pay the balance or contact us by 24 July 2026.",
+      "If you have already paid, send us proof of payment.",
+      "We have not added a late fee.",
+    ].join("\n");
+
+    const { item, finding, adminCase } = firstCase(
+      makeItem("Payment reminder", text, "bill"),
+    );
+    const opportunity = deriveOpportunityCard(adminCase, item, finding);
+    const impacts = impactsFor(adminCase, item, finding);
+    const totals = calculateImpactTotals(impacts, [adminCase]);
+
+    expect(finding.title).toBe("Payment reminder to check");
+    expect(finding.category).toBe("important_reply");
+    expect(finding.deadline).toBe("24 July 2026");
+    expect(finding.suggestedAction).toContain("24 July 2026");
+    expect(finding.suggestedAction).toContain("\u00a384.60");
+    expect(finding.suggestedAction).toContain("correct or already paid");
+    expect(finding.category).not.toBe("refund");
+    expect(opportunity.opportunityType).not.toBe("no_action_needed");
+    expect(opportunity.opportunityType).not.toBe("money_back");
+    expect(opportunity.deadline).toBe("24 July 2026");
+    expect(opportunity.moneyAtStake).toEqual(
+      expect.objectContaining({
+        amount: 84.6,
+        label: "Amount being requested",
+        status: "unknown",
+      }),
+    );
+    expect(adminCase.evidence).toContainEqual(
+      expect.objectContaining({ label: "Account reference", value: "GW-48291" }),
+    );
+    expect(adminCase.evidence).toContainEqual(
+      expect.objectContaining({ label: "Amount due", value: "\u00a384.60" }),
+    );
+    expect(adminCase.evidence).toContainEqual(
+      expect.objectContaining({ label: "Payment due date", value: "10 July 2026" }),
+    );
+    expect(adminCase.evidence).toContainEqual(
+      expect.objectContaining({ label: "Response/contact deadline", value: "24 July 2026" }),
+    );
+    expect(adminCase.evidence).toContainEqual(
+      expect.objectContaining({ label: "Letter date", value: "14 July 2026" }),
+    );
+    expect(adminCase.evidence).toContainEqual(
+      expect.objectContaining({ label: "Sender/provider clue", value: "Greenfield Water Services" }),
+    );
+    expect(impacts.some((entry) => entry.type === "pending_recovery")).toBe(false);
+    expect(totals.pendingRecovery).toBe(0);
+    expect(totals.confirmedSavedRecovered).toBe(0);
+  });
+
+  it.each([
+    {
+      name: "payment confirmation",
+      title: "Payment received",
+      text: "Thank you for your payment. Your balance is now \u00a30.00.",
+      sourceType: "bill" as SourceType,
+    },
+    {
+      name: "purchase receipt",
+      title: "Order receipt",
+      text: "Receipt. Retailer: Example Shop. Order number: AB12345. Payment by card. Total: \u00a384.60.",
+      sourceType: "receipt" as SourceType,
+    },
+    {
+      name: "refund approved",
+      title: "Refund approved",
+      text: "Your refund of \u00a384.60 has been approved and will be returned to your original payment method within 5 to 10 working days.",
+      sourceType: "email" as SourceType,
+    },
+    {
+      name: "vague payment mention",
+      title: "Payment note",
+      text: "I need to check a payment message later.",
+      sourceType: "note" as SourceType,
+    },
+  ])("does not turn $name into a payment-reminder action case", ({ title, text, sourceType }) => {
+    const { finding, adminCase, item } = firstCase(makeItem(title, text, sourceType));
+    const opportunity = deriveOpportunityCard(adminCase, item, finding);
+
+    expect(finding.title).not.toBe("Payment reminder to check");
+    expect(opportunity.title).not.toBe("Payment reminder to check");
+  });
 });

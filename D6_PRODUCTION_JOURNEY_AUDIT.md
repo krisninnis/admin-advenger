@@ -61,6 +61,12 @@ Result:
 
 Notes:
 
+- 2026-07-17 production test failed. Severity: high.
+- A clear Greenfield Water Services payment reminder fell through to "No obvious saving or action found".
+- The production result omitted the sender, dates, amount due, and account reference.
+- Local regression fix implemented for deterministic payment-reminder classification, evidence preservation, display-only requested money, and safe next action wording.
+- Production retest is still required after deployment; do not mark Journey 1 as passed until the live site is retested.
+
 ## Journey 2 - Upload a PDF
 
 - [ ] Select a readable PDF below 20 MB

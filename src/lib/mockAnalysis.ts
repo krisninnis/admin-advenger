@@ -21,6 +21,10 @@ import {
   isTravelDisruptionRecoveryText,
   isTravelEvidenceCheckText,
 } from "./moneyParsers";
+import {
+  assessPaymentReminder,
+  buildPaymentReminderSuggestedAction,
+} from "./paymentReminderAssessment";
 import { assessEmailSafety, createEmailSafetyFinding, getEmailSafetyRiskBand } from "./suspiciousEmail";
 
 type CategoryRule = {
@@ -594,6 +598,31 @@ const createReceiptFinding = (item: AdminItem): AdminFinding => ({
   createdAt: new Date().toISOString(),
 });
 
+const createPaymentReminderFinding = (item: AdminItem): AdminFinding => {
+  const assessment = assessPaymentReminder(item);
+  const amountText = assessment.amountDue ? ` ${assessment.amountDue}` : "";
+
+  return {
+    id: `finding-${crypto.randomUUID()}`,
+    itemId: item.id,
+    category: "important_reply",
+    title: "Payment reminder to check",
+    summary:
+      `This looks like a payment reminder asking the user to check an amount${amountText}. AdminAvenger has not decided whether the money is owed.`,
+    whyItMatters:
+      "Payment reminders can have dates and account references worth checking, but the user should verify the provider and whether the amount is correct or already paid before acting.",
+    suggestedAction: buildPaymentReminderSuggestedAction(assessment),
+    estimatedValue: assessment.amountDue
+      ? `${assessment.amountDue} amount being requested - not counted as saved or recovered`
+      : "Amount being requested - not counted as saved or recovered",
+    urgency: assessment.responseDeadline || assessment.paymentDueDate ? "high" : "medium",
+    deadline: assessment.responseDeadline ?? assessment.paymentDueDate,
+    confidence: "medium",
+    status: "new",
+    createdAt: new Date().toISOString(),
+  };
+};
+
 // The Decision Engine only takes over for text that clearly matches one of its
 // supported rights/dispute document types (parking, bailiff, debt, TV Licence,
 // bank complaint, consumer dispute). It never guesses on plain/ambiguous text -
@@ -676,8 +705,16 @@ export const analyseAdminItem = (item: AdminItem): AdminFinding[] => {
     ? createEnergyPriceChangeFinding(item)
     : undefined;
   const noActionFinding = isNoActionRecord(text) ? createUnknownFinding(item) : undefined;
+  const paymentReminderAssessment = assessPaymentReminder(item);
+  const paymentReminderFinding =
+    !approvedRefundFinding &&
+    !subscriptionFinding &&
+    !noActionFinding &&
+    paymentReminderAssessment.isPaymentReminder
+      ? createPaymentReminderFinding(item)
+      : undefined;
   const receiptFinding =
-    !noActionFinding && !travelRecoveryFinding && !subscriptionFinding && isReceiptRecord(text)
+    !paymentReminderFinding && !noActionFinding && !travelRecoveryFinding && !subscriptionFinding && isReceiptRecord(text)
       ? createReceiptFinding(item)
       : undefined;
   const deliveryIssueFinding = isDeliveryProblem(text)
@@ -762,6 +799,7 @@ export const analyseAdminItem = (item: AdminItem): AdminFinding[] => {
     !subscriptionFinding &&
     !energyPriceChangeFinding &&
     !noActionFinding &&
+    !paymentReminderFinding &&
     !receiptFinding &&
     !deliveryIssueFinding &&
     !deliveryUpdateFinding &&
@@ -781,6 +819,7 @@ export const analyseAdminItem = (item: AdminItem): AdminFinding[] => {
         energyPriceChangeFinding ||
         travelRecoveryFinding ||
         travelEvidenceCheckFinding ||
+        paymentReminderFinding ||
         appointmentTaskFinding
       ) {
         return false;
@@ -827,6 +866,7 @@ export const analyseAdminItem = (item: AdminItem): AdminFinding[] => {
     energyPriceChangeFinding,
     highRiskEmailFinding,
     noActionFinding,
+    paymentReminderFinding,
     receiptFinding,
     deliveryUpdateFinding,
     deliveryIssueFinding,

@@ -212,6 +212,31 @@ export const combineTypedTextWithAttachments = (
 export const hasReadableAttachedText = (files: AttachedFile[]): boolean =>
   files.some((attached) => attached.status === "read" && Boolean(attached.extractedText?.trim()));
 
+const getReadableAttachmentNames = (files: AttachedFile[]): string[] =>
+  files
+    .filter((attached) => attached.status === "read" && Boolean(attached.extractedText?.trim()))
+    .map((attached) => attached.file.name.split(/[\\/]/).pop()?.trim() ?? "")
+    .filter(Boolean);
+
+export const buildCheckSourceTitle = (
+  typedText: string,
+  files: AttachedFile[],
+): string => {
+  const names = getReadableAttachmentNames(files);
+
+  if (names.length === 0) {
+    return "Pasted admin text";
+  }
+
+  const joinedNames = names.join(", ");
+
+  if (typedText.trim()) {
+    return `Pasted text with documents: ${joinedNames}`;
+  }
+
+  return names.length === 1 ? names[0] : `Documents: ${joinedNames}`;
+};
+
 // ---- User-facing copy (Document Attachment Intake v1) ----
 //
 // Kept as named constants (not inline JSX strings) so they can be safety- and

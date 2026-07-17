@@ -53,7 +53,8 @@ describe("Document Attachment Intake v1 - HomeView wiring", () => {
     expect(homeViewSource).toContain("attachmentCombinedText");
     // The combined text is handed to the same onCheck(...) call every other
     // input path uses - never a second/parallel analysis function.
-    expect(homeViewSource).toContain('onCheck("Pasted admin text", "email", textToCheck)');
+    expect(homeViewSource).toContain("buildCheckSourceTitle(rawText, attachedFiles)");
+    expect(homeViewSource).toContain("onCheck(checkSourceTitle, \"email\", textToCheck)");
   });
 
   it("reuses the existing on-device OCR path for attached images, never a new one", () => {
@@ -103,7 +104,8 @@ describe("Document Attachment Intake v1 - HomeView wiring", () => {
   it("keeps typing/paste behaviour unchanged while adding the visible drop target", () => {
     expect(homeViewSource).toContain("value={rawText}");
     expect(homeViewSource).toContain("onChange={(event) => setRawText(event.target.value)}");
-    expect(homeViewSource).toContain('onCheck("Pasted admin text", "email", textToCheck)');
+    expect(homeViewSource).toContain('"Pasted admin text"');
+    expect(homeViewSource).toContain("onCheck(checkSourceTitle, \"email\", textToCheck)");
   });
 
   it("reveals the attachment area from file mode so dropped DOCX files show status", () => {

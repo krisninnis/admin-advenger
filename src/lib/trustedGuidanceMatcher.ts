@@ -37,5 +37,5 @@ export const getTrustedGuidanceForOpportunity = (
     return [];
   }
 
-  return trustedGuidanceCards.filter((card) => card.caseType === "money_back").slice(0, 1);
+  return [];
 };

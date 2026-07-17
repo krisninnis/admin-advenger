@@ -50,9 +50,10 @@ describe("HomeView gated community helper beta", () => {
   });
 
   it("keeps the default Check a message path unchanged and does not call the classifier from the new entry", () => {
-    // The normal intake path is untouched: the same onCheck call with the
-    // same pasted-text flow still exists, unaffected by the new gated entry.
-    expect(homeViewSource).toContain('onCheck("Pasted admin text", "email", textToCheck)');
+    // The normal intake path is untouched: the same onCheck call and
+    // pasted-text fallback still exist, unaffected by the new gated entry.
+    expect(homeViewSource).toContain("buildCheckSourceTitle(rawText, attachedFiles)");
+    expect(homeViewSource).toContain("onCheck(checkSourceTitle, \"email\", textToCheck)");
     // The community helper button never appears inside the primary
     // paste/photo/file picker or the "What does this mean?" check flow -
     // it is a separate section rendered after the main check output.

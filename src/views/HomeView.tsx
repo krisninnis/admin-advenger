@@ -64,6 +64,7 @@ import { DocumentAttachmentArea } from "../components/DocumentAttachmentArea";
 import {
   ATTACHMENT_READ_FAILED_MESSAGE,
   buildAttachedFilesCombinedText,
+  buildCheckSourceTitle,
   combineTypedTextWithAttachments,
   createAttachedFile,
   getFilesFromDroppedDataTransfer,
@@ -124,6 +125,7 @@ import type {
   EmailSafetyAssessment,
   SourceType,
 } from "../types";
+import type { GuidedDraftToSave } from "../lib/guidedDraftSave";
 
 export type HomeAnalysisResult = {
   item: AdminItem;
@@ -142,7 +144,7 @@ type HomeViewProps = {
   analysisStatus: ServiceStatus;
   analysisError?: string;
   onCheck: (title: string, sourceType: SourceType, rawText: string) => Promise<boolean>;
-  onSaveCase: (caseId: string) => void;
+  onSaveCase: (caseId: string, draft?: GuidedDraftToSave) => void;
   onSaveRecord: (caseId: string) => void;
   onClearResult: () => void;
   inboxScanSettings: InboxScanSettings;
@@ -850,7 +852,10 @@ export function HomeView({
     setInputMessage("");
   };
 
-  const runOllamaExtraction = async (textOverride?: string) => {
+  const runOllamaExtraction = async (
+    textOverride?: string,
+    sourceTitle = "Pasted admin text",
+  ) => {
     const textToExtract = textOverride ?? rawText.trim();
     setAiStatus("loading");
     setAiError("");
@@ -873,7 +878,13 @@ export function HomeView({
       setShowDetailed(false);
       setShowEmailSafety(false);
 
-      const checked = await onCheck("Local AI extracted admin facts", "email", reconstructedText);
+      const checked = await onCheck(
+        sourceTitle === "Pasted admin text"
+          ? "Local AI extracted admin facts"
+          : `Local AI extracted admin facts from ${sourceTitle}`,
+        "email",
+        reconstructedText,
+      );
 
       if (!checked) {
         setAiExtraction(undefined);
@@ -895,7 +906,7 @@ export function HomeView({
       setShowDetailed(false);
       setShowEmailSafety(false);
 
-      await onCheck("Pasted admin text", "email", textToExtract);
+      await onCheck(sourceTitle, "email", textToExtract);
     }
   };
 
@@ -923,6 +934,10 @@ export function HomeView({
       selectedInput === "paste"
         ? combineTypedTextWithAttachments(rawText, attachmentCombinedText)
         : rawText.trim();
+    const checkSourceTitle =
+      selectedInput === "paste"
+        ? buildCheckSourceTitle(rawText, attachedFiles)
+        : "Pasted admin text";
 
     if (textToCheck.length === 0) {
       setInputMessage(
@@ -960,14 +975,14 @@ export function HomeView({
     }
 
     if (isLocalOllamaMode) {
-      await runOllamaExtraction(textToCheck);
+      await runOllamaExtraction(textToCheck, checkSourceTitle);
       return;
     }
 
     setInputMessage("");
     setAiError("");
     setAiFallbackHint("");
-    const checked = await onCheck("Pasted admin text", "email", textToCheck);
+    const checked = await onCheck(checkSourceTitle, "email", textToCheck);
 
     if (!checked) {
       setAiExtraction(undefined);
@@ -1303,7 +1318,7 @@ export function HomeView({
   // Reuses the exact same save-flow decision the existing primary/secondary
   // Save buttons already make (record vs. case, per opportunity type) -
   // this never introduces a second, different way of saving a case.
-  const handleSaveToCaseFromGuidedPanel = () => {
+  const handleSaveToCaseFromGuidedPanel = (draft?: GuidedDraftToSave) => {
     if (!primaryCase) {
       return;
     }
@@ -1315,7 +1330,7 @@ export function HomeView({
     ) {
       onSaveRecord(primaryCase.id);
     } else {
-      onSaveCase(primaryCase.id);
+      onSaveCase(primaryCase.id, draft);
     }
 
     setShowGuidedNextStep(false);

@@ -9,6 +9,7 @@ import {
   ATTACHMENT_READ_FAILED_MESSAGE,
   ATTACHMENT_TAKE_PHOTO_BUTTON_LABEL,
   buildAttachedFilesCombinedText,
+  buildCheckSourceTitle,
   classifyAttachedFileKind,
   combineTypedTextWithAttachments,
   createAttachedFile,
@@ -297,6 +298,50 @@ describe("combineTypedTextWithAttachments", () => {
     expect(combined).toContain("Typed part");
     expect(combined).toContain("Attached documents");
     expect(combined).toContain("Attached part");
+  });
+});
+
+describe("buildCheckSourceTitle", () => {
+  const readFile = (name: string, kind: AttachedFile["kind"]): AttachedFile => ({
+    id: name,
+    file: makeFile(name, kind === "pdf" ? "application/pdf" : ""),
+    kind,
+    status: "read",
+    extractedText: "Readable text",
+    warnings: [],
+  });
+
+  it("keeps the existing pasted-text title when there are no readable attachments", () => {
+    expect(buildCheckSourceTitle("Plain pasted message", [])).toBe("Pasted admin text");
+  });
+
+  it("uses a single PDF filename without exposing any path", () => {
+    expect(buildCheckSourceTitle("", [readFile("journey-2-payment-reminder.pdf", "pdf")])).toBe(
+      "journey-2-payment-reminder.pdf",
+    );
+  });
+
+  it("uses a single DOCX filename", () => {
+    expect(buildCheckSourceTitle("", [readFile("letter.docx", "docx")])).toBe("letter.docx");
+  });
+
+  it("builds a deterministic concise title for multiple attachments", () => {
+    expect(buildCheckSourceTitle("", [
+      readFile("first.pdf", "pdf"),
+      readFile("second.docx", "docx"),
+    ])).toBe("Documents: first.pdf, second.docx");
+  });
+
+  it("describes typed text plus attachments honestly", () => {
+    expect(buildCheckSourceTitle("I also typed this", [readFile("first.pdf", "pdf")])).toBe(
+      "Pasted text with documents: first.pdf",
+    );
+  });
+
+  it("strips local path fragments defensively", () => {
+    expect(buildCheckSourceTitle("", [readFile("C:\\Users\\someone\\private\\bill.pdf", "pdf")])).toBe(
+      "bill.pdf",
+    );
   });
 });
 

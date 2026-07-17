@@ -62,6 +62,16 @@ const formatDate = (value: string) =>
 const asMarkdownList = (items: string[]) =>
   items.length > 0 ? items.map((item) => `- ${item}`).join("\n") : "- None recorded";
 
+const ensureTerminalPunctuation = (value: string) => {
+  const trimmed = value.trim();
+
+  if (!trimmed) {
+    return trimmed;
+  }
+
+  return /[.!?]$/.test(trimmed) ? trimmed : `${trimmed}.`;
+};
+
 const confidenceLabels = {
   high: "High",
   medium: "Medium",
@@ -138,7 +148,7 @@ No impact entries recorded.
       ? ` Proof attached locally${entry.proofImageName ? `: ${entry.proofImageName}` : ""}.`
       : "";
 
-    return `- **${readable(entry.type)}** (${readable(entry.status)}): ${amount}. ${entry.evidenceNote}.${proof}`;
+    return `- **${readable(entry.type)}** (${readable(entry.status)}): ${amount}. ${ensureTerminalPunctuation(entry.evidenceNote)}${proof}`;
   });
 
   return `## Impact Ledger
@@ -355,11 +365,11 @@ export const exportCaseToMarkdown = ({
     ? opportunityTypeLabels[opportunity.opportunityType] ?? categoryLabels[adminCase.category]
     : categoryLabels[adminCase.category];
   const evidenceLines = adminCase.evidence.map(
-    (evidence) => `- **${evidence.label}** (${readable(evidence.source)}): ${evidence.value}`,
+    (evidence) => `**${evidence.label}** (${readable(evidence.source)}): ${evidence.value}`,
   );
   const timelineLines = sortNewestFirst(adminCase.timeline).map(
     (event) =>
-      `- **${event.title}** - ${formatDate(event.createdAt)}\n  ${event.description}`,
+      `**${event.title}** - ${formatDate(event.createdAt)}\n  ${event.description}`,
   );
   const draftSections = sortNewestFirst(drafts).map(
     (draft, index) => `### Draft ${index + 1}: ${draft.subject}

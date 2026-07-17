@@ -14,6 +14,12 @@ import {
   formatMoneyImpact,
 } from "./lib/impactLedger";
 import { deriveOpportunityCard } from "./lib/opportunityCards";
+import {
+  createAdminDraftFromGuidedDraft,
+  markSelectedCaseDrafted,
+  markSelectedFindingDrafted,
+  type GuidedDraftToSave,
+} from "./lib/guidedDraftSave";
 import { createEmailSafetyFinding } from "./lib/suspiciousEmail";
 import {
   hasAcceptedCurrentTerms,
@@ -489,6 +495,7 @@ function App() {
   const handleSaveHomeResultCase = (
     caseId: string,
     saveMode: "case" | "record" = "case",
+    guidedDraft?: GuidedDraftToSave,
   ) => {
     const existingCase = adminCases.find(
       (adminCase) => adminCase.id === caseId,
@@ -507,7 +514,25 @@ function App() {
       return;
     }
 
+    const draftSavedAt = guidedDraft ? new Date().toISOString() : undefined;
     const casesToSave = homeResult.cases.map((adminCase) => {
+      if (saveMode === "case" && guidedDraft && adminCase.id === resultCase.id && draftSavedAt) {
+        const draftedCase = markSelectedCaseDrafted(adminCase, draftSavedAt);
+
+        return {
+          ...draftedCase,
+          chaseDate: draftedCase.chaseDate ?? getDefaultChaseDate(),
+          timeline: [
+            createTimelineEventForCase(
+              adminCase,
+              "Reviewed draft saved",
+              "User saved the reviewed guided draft to this case. Nothing was sent automatically.",
+            ),
+            ...adminCase.timeline,
+          ],
+        } satisfies AdminCase;
+      }
+
       if (saveMode === "case") {
         return adminCase;
       }
@@ -558,11 +583,15 @@ function App() {
     );
     setFindings((currentFindings) => [
       ...homeResult.findings
-        .map((finding) =>
-          saveMode === "record"
+        .map((finding) => {
+          if (saveMode === "case" && guidedDraft && finding.id === resultCase.findingId) {
+            return markSelectedFindingDrafted(finding);
+          }
+
+          return saveMode === "record"
             ? { ...finding, status: "no_action_needed" as const }
-            : finding,
-        )
+            : finding;
+        })
         .filter(
           (finding) =>
             !currentFindings.some(
@@ -585,6 +614,15 @@ function App() {
       ),
       ...currentEntries,
     ]);
+    if (saveMode === "case" && guidedDraft && draftSavedAt) {
+      const savedDraft = createAdminDraftFromGuidedDraft(resultCase, guidedDraft, draftSavedAt);
+
+      setDrafts((currentDrafts) =>
+        currentDrafts.some((draft) => draft.id === savedDraft.id)
+          ? currentDrafts
+          : [savedDraft, ...currentDrafts],
+      );
+    }
     setSelectedFindingId(resultCase.findingId);
     setSelectedCaseId(resultCase.id);
     setCurrentView("case_file");
@@ -1258,7 +1296,7 @@ function App() {
           analysisStatus={analysisStatus}
           analysisError={analysisError}
           onCheck={handleHomeCheck}
-          onSaveCase={(caseId) => handleSaveHomeResultCase(caseId, "case")}
+          onSaveCase={(caseId, draft) => handleSaveHomeResultCase(caseId, "case", draft)}
           onSaveRecord={(caseId) => handleSaveHomeResultCase(caseId, "record")}
           onClearResult={handleClearHomeResult}
           inboxScanSettings={inboxScanSettings}

@@ -107,7 +107,8 @@ describe("HomeView gated workplace support beta", () => {
   });
 
   it("keeps the default Check a message path on the existing normal onCheck flow", () => {
-    expect(homeViewSource).toContain('onCheck("Pasted admin text", "email", textToCheck)');
+    expect(homeViewSource).toContain("buildCheckSourceTitle(rawText, attachedFiles)");
+    expect(homeViewSource).toContain("onCheck(checkSourceTitle, \"email\", textToCheck)");
     expect(homeViewSource).toContain("if (workplaceBetaEnabled)");
     expect(homeViewSource).toContain("buildWorkplaceSupportPack({ text: textToCheck })");
   });

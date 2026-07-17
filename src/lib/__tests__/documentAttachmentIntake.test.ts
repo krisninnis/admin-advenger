@@ -81,6 +81,21 @@ describe("createAttachedFile", () => {
     expect(attached.errorMessage).toBe(DOC_UNSUPPORTED_MESSAGE);
   });
 
+
+  it("marks a file above 20 MB as failed before attempting to read it", () => {
+    const oversized = new File(
+      [new Uint8Array(20 * 1024 * 1024 + 1)],
+      "large-statement.pdf",
+      { type: "application/pdf" },
+    );
+
+    const attached = createAttachedFile(oversized, "id-large");
+
+    expect(attached.kind).toBe("pdf");
+    expect(attached.status).toBe("failed");
+    expect(attached.errorMessage).toContain("20 MB");
+    expect(attached.errorMessage).toContain("did not read or upload it");
+  });
   it("gives every attached file a unique id when none is provided", () => {
     const first = createAttachedFile(makeFile("a.txt"));
     const second = createAttachedFile(makeFile("b.txt"));

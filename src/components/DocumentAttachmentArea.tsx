@@ -17,6 +17,7 @@ import {
   type AttachedFile,
 } from "../lib/documentAttachmentIntake";
 import { attachmentCameraAcceptAttribute, attachmentPickerAcceptAttribute } from "../lib/fileIntakeAccept";
+import { FILE_SIZE_LIMIT_HELPER } from "../lib/fileSizeLimit";
 
 export type DocumentAttachmentAreaProps = {
   files: AttachedFile[];
@@ -62,6 +63,7 @@ export function DocumentAttachmentArea({
     <div className="mt-4 rounded-lg border border-white/10 bg-slate-950/50 p-4">
       <p className="text-sm font-bold text-white">{ATTACHMENT_HEADING}</p>
       <p className="mt-1 text-sm leading-6 text-slate-400">{ATTACHMENT_HELPER}</p>
+      <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">{FILE_SIZE_LIMIT_HELPER}</p>
 
       <div
         role="group"
@@ -141,8 +143,8 @@ export function DocumentAttachmentArea({
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <p className="truncate font-semibold text-white">{attached.file.name}</p>
-                  <p className="text-xs text-slate-400">
-                    {ATTACHMENT_KIND_LABELS[attached.kind]} · {ATTACHMENT_STATUS_LABELS[attached.status]}
+                  <p role="status" aria-live="polite" aria-atomic="true" className="text-xs text-slate-400">
+                    {ATTACHMENT_KIND_LABELS[attached.kind]}{" \u00b7 "}{ATTACHMENT_STATUS_LABELS[attached.status]}
                   </p>
                 </div>
                 <button
@@ -155,7 +157,7 @@ export function DocumentAttachmentArea({
                 </button>
               </div>
               {attached.errorMessage ? (
-                <p className="mt-1 text-xs leading-5 text-amber-200">{attached.errorMessage}</p>
+                <p role="alert" aria-live="assertive" aria-atomic="true" className="mt-1 text-xs leading-5 text-amber-200">{attached.errorMessage}</p>
               ) : null}
               {attached.warnings.map((warning) => (
                 <p key={warning} className="mt-1 text-xs leading-5 text-amber-200">

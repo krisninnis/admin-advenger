@@ -1,5 +1,6 @@
 import { useEffect, useReducer, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { photoCaptureAcceptAttribute } from "../lib/fileIntakeAccept";
+import { FILE_SIZE_LIMIT_HELPER, getFileTooLargeMessage, isFileWithinSizeLimit } from "../lib/fileSizeLimit";
 import {
   CAMERA_GUIDANCE_TIPS,
   CAMERA_PREVIEW_ACTIONS_CLASSNAME,
@@ -217,6 +218,12 @@ export function PhotoCapturePanel({
   };
 
   const handleUploadExisting = (file: File) => {
+    if (!isFileWithinSizeLimit(file)) {
+      setErrorMessage(getFileTooLargeMessage(file));
+      return;
+    }
+
+    setErrorMessage("");
     capturedFileRef.current = file;
     setCropRect(getDefaultManualCropRect());
     setCropWarning("");
@@ -250,6 +257,13 @@ export function PhotoCapturePanel({
       // Capture-complete cleanup - the camera does not need to stay on once
       // a frame has been captured.
       stopActiveStream();
+
+      if (!isFileWithinSizeLimit(file)) {
+        setErrorMessage(getFileTooLargeMessage(file));
+        return;
+      }
+
+      setErrorMessage("");
       capturedFileRef.current = file;
       setCropRect(getDefaultManualCropRect());
       setCropWarning("");
@@ -414,6 +428,10 @@ export function PhotoCapturePanel({
           </button>
         </div>
 
+        <p className="mt-2 text-xs font-semibold leading-5 text-slate-400">
+          {FILE_SIZE_LIMIT_HELPER}
+        </p>
+
         {stage === "choice" ? (
           <div className="mt-5 grid gap-3">
             <button
@@ -435,7 +453,7 @@ export function PhotoCapturePanel({
         ) : null}
 
         {stage === "requesting_camera" ? (
-          <p className="mt-5 rounded-lg border border-cyan-300/20 bg-cyan-300/10 px-4 py-3 text-sm leading-6 text-cyan-50/90">
+          <p role="status" aria-live="polite" aria-atomic="true" className="mt-5 rounded-lg border border-cyan-300/20 bg-cyan-300/10 px-4 py-3 text-sm leading-6 text-cyan-50/90">
             Requesting camera access...
           </p>
         ) : null}
@@ -588,7 +606,7 @@ export function PhotoCapturePanel({
 
         {stage === "permission_denied" ? (
           <div className="mt-5 grid gap-3">
-            <p className="rounded-lg border border-amber-300/25 bg-amber-300/10 px-4 py-3 text-sm leading-6 text-amber-50">
+            <p role="alert" aria-live="assertive" aria-atomic="true" className="rounded-lg border border-amber-300/25 bg-amber-300/10 px-4 py-3 text-sm leading-6 text-amber-50">
               {CAMERA_PERMISSION_DENIED_MESSAGE}
             </p>
             <UploadExistingPhotoInput onSelect={handleUploadExisting} />
@@ -597,7 +615,7 @@ export function PhotoCapturePanel({
 
         {stage === "camera_unavailable" ? (
           <div className="mt-5 grid gap-3">
-            <p className="rounded-lg border border-amber-300/25 bg-amber-300/10 px-4 py-3 text-sm leading-6 text-amber-50">
+            <p role="alert" aria-live="assertive" aria-atomic="true" className="rounded-lg border border-amber-300/25 bg-amber-300/10 px-4 py-3 text-sm leading-6 text-amber-50">
               {CAMERA_UNAVAILABLE_MESSAGE}
             </p>
             <UploadExistingPhotoInput onSelect={handleUploadExisting} />
@@ -607,7 +625,7 @@ export function PhotoCapturePanel({
         {errorMessage &&
         stage !== "permission_denied" &&
         stage !== "camera_unavailable" ? (
-          <p className="mt-3 text-sm leading-6 text-amber-200">{errorMessage}</p>
+          <p role="alert" aria-live="assertive" aria-atomic="true" className="mt-3 text-sm leading-6 text-amber-200">{errorMessage}</p>
         ) : null}
 
         <p className="mt-5 rounded-lg border border-cyan-300/20 bg-cyan-300/10 px-4 py-3 text-sm leading-6 text-cyan-50/90">

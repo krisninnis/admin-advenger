@@ -8,6 +8,7 @@ import type {
 import type { GuidedCaseMode } from "../lib/guidedCaseMode";
 import { formatMoneyImpact } from "../lib/impactLedger";
 import { deriveOpportunityCard } from "../lib/opportunityCards";
+import { FILE_SIZE_LIMIT_HELPER, getFileTooLargeMessage, isFileWithinSizeLimit } from "../lib/fileSizeLimit";
 
 export type OutcomeConfirmationValues = {
   outcomeType: OutcomeConfirmationType;
@@ -375,6 +376,7 @@ export function OutcomeConfirmation({
   const [confirmedAt, setConfirmedAt] = useState(today());
   const [proofText, setProofText] = useState("");
   const [proofImageName, setProofImageName] = useState("");
+  const [proofImageMessage, setProofImageMessage] = useState("");
   const [confirmationMessage, setConfirmationMessage] = useState("");
   useEffect(() => {
     setOutcomeType("still_waiting");
@@ -384,6 +386,7 @@ export function OutcomeConfirmation({
     setConfirmedAt(today());
     setProofText("");
     setProofImageName("");
+    setProofImageMessage("");
     setConfirmationMessage("");
   }, [adminCase.id]);
 
@@ -405,9 +408,17 @@ export function OutcomeConfirmation({
   const handleProofImage = (file?: File) => {
     if (!file) {
       setProofImageName("");
+      setProofImageMessage("");
       return;
     }
 
+    if (!isFileWithinSizeLimit(file)) {
+      setProofImageName("");
+      setProofImageMessage(getFileTooLargeMessage(file));
+      return;
+    }
+
+    setProofImageMessage("");
     setProofImageName(file.name);
   };
 
@@ -597,6 +608,9 @@ export function OutcomeConfirmation({
           Photo proof is not fully stored in this prototype. Keep the original file somewhere safe.
           AdminAvenger stores the filename only and does not send it anywhere.
         </p>
+        <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
+          {FILE_SIZE_LIMIT_HELPER}
+        </p>
 
         <label className="mt-3 block text-sm font-semibold text-slate-200">
           Proof screenshot/photo
@@ -608,9 +622,20 @@ export function OutcomeConfirmation({
           />
         </label>
 
+        {proofImageMessage ? (
+          <p
+            role="alert"
+            aria-live="assertive"
+            aria-atomic="true"
+            className="mt-3 rounded-lg border border-amber-300/25 bg-amber-300/10 px-3 py-2 text-sm leading-6 text-amber-50"
+          >
+            {proofImageMessage}
+          </p>
+        ) : null}
+
         {proofImageName ? (
           <div className="mt-3 rounded-lg border border-white/10 bg-slate-950/60 p-3">
-            <p className="text-sm text-slate-300">
+            <p role="status" aria-live="polite" aria-atomic="true" className="text-sm text-slate-300">
               Proof image selected: {proofImageName}. AdminAvenger stores the filename only in this
               browser prototype, not the full image.
             </p>
@@ -647,7 +672,7 @@ export function OutcomeConfirmation({
       </button>
 
       {confirmationMessage ? (
-        <p className="mt-3 rounded-lg border border-emerald-300/30 bg-emerald-300/12 px-4 py-3 text-sm font-semibold leading-6 text-emerald-50">
+        <p role="status" aria-live="polite" aria-atomic="true" className="mt-3 rounded-lg border border-emerald-300/30 bg-emerald-300/12 px-4 py-3 text-sm font-semibold leading-6 text-emerald-50">
           {confirmationMessage}
         </p>
       ) : null}

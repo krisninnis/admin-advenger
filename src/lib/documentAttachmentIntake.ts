@@ -18,6 +18,7 @@
 // intake paths.
 import { getAttachmentUnsupportedMessage, classifyFileForIntake } from "./fileIntakeAccept";
 import { combineOcrTexts, type OcrTextPart } from "./photoOcr";
+import { getFileTooLargeMessage, isFileWithinSizeLimit } from "./fileSizeLimit";
 
 // "docx" and "pdf" are their own kinds (Document File Support v1) rather
 // than being folded into "text" - they go through a different local reader
@@ -87,6 +88,17 @@ export const ATTACHMENT_READ_FAILED_MESSAGE =
 // HomeView's handleAttachmentFilesSelected.
 export const createAttachedFile = (file: File, id: string = createAttachmentId()): AttachedFile => {
   const kind = classifyAttachedFileKind(file);
+
+  if (!isFileWithinSizeLimit(file)) {
+    return {
+      id,
+      file,
+      kind,
+      status: "failed",
+      warnings: [],
+      errorMessage: getFileTooLargeMessage(file),
+    };
+  }
 
   if (kind === "unsupported") {
     return {
@@ -248,7 +260,7 @@ export const ATTACHMENT_REMOVE_BUTTON_LABEL = "Remove";
 // wording standard.
 export const ATTACHMENT_STATUS_LABELS: Record<AttachedFileStatus, string> = {
   waiting: "Selected in this browser",
-  reading: "Reading locally in this browser…",
+  reading: "Reading locally in this browser\u2026",
   read: "Read locally in this browser",
   failed: "Failed",
 };

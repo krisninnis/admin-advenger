@@ -59,6 +59,7 @@ import {
   quickUploadAcceptAttribute,
   UNSUPPORTED_FILE_MESSAGE,
 } from "../lib/fileIntakeAccept";
+import { FILE_SIZE_LIMIT_HELPER, getFileTooLargeMessage, isFileWithinSizeLimit } from "../lib/fileSizeLimit";
 import { DocumentAttachmentArea } from "../components/DocumentAttachmentArea";
 import {
   ATTACHMENT_READ_FAILED_MESSAGE,
@@ -418,7 +419,7 @@ function FactList({ title, items }: { title: string; items: string[] }) {
 function AiExtractedFactsPanel({ extraction }: { extraction: AiExtractionResult }) {
   const [isOpen, setIsOpen] = useState(false);
   const amountItems = extraction.amounts.map((amount) => {
-    const value = amount.value === null ? "not found" : `${amount.currency === "GBP" ? "£" : ""}${amount.value}`;
+    const value = amount.value === null ? "not found" : `${amount.currency === "GBP" ? "\u00a3" : ""}${amount.value}`;
     return `${amount.label}: ${value} (${amount.frequency})`;
   });
   const dateItems = extraction.dates.map((date) => `${date.label}: ${date.value ?? "not found"}`);
@@ -1036,6 +1037,14 @@ export function HomeView({
       return;
     }
 
+    if (!isFileWithinSizeLimit(file)) {
+      const message = getFileTooLargeMessage(file);
+      setUploadNote(message);
+      setOcrStatus("error");
+      setOcrError(message);
+      return;
+    }
+
     if (!isSupportedPhotoFile(file)) {
       setUploadNote(
         "This image type may not be readable here. Try JPG, PNG, WEBP, or paste the text manually.",
@@ -1098,6 +1107,18 @@ export function HomeView({
       setOcrConfidence(undefined);
       setOcrWarnings([]);
       setOcrSectionWarnings([]);
+    }
+
+    const oversizedPhoto = photos.find((photo) => !isFileWithinSizeLimit(photo.file));
+
+    if (oversizedPhoto) {
+      const message = getFileTooLargeMessage(oversizedPhoto.file);
+      setUploadedFileName(oversizedPhoto.file.name);
+      setUploadNote(message);
+      setOcrStatus("error");
+      setOcrError(message);
+      setPhotoCaptureIntent("replace");
+      return;
     }
 
     const usablePhotos = photos.filter((photo) => isSupportedPhotoFile(photo.file));
@@ -1253,6 +1274,11 @@ export function HomeView({
       return;
     }
 
+    if (!isFileWithinSizeLimit(file)) {
+      setUploadNote(getFileTooLargeMessage(file));
+      return;
+    }
+
     if (!isSupportedTextFile(file)) {
       setUploadNote(UNSUPPORTED_FILE_MESSAGE);
       return;
@@ -1310,6 +1336,12 @@ export function HomeView({
       return;
     }
 
+    if (!isFileWithinSizeLimit(file)) {
+      setUploadedFileName(file.name);
+      setUploadNote(getFileTooLargeMessage(file));
+      return;
+    }
+
     const route = classifyUploadedFile(file);
 
     if (route === "photo_ocr") {
@@ -1359,7 +1391,7 @@ export function HomeView({
     setAttachedFiles((current) => [...current, ...newEntries]);
 
     for (const entry of newEntries) {
-      if (entry.kind === "unsupported") {
+      if (entry.status === "failed") {
         continue;
       }
 
@@ -1862,6 +1894,9 @@ export function HomeView({
                   }
                   className="mt-4 block w-full rounded-lg border border-white/10 bg-slate-950 px-4 py-3 text-sm text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-emerald-400 file:px-3 file:py-2 file:text-sm file:font-bold file:text-slate-950"
                 />
+                <span className="mt-2 block text-xs font-semibold leading-5 text-slate-500">
+                  {FILE_SIZE_LIMIT_HELPER}
+                </span>
               </label>
               {uploadedFileName ? (
                 <p className="mt-3 text-sm font-semibold text-slate-200">{uploadedFileName}</p>
@@ -1880,7 +1915,7 @@ export function HomeView({
                   className="mt-4 max-h-64 w-full rounded-lg border border-white/10 object-contain"
                 />
               ) : null}
-              {uploadNote ? <p className="mt-2 text-sm leading-6 text-slate-400">{uploadNote}</p> : null}
+              {uploadNote ? <p role="status" aria-live="polite" aria-atomic="true" className="mt-2 text-sm leading-6 text-slate-400">{uploadNote}</p> : null}
               {selectedInput === "file" ? (
                 <DocumentAttachmentArea
                   files={attachedFiles}
@@ -1894,6 +1929,11 @@ export function HomeView({
                   onDrop={handleAttachmentDrop}
                 />
               ) : null}
+              <p role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+                {selectedInput === "image" && ocrStatus === "reading"
+                  ? OCR_READING_STATUS_MESSAGE
+                  : ""}
+              </p>
               {selectedInput === "image" && ocrStatus === "reading" ? (
                 <div className="mt-4 rounded-lg border border-cyan-300/20 bg-cyan-300/10 p-4">
                   <p className="text-sm font-bold text-cyan-50">
@@ -1909,7 +1949,7 @@ export function HomeView({
               ) : null}
               {selectedInput === "image" && ocrStatus === "success" ? (
                 <div className="mt-4 rounded-lg border border-emerald-300/20 bg-emerald-300/[0.07] p-4">
-                  <p className="text-sm font-bold text-emerald-50">
+                  <p role="status" aria-live="polite" aria-atomic="true" className="text-sm font-bold text-emerald-50">
                     {ocrSourceMode === "multi" ? OCR_COMBINED_PHOTOS_ON_DEVICE_MESSAGE : OCR_ON_DEVICE_MESSAGE}
                   </p>
                   <p className="mt-2 text-sm leading-6 text-emerald-50/80">{OCR_MISTAKES_MESSAGE}</p>
@@ -2054,7 +2094,7 @@ export function HomeView({
               ) : null}
               {selectedInput === "image" && ocrStatus === "error" ? (
                 <div className="mt-4 rounded-lg border border-amber-300/25 bg-amber-300/10 p-4">
-                  <p className="text-sm leading-6 text-amber-50">{ocrError || OCR_FAILED_MESSAGE}</p>
+                  <p role="alert" aria-live="assertive" aria-atomic="true" className="text-sm leading-6 text-amber-50">{ocrError || OCR_FAILED_MESSAGE}</p>
                   <div className="mt-3 grid gap-2 sm:grid-cols-2">
                     <button
                       type="button"
@@ -2154,7 +2194,7 @@ export function HomeView({
         <p className="mt-3 rounded-lg border border-cyan-300/20 bg-cyan-300/10 px-4 py-3 text-sm leading-6 text-cyan-50/90">
           What you paste stays in this browser in this version. Nothing is uploaded.
           <span className="mt-1 block text-cyan-50/80">
-            You can remove passwords or account numbers first — AdminAvenger does not need them to
+            You can remove passwords or account numbers first &mdash; AdminAvenger does not need them to
             help.
           </span>
         </p>

@@ -46,18 +46,18 @@ For every issue, record:
 
 ## Journey 1 - Paste text
 
-- [ ] Open the production home page
-- [ ] Paste a realistic letter or message
-- [ ] Run the check
-- [ ] Confirm the previous result is cleared
-- [ ] Confirm extracted facts match the source
-- [ ] Confirm uncertain facts are labelled clearly
-- [ ] Confirm no invented date, amount, deadline, right, or outcome appears
-- [ ] Confirm the next action is understandable
-- [ ] Confirm a draft can be prepared
-- [ ] Confirm the user remains responsible for sending it
+- [x] Open the production home page
+- [x] Paste a realistic letter or message
+- [x] Run the check
+- [x] Confirm the previous result is cleared
+- [x] Confirm extracted facts match the source
+- [x] Confirm uncertain facts are labelled clearly
+- [x] Confirm no invented date, amount, deadline, right, or outcome appears
+- [x] Confirm the next action is understandable
+- [x] Confirm a draft can be prepared
+- [x] Confirm the user remains responsible for sending it
 
-Result: [x] Passed for the original high-severity classification/extraction retest. Polish retest still required after deployment.
+Result: [x] Passed in production on 2026-07-17.
 
 Notes:
 
@@ -69,7 +69,8 @@ Notes:
 - Production retest after the payment-reminder fix correctly recognised the Greenfield reminder and showed the deadline, amount, account reference, sender, letter date, and payment due date.
 - Production correctly counted no saving or recovery for the amount being requested.
 - The retest exposed low-severity polish issues: duplicate "Amount being requested" labelling, an overly generic best-next-move prompt, and a safe but overly generic draft.
-- Local polish implemented for the duplicate money label, payment-reminder best next move, and payment-reminder draft. Production retest is required after this polish commit is deployed.
+- Local polish implemented for the duplicate money label, payment-reminder best next move, and payment-reminder draft.
+- Production polish deployed and retested successfully. The amount label appeared once, the next move used the extracted facts appropriately, and the prepared draft remained neutral without admitting liability or counting a saving or recovery.
 
 ## Journey 2 - Upload a PDF
 

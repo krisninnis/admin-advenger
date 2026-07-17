@@ -121,16 +121,46 @@ Notes:
 
 ## Journey 4 - Upload an existing image
 
-- [ ] Upload a supported image below 20 MB
-- [ ] Confirm OCR begins
-- [ ] Confirm OCR progress is visible
-- [ ] Confirm OCR success or failure is understandable
-- [ ] Confirm the user is warned to check OCR mistakes
-- [ ] Confirm retry and manual paste options work
+- [x] Upload a supported image below 20 MB
+- [x] Confirm OCR begins
+- [x] Confirm OCR progress is visible
+- [x] Confirm OCR success or failure is understandable
+- [x] Confirm the user is warned to check OCR mistakes
+- [x] Confirm retry and manual paste options work
 
 Result:
 
+- [x] Passed in production on 2026-07-17.
+
 Notes:
+
+- Tested with the synthetic `audit-fixtures/journey-4-payment-notice.png`
+  fixture. It contains no personal data and is approximately 0.05 MB.
+- Production accepted the PNG and read it locally in the browser without
+  uploading or sending it.
+- OCR progress was visible and the completed review clearly reported that OCR
+  ran on-device.
+- OCR extracted the sender, account reference, amount, dates, payment wording,
+  telephone number, and full editable text accurately at 95% confidence.
+- The review warned that OCR can make mistakes and instructed the user to check
+  the extracted text before continuing.
+- Editing, Add close-up photo, Retake photo, Cancel, and manual text entry
+  remained available.
+- Initial production testing exposed false small-image, low-resolution, and
+  low-contrast warnings for a clear 1600 x 1200 PNG, plus a shortened sender
+  name.
+- Fixed compressed-image dimension handling and preserved the full sender name
+  `Harbour Energy Services`.
+- Added OCR-aware warning handling so a strong OCR result can suppress only a
+  conflicting low-contrast warning while retaining other genuine warnings.
+- Focused regression tests passed: 137 tests for the initial polish and 55
+  tests for the OCR-confidence follow-up.
+- Full verification passed with 61 test files and 1,393 tests. Lint completed
+  with zero warnings or errors, and the production build succeeded.
+- Changes reached production through merge commits `90b2598` and `2f49217`.
+  Production served `/assets/index-93N4arQR.js` during the final retest.
+- No money was counted as saved or recovered, and nothing was sent, submitted,
+  paid, or contacted automatically.
 
 ## Journey 5 - Take a photo
 

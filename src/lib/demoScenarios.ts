@@ -13,6 +13,15 @@ export type DemoScenario = {
 
 const demoDefinitions = [
   {
+    id: "demo-uc-adviser-deductions-overpayment",
+    title: "Universal Credit deductions and overpayment recovery",
+    category: "Benefits statement",
+    description:
+      "A fictional Universal Credit statement showing advance repayment and overpayment deductions. Demonstrates payment breakdown, uncertainty, evidence preparation and adviser questions.",
+    fixtureId: "benefits-uc-adviser-demo-001",
+    demoKind: "standard",
+  },
+  {
     id: "demo-uc-statement",
     title: "Universal Credit statement",
     category: "Benefits statement",

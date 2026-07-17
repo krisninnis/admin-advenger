@@ -514,6 +514,7 @@ const createUcDeductionBreakdownMessage = (adminCase: AdminCase) => {
           .join(", ")}.`
       : "From what is shown, one or more deductions have been applied to my payment.",
     "Please provide a breakdown of each deduction, including what it is for, the total amount still owed, and the rate being taken each month.",
+    "Please also confirm what any overpayment relates to, the period covered, how it was calculated, and whether supporting documents are available.",
     "If the deductions are causing hardship, please also confirm what support or a lower deduction rate may be available.",
     "Kind regards,",
   ]);
@@ -526,8 +527,7 @@ const createUcDeductionBreakdownMessage = (adminCase: AdminCase) => {
     fullText,
     compact(deductionFacts.map((fact) => `${fact.label}: ${fact.value}`)),
     decision?.evidenceNeeded ?? [],
-    decision?.safetyNotes[0] ??
-      "AdminAvenger has not sent this. This message only asks for a breakdown. It does not dispute the deduction for you.",
+    "AdminAvenger has not sent this. This message only asks for a breakdown. It does not dispute the deduction for you.",
   );
 };
 

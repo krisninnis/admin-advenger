@@ -315,7 +315,7 @@ const COUNCIL_PATTERN = /\b[A-Z][a-zA-Z]+(?:\s(?:City|Borough|District|County))?
 // the dedicated "Legal" and "Council" patterns above - covers common company
 // suffixes the letter's sender or a related company might use.
 const COMPANY_SUFFIX_PATTERN =
-  /\b(?:[A-Z][a-zA-Z&]*\s){0,2}[A-Z][a-zA-Z&]*\s(?:Ltd|Energy|Water|Bank)\b/g;
+  /\b(?:[A-Z][a-zA-Z&]*\s){0,2}[A-Z][a-zA-Z&]*\s(?:Ltd|Energy|Water|Bank)(?:\sServices)?\b/g;
 const ENERGY_SUPPLIER_PHRASES = [
   "British Gas",
   "EDF Energy",

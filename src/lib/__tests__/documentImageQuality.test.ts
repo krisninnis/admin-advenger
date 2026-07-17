@@ -161,6 +161,15 @@ describe("getLowResolutionWarning", () => {
     expect(getLowResolutionWarning({ width: 1200, height: 1600 })).toBeUndefined();
   });
 
+  it("does not warn when a compressed image still has useful pixel dimensions", () => {
+    expect(
+      getLowResolutionWarning({
+        width: 1600,
+        height: 1200,
+        fileSize: 47_783,
+      }),
+    ).toBeUndefined();
+  });
   it("warns when the file size is very small", () => {
     expect(getLowResolutionWarning({ fileSize: 50 * 1024 })).toBeDefined();
   });
@@ -306,8 +315,13 @@ describe("evaluateDocumentImageQuality", () => {
     expect(result.score).toBe("poor");
   });
 
-  it("a very small file size produces a low_resolution warning", () => {
-    const result = evaluateDocumentImageQuality({ ...GOOD_METRICS, fileSize: 40 * 1024 });
+  it("a very small file size produces a low_resolution warning when dimensions are unknown", () => {
+    const result = evaluateDocumentImageQuality({
+      ...GOOD_METRICS,
+      width: undefined,
+      height: undefined,
+      fileSize: 40 * 1024,
+    });
 
     expect(result.warnings.some((warning) => warning.code === "low_resolution")).toBe(true);
   });

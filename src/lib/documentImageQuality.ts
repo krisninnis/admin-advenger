@@ -340,11 +340,14 @@ export const getLowResolutionWarning = (input: {
   height?: number;
   fileSize?: number;
 }): DocumentImageQualityWarning | undefined => {
+  const hasKnownDimensions =
+    typeof input.width === "number" && typeof input.height === "number";
   const tooSmallDimensions =
     typeof input.width === "number" &&
     typeof input.height === "number" &&
     Math.max(input.width, input.height) < MIN_DOCUMENT_LONG_EDGE_PX;
   const tooSmallFile =
+    !hasKnownDimensions &&
     typeof input.fileSize === "number" &&
     input.fileSize > 0 &&
     input.fileSize < MIN_DOCUMENT_FILE_SIZE_BYTES;

@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { buildBenefitsActionPack } from "../benefitsActionPack";
 import { buildCareerSupportPack } from "../careerSupportPack";
+import { createAdminCase } from "../caseFactory";
 import { analyseDecisionProblem } from "../decisionEngine/decisionEngine";
 import type { DecisionDocumentType, DecisionResult } from "../decisionEngine/types";
+import { analyseAdminItem } from "../mockAnalysis";
+import { deriveOpportunityCard } from "../opportunityCards";
 import {
   RESULT_FORBIDDEN_PHRASES,
   buildResultViewModel,
@@ -12,6 +15,7 @@ import {
 } from "../resultViewModel";
 import { buildStrategicNextStepPlan, type StrategicNextStepPlan } from "../strategicNextStep";
 import { buildWorkplaceSupportPack } from "../workplaceSupportPack";
+import type { AdminItem } from "../../types";
 
 const makeDecision = (
   documentType: DecisionDocumentType,
@@ -105,6 +109,15 @@ const expectNoWorkplaceForbiddenWording = (text: string) => {
     expect(normalised).not.toContain(normaliseResultText(phrase));
   }
 };
+
+const makeAdminItem = (title: string, rawText: string, sourceType: AdminItem["sourceType"] = "bill"): AdminItem => ({
+  id: `item-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+  title,
+  sourceType,
+  rawText,
+  createdAt: "2026-07-17T10:00:00.000Z",
+  analysedAt: "2026-07-17T10:00:00.000Z",
+});
 
 const genericAdminStrategicPlan: StrategicNextStepPlan = {
   title: "Best next move",
@@ -208,6 +221,41 @@ You can ask us to look at this decision again.`);
     expect(model.moneyMentioned.some((line) => line.amountText === "GBP 813.45")).toBe(true);
     expect(model.evidenceFound.some((item) => item.value === "Advance repayment")).toBe(true);
     expect(model.questionsToAnswer).toContain("Which deduction has changed?");
+  });
+
+  it("surfaces payment reminder dates and display-only requested money", () => {
+    const item = makeAdminItem(
+      "Payment reminder",
+      [
+        "Greenfield Water Services",
+        "Payment reminder",
+        "Date: 14 July 2026",
+        "Account reference: GW-48291",
+        "Our records show an unpaid balance of \u00a384.60.",
+        "Payment was due on 10 July 2026.",
+        "Please pay the balance or contact us by 24 July 2026.",
+        "If you have already paid, send us proof of payment so we can update the account.",
+      ].join("\n"),
+    );
+    const [finding] = analyseAdminItem(item);
+
+    if (!finding) {
+      throw new Error("Expected a payment reminder finding");
+    }
+
+    const adminCase = createAdminCase(finding, item);
+    const opportunity = deriveOpportunityCard(adminCase, item, finding);
+    const model = buildResultViewModel({ adminCase, opportunity });
+
+    expect(model.title).toBe("Payment reminder to check");
+    expect(model.summary).toContain("payment reminder");
+    expect(model.keyDates.some((date) => date.value.includes("24 July 2026"))).toBe(true);
+    expect(model.moneyMentioned.some((line) => line.amountText.includes("84.60"))).toBe(true);
+    expect(model.moneyMentioned.every((line) => line.countedInMoneyTracker === false)).toBe(true);
+    expect(model.moneyMentioned.every((line) => normaliseResultText(line.caution).includes("not counted"))).toBe(true);
+    expect(model.evidenceFound).toContainEqual(
+      expect.objectContaining({ label: "Account reference", value: "GW-48291" }),
+    );
   });
 
   it("dedupes repeated evidence, questions, risks, cannotKnow, and uncertainty", () => {

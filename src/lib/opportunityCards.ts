@@ -23,6 +23,7 @@ import {
   isTravelEvidenceCheckText,
   parseMoneyAmount,
 } from "./moneyParsers";
+import { assessPaymentReminder } from "./paymentReminderAssessment";
 import {
   assessEmailSafety,
   getEmailSafetyRiskBand,
@@ -402,6 +403,50 @@ export const deriveOpportunityCard = (
           : riskBand === "verify_before_acting"
             ? "medium"
             : "low",
+      confidenceLabel: adminCase.confidence,
+      sourceCaseType: adminCase.category,
+      createdAt,
+      updatedAt,
+    };
+  }
+
+  if (/^payment reminder to check$/i.test(adminCase.title)) {
+    const fallbackItem: AdminItem = {
+      id: adminCase.itemId,
+      title: adminCase.title,
+      sourceType: "bill",
+      rawText: text,
+      createdAt,
+    };
+    const paymentReminder = assessPaymentReminder(item ?? fallbackItem);
+    const amount = toAmount(paymentReminder.amountDue);
+
+    return {
+      id: `opportunity-${adminCase.id}`,
+      caseId: adminCase.id,
+      opportunityType,
+      title: "Payment reminder to check",
+      plainEnglishSummary:
+        "This looks like a payment reminder. Check the provider, account reference, amount, and whether it has already been paid before deciding what to do.",
+      moneyAtStake: moneyImpact("Amount being requested", amount, "one_off", "unknown"),
+      deadline: paymentReminder.responseDeadline ?? paymentReminder.paymentDueDate ?? adminCase.chaseDate,
+      deadlineLabel: paymentReminder.responseDeadline
+        ? "Response/contact deadline"
+        : "Payment due date",
+      providerOrRetailer: paymentReminder.sender,
+      opportunityNote:
+        "AdminAvenger has not decided whether this money is owed. The amount is shown for checking only and is not counted as saved or recovered.",
+      statusLabel: "Payment reminder - check before acting",
+      evidenceFound: baseEvidence,
+      missingInformation: missingEvidence,
+      nextBestAction: adminCase.nextAction,
+      recommendedPathSteps: [
+        "Check the provider and account reference.",
+        "Check whether the amount is correct or already paid.",
+        "Use a verified provider channel if payment or contact is needed.",
+        "Keep proof of payment.",
+      ],
+      riskLevel: getRiskLevel(adminCase),
       confidenceLabel: adminCase.confidence,
       sourceCaseType: adminCase.category,
       createdAt,

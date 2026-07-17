@@ -68,11 +68,58 @@ const extractPricePair = (text: string) => {
   };
 };
 
-const extractProviderName = (text: string) =>
-  getFirstMatch(
+const cleanProviderName = (value?: string) =>
+  normaliseSpaces(value)?.replace(/[.,:;]+$/, "").trim();
+
+const isPlausibleProviderHeading = (value?: string) => {
+  const cleaned = cleanProviderName(value);
+
+  if (!cleaned || cleaned.length < 2 || cleaned.length > 60) {
+    return false;
+  }
+
+  if (
+    /\.(?:docx?|pdf|txt|md|csv|json|jpe?g|png)$/i.test(cleaned) ||
+    /^---/.test(cleaned) ||
+    /^(?:document|attachment|file)\b/i.test(cleaned) ||
+    /^(?:service\s+)?price\s+change\s+notice$/i.test(cleaned) ||
+    /^(?:date|account reference|reference|telephone|phone|your monthly|please|this notice)\b/i.test(cleaned)
+  ) {
+    return false;
+  }
+
+  return /^[A-Z0-9][A-Za-z0-9&.'’ -]{1,59}$/.test(cleaned);
+};
+
+const extractProviderName = (text: string) => {
+  const explicitProvider = getFirstMatch(
     text,
-    /(?:from|provider|with|your provider is)\s+([A-Z][A-Za-z0-9&.\s-]{2,40})(?:\.|,|\n| will| has| is|:|$)/,
+    /(?:your provider is|provider(?:\s+is)?|with|from)\s*:?\s+([A-Z][A-Za-z0-9&.'’ -]{1,60}?)(?=[.,:\n]|\s+(?:will|has|is)\b|$)/,
   );
+
+  if (explicitProvider) {
+    return cleanProviderName(explicitProvider);
+  }
+
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => normaliseSpaces(line))
+    .filter((line): line is string => Boolean(line));
+
+  const noticeHeadingIndex = lines.findIndex((line) =>
+    /^(?:service\s+)?price\s+change\s+notice$/i.test(line),
+  );
+
+  if (noticeHeadingIndex > 0) {
+    const headingCandidate = lines[noticeHeadingIndex - 1];
+
+    if (isPlausibleProviderHeading(headingCandidate)) {
+      return cleanProviderName(headingCandidate);
+    }
+  }
+
+  return undefined;
+};
 
 const extractEffectiveDate = (text: string) =>
   getFirstMatch(

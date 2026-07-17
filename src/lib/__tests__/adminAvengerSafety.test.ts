@@ -374,6 +374,8 @@ describe("AdminAvenger deterministic money safety", () => {
     const opportunity = deriveOpportunityCard(adminCase, item, finding);
     const impacts = impactsFor(adminCase, item, finding);
     const totals = calculateImpactTotals(impacts, [adminCase]);
+    const draft = createPreparedMessageDraft({ adminCase, item, finding, opportunity });
+    const draftText = draft.fullText.toLowerCase();
 
     expect(finding.title).toBe("Payment reminder to check");
     expect(finding.category).toBe("important_reply");
@@ -410,9 +412,37 @@ describe("AdminAvenger deterministic money safety", () => {
     expect(adminCase.evidence).toContainEqual(
       expect.objectContaining({ label: "Sender/provider clue", value: "Greenfield Water Services" }),
     );
+    expect(draft.messageType).toBe("payment_reminder_query");
+    expect(draft.suggestedSubject).toContain("GW-48291");
+    expect(draft.recipientHint).toContain("Greenfield Water Services");
+    expect(draft.fullText).toContain("GW-48291");
+    expect(draft.fullText).toContain("\u00a384.60");
+    expect(draft.fullText).toContain("24 July 2026");
+    expect(draftText).toMatch(/already been received|already paid/);
+    expect(draftText).toContain("please confirm");
+    expect(draft.safetyNote).toContain("has not confirmed whether the amount is correct or owed");
+    for (const forbidden of ["you owe", "i owe", "admit", "late fee", "disconnection", "legal action", "click"]) {
+      expect(draftText).not.toContain(forbidden);
+    }
     expect(impacts.some((entry) => entry.type === "pending_recovery")).toBe(false);
     expect(totals.pendingRecovery).toBe(0);
     expect(totals.confirmedSavedRecovered).toBe(0);
+  });
+
+  it("keeps non-payment important replies on the generic draft path", () => {
+    const { item, finding, adminCase } = firstCase(
+      makeItem(
+        "Important update",
+        "Important: please confirm whether you received the updated contact form. We are awaiting your response.",
+        "email",
+      ),
+    );
+    const opportunity = deriveOpportunityCard(adminCase, item, finding);
+    const draft = createPreparedMessageDraft({ adminCase, item, finding, opportunity });
+
+    expect(finding.title).toBe("Important reply needed");
+    expect(draft.messageType).toBe("generic_important_reply");
+    expect(draft.fullText).toContain("I'm following up on the message below");
   });
 
   it.each([

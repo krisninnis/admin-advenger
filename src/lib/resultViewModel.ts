@@ -312,8 +312,8 @@ const fromOpportunityDeadline = (opportunity?: OpportunityCard): ResultDateView 
       }
     : undefined;
 
-const formatMoneyImpact = (money: MoneyImpact) => {
-  const amount = money.amount === undefined ? "" : `: GBP ${money.amount.toFixed(2)}`;
+const formatMoneyAmountOnly = (money: MoneyImpact) => {
+  const amount = money.amount === undefined ? "Check the original document" : `GBP ${money.amount.toFixed(2)}`;
   const frequency =
     money.frequency === "monthly"
       ? " / month"
@@ -321,7 +321,7 @@ const formatMoneyImpact = (money: MoneyImpact) => {
         ? " / year"
         : "";
 
-  return `${money.label}${amount}${frequency}`;
+  return `${amount}${frequency}`;
 };
 
 const fromBenefitsMoneyLine = (line: BenefitsMoneyLine): ResultMoneyView => ({
@@ -338,7 +338,7 @@ const fromBenefitsMoneyLine = (line: BenefitsMoneyLine): ResultMoneyView => ({
 const fromOpportunityMoney = (money: MoneyImpact, index: number): ResultMoneyView => ({
   id: `opportunity-money-${index + 1}`,
   label: safeText(money.label, "Money mentioned"),
-  amountText: safeText(formatMoneyImpact(money), "Check the original document"),
+  amountText: safeText(formatMoneyAmountOnly(money), "Check the original document"),
   treatment:
     money.status === "potential"
       ? "possible_refund_or_reduction"
@@ -407,6 +407,26 @@ const buildBestNextMove = (
       strategicNextStepPlan.safestMove.whyThisHelps,
       "This keeps you in control while you check the facts.",
     ),
+    source: "best_next_move",
+  };
+};
+
+const isPaymentReminderOpportunity = (opportunity?: OpportunityCard, adminCase?: AdminCase) =>
+  /^payment reminder to check$/i.test(opportunity?.title ?? adminCase?.title ?? "");
+
+const buildPaymentReminderBestNextMove = (
+  opportunity?: OpportunityCard,
+): ResultBestNextMoveView => {
+  const deadlineText = opportunity?.deadline
+    ? ` Contact the provider before ${opportunity.deadline} if contact is needed.`
+    : "";
+
+  return {
+    label: "Check the account, amount, and payment status",
+    description:
+      `Check that the account reference belongs to you, whether the amount is correct, and whether it has already been paid. Use an independently verified provider channel rather than links or contact details you have not checked.${deadlineText} Keep proof of payment.`,
+    whyThisHelps:
+      "This keeps the payment reminder factual without deciding that the amount is valid or legally owed.",
     source: "best_next_move",
   };
 };
@@ -668,7 +688,9 @@ export const buildResultViewModel = ({
       : (careerSupportPack?.educationAndTraining ?? []);
   const bestNextMove = isCareerSupportResult
     ? buildCareerBestNextMove(careerSupportPack)
-    : buildBestNextMove(strategicNextStepPlan);
+    : isPaymentReminderOpportunity(opportunity, adminCase)
+      ? buildPaymentReminderBestNextMove(opportunity)
+      : buildBestNextMove(strategicNextStepPlan);
   const title = safeText(
     opportunity?.title ??
       benefitsActionPack?.title ??

@@ -99,14 +99,25 @@ Notes:
 
 ## Journey 3 - Upload a DOCX or TXT file
 
-- [ ] Upload a DOCX below 20 MB
-- [ ] Upload a TXT file below 20 MB
-- [ ] Confirm both are read correctly
-- [ ] Confirm failures provide a useful recovery action
+- [x] Upload a DOCX below 20 MB
+- [x] Upload a TXT file below 20 MB
+- [x] Confirm both are read correctly
+- [x] Confirm failures provide a useful recovery action
 
-Result:
+Result: [x] Passed in production on 2026-07-17.
 
 Notes:
+
+- Production tests used `audit-fixtures/journey-3-service-notice.docx` and `audit-fixtures/journey-3-service-notice.txt`.
+- Both supported files displayed their filenames, were read locally in the browser, and produced usable extracted text.
+- Dates, account reference, current price, new price, monthly increase, annual impact, and response deadline matched the synthetic notice.
+- Initial testing found that the standalone heading `Northbridge Broadband` was not preserved as the provider.
+- Provider extraction was updated to support plausible standalone notice headings while rejecting filenames, attachment markers, and generic document headings.
+- Focused regression tests passed: 3 files and 42 tests.
+- Full verification passed: 61 test files and 1,387 tests; lint and build passed.
+- The provider fix was deployed and successfully retested with both DOCX and TXT files.
+- An unreadable DOCX produced a clear failure message explaining that nothing was uploaded or sent and offering manual paste or document-photo recovery options.
+- Money remained display-only and was not counted as saved or recovered. Nothing was sent or submitted automatically.
 
 ## Journey 4 - Upload an existing image
 

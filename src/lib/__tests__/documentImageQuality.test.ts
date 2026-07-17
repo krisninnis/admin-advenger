@@ -28,6 +28,7 @@ import {
   getOccupancyWarning,
   getTiltWarning,
   getVisibleDocumentQualityWarningMessages,
+  getVisibleDocumentQualityWarningMessagesAfterOcr,
   shouldEmphasizeRetake,
   type DocumentImageQualityMetrics,
   type DocumentImageQualityWarning,
@@ -408,6 +409,61 @@ describe("evaluateDocumentImageQuality", () => {
 });
 
 // ---- getVisibleDocumentQualityWarningMessages ----
+describe("getVisibleDocumentQualityWarningMessagesAfterOcr", () => {
+  it("hides only a low-contrast warning after a strong OCR result", () => {
+    const result = {
+      score: "okay" as const,
+      warnings: [
+        {
+          code: "low_contrast" as const,
+          message: LOW_CONTRAST_MESSAGE,
+          severity: "warning" as const,
+        },
+      ],
+    };
+
+    expect(getVisibleDocumentQualityWarningMessagesAfterOcr(result, 95)).toEqual([]);
+  });
+
+  it("keeps a low-contrast warning when OCR confidence is not strong", () => {
+    const result = {
+      score: "okay" as const,
+      warnings: [
+        {
+          code: "low_contrast" as const,
+          message: LOW_CONTRAST_MESSAGE,
+          severity: "warning" as const,
+        },
+      ],
+    };
+
+    expect(getVisibleDocumentQualityWarningMessagesAfterOcr(result, 70)).toEqual([
+      LOW_CONTRAST_MESSAGE,
+    ]);
+  });
+
+  it("does not hide other photo-quality warnings after strong OCR", () => {
+    const result = {
+      score: "poor" as const,
+      warnings: [
+        {
+          code: "image_too_blurry" as const,
+          message: IMAGE_TOO_BLURRY_MESSAGE,
+          severity: "strong_warning" as const,
+        },
+        {
+          code: "low_contrast" as const,
+          message: LOW_CONTRAST_MESSAGE,
+          severity: "warning" as const,
+        },
+      ],
+    };
+
+    expect(getVisibleDocumentQualityWarningMessagesAfterOcr(result, 95)).toEqual([
+      IMAGE_TOO_BLURRY_MESSAGE,
+    ]);
+  });
+});
 describe("getVisibleDocumentQualityWarningMessages", () => {
   it("hides warnings when the overall score is still 'good'", () => {
     const messages = getVisibleDocumentQualityWarningMessages({

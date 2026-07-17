@@ -45,7 +45,7 @@ import {
 } from "../lib/photoIntake";
 import {
   assessDocumentImageQuality,
-  getVisibleDocumentQualityWarningMessages,
+  getVisibleDocumentQualityWarningMessagesAfterOcr,
 } from "../lib/documentImageQuality";
 import { assessEmailSafety } from "../lib/suspiciousEmail";
 import {
@@ -1008,16 +1008,24 @@ export function HomeView({
     ]);
     const baseMetadata = createPhotoIntakeMetadata(photo.file);
     const metadata = dimensions ? { ...baseMetadata, ...dimensions } : baseMetadata;
-    const imageQualityWarnings = Array.from(
-      new Set([
-        ...getImageQualityWarnings({ fileSize: photo.file.size, ...dimensions }),
-        ...getVisibleDocumentQualityWarningMessages(documentQuality),
-      ]),
-    );
+    const baseImageQualityWarnings = getImageQualityWarnings({
+      fileSize: photo.file.size,
+      ...dimensions,
+    });
 
     const result = await readTextFromImage(photo.file, (progress) => {
       setOcrProgress((index + progress.progress) / total);
     });
+
+    const imageQualityWarnings = Array.from(
+      new Set([
+        ...baseImageQualityWarnings,
+        ...getVisibleDocumentQualityWarningMessagesAfterOcr(
+          documentQuality,
+          result.confidence,
+        ),
+      ]),
+    );
 
     return {
       label: photo.label,

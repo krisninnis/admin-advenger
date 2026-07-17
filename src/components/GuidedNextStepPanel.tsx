@@ -4,6 +4,10 @@ import {
   type GuidedNextStep,
   type NextStepAction,
 } from "../lib/guidedNextSteps";
+import {
+  getGuidedDraftToSave,
+  type GuidedDraftToSave,
+} from "../lib/guidedDraftSave";
 
 type GuidedNextStepPanelProps = {
   guidedNextStep: GuidedNextStep;
@@ -11,7 +15,7 @@ type GuidedNextStepPanelProps = {
   // Only shown if the caller passes it - the existing save flow already
   // decides whether a case can be saved (HomeView only ever wires this in
   // when saving makes sense for the current result).
-  onSaveToCase?: () => void;
+  onSaveToCase?: (draft?: GuidedDraftToSave) => void;
   saveToCaseLabel?: string;
 };
 
@@ -276,7 +280,7 @@ export function GuidedNextStepPanel({
           {onSaveToCase ? (
             <button
               type="button"
-              onClick={onSaveToCase}
+              onClick={() => onSaveToCase(getGuidedDraftToSave(primaryAction, draftText))}
               className="min-h-11 rounded-lg border border-emerald-300/30 bg-emerald-300/10 px-4 py-3 text-sm font-bold text-emerald-100 transition hover:border-emerald-200 hover:text-white focus:outline-none focus:ring-2 focus:ring-emerald-300/40"
             >
               {saveToCaseLabel}

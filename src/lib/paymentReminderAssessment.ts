@@ -127,19 +127,63 @@ const extractAmountDue = (text: string) => {
 const extractAccountReference = (text: string) =>
   firstMatch(text, /\b(?:account reference|account ref|account number|reference|ref)\s*:?\s*([A-Z0-9][A-Z0-9-]{2,})\b/i);
 
+const attachmentMarkerPattern = /^---\s*Document file(?:\s+\d+)?:\s*.+---$/i;
+
+const stripAttachmentMarkers = (text: string) =>
+  text.replace(/---\s*Document file(?:\s+\d+)?:\s*[^\r\n]*---/gi, "\n");
+
+const isPlausibleSenderCandidate = (value: string) => {
+  const candidate = normaliseWhitespace(value);
+
+  if (!candidate || candidate.length > 80 || !/[A-Za-z]/.test(candidate)) {
+    return false;
+  }
+
+  if (
+    /^(payment reminder|date|account reference|account ref|reference|ref|our records|payment was due|please pay|if you have already paid|telephone|tel|phone)\b/i.test(candidate) ||
+    /\bpayment reminder\b/i.test(candidate) ||
+    attachmentMarkerPattern.test(candidate) ||
+    amountPattern.test(candidate) ||
+    new RegExp(datePattern, "i").test(candidate) ||
+    /\b[A-Z]{1,5}-?\d{3,}\b/i.test(candidate) ||
+    /\b\d{3,}\s*\d{3,}\s*\d{3,}\b/.test(candidate) ||
+    /\.(?:pdf|docx?|txt|png|jpe?g)\b/i.test(candidate) ||
+    /[:@]/.test(candidate)
+  ) {
+    return false;
+  }
+
+  return true;
+};
+
 const extractSender = (item: AdminItem) => {
-  const lines = item.rawText
+  const cleanedText = stripAttachmentMarkers(item.rawText);
+  const lines = cleanedText
     .split(/\r?\n/)
     .map(normaliseWhitespace)
     .filter(Boolean);
-  const firstContentLine = lines.find((line) =>
-    !/^(payment reminder|date:|account reference:|reference:|our records|payment was due|please pay|if you have already paid|telephone:)/i.test(line) &&
-    !amountPattern.test(line) &&
-    !/[:@]/.test(line) &&
-    line.length <= 80,
-  );
+  const firstContentLine = lines.find(isPlausibleSenderCandidate);
 
-  return firstContentLine ?? undefined;
+  if (firstContentLine) {
+    return firstContentLine;
+  }
+
+  const paymentReminderIndex = cleanedText.search(/\bpayment reminder\b/i);
+
+  if (paymentReminderIndex <= 0) {
+    return undefined;
+  }
+
+  const beforePaymentReminder = cleanedText.slice(0, paymentReminderIndex);
+  const flattenedCandidate = beforePaymentReminder
+    .split(/\r?\n/)
+    .map(normaliseWhitespace)
+    .filter(Boolean)
+    .at(-1);
+
+  return flattenedCandidate && isPlausibleSenderCandidate(flattenedCandidate)
+    ? flattenedCandidate
+    : undefined;
 };
 
 const hasAny = (text: string, patterns: RegExp[]) => patterns.some((pattern) => pattern.test(text));

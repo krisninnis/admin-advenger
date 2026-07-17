@@ -74,17 +74,27 @@ Notes:
 
 ## Journey 2 - Upload a PDF
 
-- [ ] Select a readable PDF below 20 MB
-- [ ] Confirm the filename appears
-- [ ] Confirm local reading starts
-- [ ] Confirm extracted text is usable
-- [ ] Confirm the result matches the document
-- [ ] Confirm the document is not described as uploaded
-- [ ] Confirm an adviser export can be created
+- [x] Select a readable PDF below 20 MB
+- [x] Confirm the filename appears
+- [x] Confirm local reading starts
+- [x] Confirm extracted text is usable
+- [x] Confirm the result matches the document
+- [x] Confirm the document is not described as uploaded
+- [x] Confirm an adviser export can be created
 
-Result:
+Result: [!] Core production journey passed; polish retest required after deployment.
 
 Notes:
+
+- 2026-07-17 production test used `audit-fixtures/journey-2-payment-reminder.pdf`.
+- Passed in production: readable PDF below 20 MB selected; filename appeared; local reading completed; extracted text was usable; important dates, amount, and reference matched; document was described as read locally, not uploaded; evidence pack downloaded successfully.
+- Medium issue found: refund/recovery guidance incorrectly appeared for payment reminder.
+- Medium issue found: reviewed prepared draft was missing from evidence-pack history after Save to case.
+- Low issue found: PDF sender/provider was not preserved.
+- Low issue found: source title was recorded as pasted text.
+- Low issue found: doubled bullets and punctuation appeared in Markdown export.
+- Local fixes implemented for guidance matching, guided draft persistence, flattened-PDF sender extraction, attachment source titles, and Markdown export formatting.
+- Production retest required after deployment.
 
 ## Journey 3 - Upload a DOCX or TXT file
 

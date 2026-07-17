@@ -237,7 +237,8 @@ describe("Community Helper Controlled Intake v1", () => {
   });
 
   it("keeps HomeView's normal 'What does this mean?' check flow completely unchanged", () => {
-    expect(homeViewSource).toContain('onCheck("Pasted admin text", "email", textToCheck)');
+    expect(homeViewSource).toContain("buildCheckSourceTitle(rawText, attachedFiles)");
+    expect(homeViewSource).toContain("onCheck(checkSourceTitle, \"email\", textToCheck)");
     expect(homeViewSource).not.toContain("analyseDecisionProblem");
   });
 

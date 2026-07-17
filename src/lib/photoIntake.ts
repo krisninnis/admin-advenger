@@ -77,7 +77,12 @@ export const getImageQualityWarnings = (input: {
   width?: number;
   height?: number;
 }): string[] => {
-  const tooSmallFile = input.fileSize > 0 && input.fileSize < MIN_FULL_PAGE_FILE_SIZE_BYTES;
+  const hasKnownDimensions =
+    typeof input.width === "number" && typeof input.height === "number";
+  const tooSmallFile =
+    !hasKnownDimensions &&
+    input.fileSize > 0 &&
+    input.fileSize < MIN_FULL_PAGE_FILE_SIZE_BYTES;
   const tooSmallDimensions =
     typeof input.width === "number" &&
     typeof input.height === "number" &&

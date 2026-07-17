@@ -56,6 +56,15 @@ describe("getImageQualityWarnings", () => {
     expect(warnings).toEqual([]);
   });
 
+  it("does not warn when a compressed image still has useful pixel dimensions", () => {
+    const warnings = getImageQualityWarnings({
+      fileSize: 47_783,
+      width: 1600,
+      height: 1200,
+    });
+
+    expect(warnings).toEqual([]);
+  });
   it("warns when pixel dimensions are too low, even if the file size looks fine", () => {
     const warnings = getImageQualityWarnings({ fileSize: 400 * 1024, width: 400, height: 300 });
     expect(warnings).toEqual([OCR_SMALL_IMAGE_WARNING]);

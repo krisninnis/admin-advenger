@@ -377,6 +377,15 @@ describe("extractOcrKeyDetails - sender/company hints", () => {
     expect(senders).not.toContain("SSE");
   });
 
+  it("keeps the full organisation heading instead of shortening it at Energy", () => {
+    const result = extractOcrKeyDetails(
+      "Harbour Energy Services\n\nAccount payment notice\n\nDate: 16 July 2026",
+    );
+    const senders = findByKind(result.details, "sender").map((detail) => detail.value);
+
+    expect(senders).toContain("Harbour Energy Services");
+    expect(senders).not.toContain("Harbour Energy");
+  });
   it("detects a generic '<Name> Ltd/Energy/Water/Bank' shaped company as a sender", () => {
     const result = extractOcrKeyDetails("This notice was issued by Acme Water on behalf of the account holder.");
     const senders = findByKind(result.details, "sender").map((detail) => detail.value);

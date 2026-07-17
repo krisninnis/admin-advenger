@@ -15,6 +15,7 @@ import {
   parseMoneyAmount,
 } from "./moneyParsers";
 import { deriveOpportunityCard } from "./opportunityCards";
+import { assessPaymentReminder } from "./paymentReminderAssessment";
 
 type PrepareMessageInput = {
   adminCase: AdminCase;
@@ -430,6 +431,69 @@ const createEmailSafetyChecklist = (adminCase: AdminCase, opportunity: Opportuni
   );
 };
 
+const createPaymentReminderMessage = (
+  adminCase: AdminCase,
+  item: AdminItem | undefined,
+) => {
+  const fallbackItem: AdminItem = {
+    id: adminCase.itemId,
+    title: adminCase.title,
+    sourceType: "bill",
+    rawText: rawTextFor(adminCase, item),
+    createdAt: adminCase.createdAt,
+    analysedAt: adminCase.updatedAt,
+  };
+  const assessment = assessPaymentReminder(item ?? fallbackItem);
+  const subject = assessment.accountReference
+    ? `Payment reminder query - ${assessment.accountReference}`
+    : "Payment reminder query";
+  const opening = assessment.accountReference
+    ? `I am contacting you about the payment reminder for account reference ${assessment.accountReference}.`
+    : "I am contacting you about a payment reminder I received.";
+  const sourceSummary = compact([
+    assessment.amountDue ? `states that ${assessment.amountDue} was due` : undefined,
+    assessment.responseDeadline
+      ? `asks me to contact you by ${assessment.responseDeadline}`
+      : assessment.paymentDueDate
+        ? `shows a payment due date of ${assessment.paymentDueDate}`
+        : undefined,
+  ]).join(" and ");
+  const proofLine = assessment.alternativeEvidenceAction
+    ? "Please let me know if you need proof of payment or any other information."
+    : "Please let me know if you need any other information.";
+  const fullText = joinMessage([
+    "Hello,",
+    opening,
+    sourceSummary
+      ? `The message ${sourceSummary}. Please confirm that the account reference, amount and current status are correct.`
+      : "Please confirm that the account reference, amount and current status are correct.",
+    "If this payment has already been received, please update the account and confirm that no further action is needed.",
+    proofLine,
+    "Kind regards,",
+  ]);
+
+  return makeDraft(
+    adminCase,
+    "payment_reminder_query",
+    subject,
+    assessment.sender ?? "The provider using independently verified contact details",
+    fullText,
+    compact([
+      assessment.sender ? `Provider: ${assessment.sender}` : undefined,
+      assessment.accountReference ? `Account reference: ${assessment.accountReference}` : undefined,
+      assessment.amountDue ? `Amount stated: ${assessment.amountDue}` : undefined,
+      assessment.responseDeadline ? `Response deadline: ${assessment.responseDeadline}` : undefined,
+      assessment.paymentDueDate ? `Payment due date: ${assessment.paymentDueDate}` : undefined,
+    ]),
+    [
+      "Use independently verified contact details",
+      "Check whether the payment has already been made",
+      "Check whether the account reference belongs to you",
+    ],
+    "AdminAvenger has not sent this. It has not confirmed whether the amount is correct or owed.",
+  );
+};
+
 const createAdminDisputeMessage = (adminCase: AdminCase, opportunity: OpportunityCard) => {
   const decision = adminCase.decisionResult;
   const fullText =
@@ -559,6 +623,12 @@ export const createPreparedMessageDraft = ({
   finding,
   opportunity = deriveOpportunityCard(adminCase, item, finding),
 }: PrepareMessageInput): PreparedMessageDraft => {
+  const paymentReminderAssessment = item ? assessPaymentReminder(item) : undefined;
+
+  if (paymentReminderAssessment?.isPaymentReminder) {
+    return createPaymentReminderMessage(adminCase, item);
+  }
+
   if (opportunity.opportunityType === "suspicious_email_risk") {
     return createEmailSafetyChecklist(adminCase, opportunity);
   }

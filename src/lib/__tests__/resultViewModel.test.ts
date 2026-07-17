@@ -250,9 +250,23 @@ You can ask us to look at this decision again.`);
     expect(model.title).toBe("Payment reminder to check");
     expect(model.summary).toContain("payment reminder");
     expect(model.keyDates.some((date) => date.value.includes("24 July 2026"))).toBe(true);
-    expect(model.moneyMentioned.some((line) => line.amountText.includes("84.60"))).toBe(true);
+    expect(model.moneyMentioned.some((line) => line.amountText === "GBP 84.60")).toBe(true);
     expect(model.moneyMentioned.every((line) => line.countedInMoneyTracker === false)).toBe(true);
     expect(model.moneyMentioned.every((line) => normaliseResultText(line.caution).includes("not counted"))).toBe(true);
+    const requestedAmountLine = model.moneyMentioned.find((line) => line.label === "Amount being requested");
+
+    expect(requestedAmountLine).toBeDefined();
+    expect(`${requestedAmountLine?.label}: ${requestedAmountLine?.amountText}`).toBe("Amount being requested: GBP 84.60");
+    expect(`${requestedAmountLine?.label}: ${requestedAmountLine?.amountText}`).not.toBe(
+      "Amount being requested: Amount being requested: GBP 84.60",
+    );
+    expect(model.bestNextMove?.label).toBe("Check the account, amount, and payment status");
+    expect(model.bestNextMove?.description).toContain("account reference belongs to you");
+    expect(model.bestNextMove?.description).toContain("whether the amount is correct");
+    expect(model.bestNextMove?.description).toContain("whether it has already been paid");
+    expect(model.bestNextMove?.description).toContain("independently verified provider channel");
+    expect(model.bestNextMove?.description).toContain("24 July 2026");
+    expect(model.bestNextMove?.label).not.toBe("Identify the sender, date, reference, and deadline");
     expect(model.evidenceFound).toContainEqual(
       expect.objectContaining({ label: "Account reference", value: "GW-48291" }),
     );

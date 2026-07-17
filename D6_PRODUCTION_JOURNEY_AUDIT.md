@@ -57,7 +57,7 @@ For every issue, record:
 - [ ] Confirm a draft can be prepared
 - [ ] Confirm the user remains responsible for sending it
 
-Result:
+Result: [x] Passed for the original high-severity classification/extraction retest. Polish retest still required after deployment.
 
 Notes:
 
@@ -65,7 +65,11 @@ Notes:
 - A clear Greenfield Water Services payment reminder fell through to "No obvious saving or action found".
 - The production result omitted the sender, dates, amount due, and account reference.
 - Local regression fix implemented for deterministic payment-reminder classification, evidence preservation, display-only requested money, and safe next action wording.
-- Production retest is still required after deployment; do not mark Journey 1 as passed until the live site is retested.
+- Original fix required a production retest after deployment.
+- Production retest after the payment-reminder fix correctly recognised the Greenfield reminder and showed the deadline, amount, account reference, sender, letter date, and payment due date.
+- Production correctly counted no saving or recovery for the amount being requested.
+- The retest exposed low-severity polish issues: duplicate "Amount being requested" labelling, an overly generic best-next-move prompt, and a safe but overly generic draft.
+- Local polish implemented for the duplicate money label, payment-reminder best next move, and payment-reminder draft. Production retest is required after this polish commit is deployed.
 
 ## Journey 2 - Upload a PDF
 

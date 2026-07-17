@@ -429,6 +429,23 @@ export const getVisibleDocumentQualityWarningMessages = (
   result: DocumentImageQualityResult,
 ): string[] => (result.score === "good" ? [] : result.warnings.map((warning) => warning.message));
 
+const STRONG_OCR_CONFIDENCE_THRESHOLD = 90;
+
+export const getVisibleDocumentQualityWarningMessagesAfterOcr = (
+  result: DocumentImageQualityResult,
+  confidence?: number,
+): string[] => {
+  if (result.score === "good") {
+    return [];
+  }
+
+  const strongOcrResult =
+    typeof confidence === "number" && confidence >= STRONG_OCR_CONFIDENCE_THRESHOLD;
+
+  return result.warnings
+    .filter((warning) => !(strongOcrResult && warning.code === "low_contrast"))
+    .map((warning) => warning.message);
+};
 // Whether the Retake button should be visually emphasised (e.g. styled more
 // prominently than "Use this photo"). Purely a styling decision - it never
 // hides or disables "Use this photo" itself, which stays available and

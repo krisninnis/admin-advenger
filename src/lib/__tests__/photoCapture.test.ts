@@ -112,6 +112,15 @@ describe("photo capture panel state model", () => {
     expect(photoCaptureReducer("choice", { type: "photo_captured" })).toBe("captured");
   });
 
+  it("uploading an existing photo recovers from camera permission and availability errors", () => {
+    expect(
+      photoCaptureReducer("permission_denied", { type: "photo_captured" }),
+    ).toBe("captured");
+    expect(
+      photoCaptureReducer("camera_unavailable", { type: "photo_captured" }),
+    ).toBe("captured");
+  });
+
   it("retaking from captured goes back to requesting_camera, allowing another capture", () => {
     expect(photoCaptureReducer("captured", { type: "retake" })).toBe("requesting_camera");
   });

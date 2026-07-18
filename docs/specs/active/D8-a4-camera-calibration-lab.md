@@ -30,9 +30,16 @@ Journey 5 depends on people taking clear full-page photos before local scan prep
 
 ## Development-Only Access
 
-- The lab is reachable only when `import.meta.env.DEV` is true and the browser path is `/dev/camera-lab`.
+- The lab is reachable only when the browser path is `/dev/camera-lab` and either:
+  - `import.meta.env.DEV` is true; or
+  - `import.meta.env.VITE_ENABLE_CAMERA_LAB === "true"`.
+- `VITE_ENABLE_CAMERA_LAB` is a public boolean build flag, never a secret.
+- `VITE_ENABLE_CAMERA_LAB=true` may be configured only for the D8 Vercel Preview branch.
+- `VITE_ENABLE_CAMERA_LAB` must remain absent or false in Production.
 - The lab is not added to `Sidebar` or normal production navigation.
-- In production, `/dev/camera-lab` must not render the lab.
+- Direct route access remains required; there must be no normal app link to the lab.
+- Camera permission still requires deliberate user action after the lab route renders.
+- In unflagged production, `/dev/camera-lab` must not render the lab.
 
 ## Privacy Constraints
 
@@ -250,6 +257,7 @@ Remove the dev route branch in `App.tsx`, delete the camera lab view, lab librar
 
 ## Tests
 
+- Pure access-gate tests for development, exact preview flag, missing production flag, false flag, and arbitrary flag values.
 - Pure measurement tests for A4 guide geometry, readiness, guidance priority, quad stability, capability support, assisted capture gating, cooldown, duplicate prevention, and telemetry sanitization.
 - Rendered lab tests for camera-open behavior, capability display/control disabling, settings display, rejected constraints, canvas/ImageCapture/system-camera/gallery selection, review variants, lifecycle recording, track cleanup, and telemetry export.
 - Sidebar/navigation test proving production navigation does not expose the lab.
@@ -265,6 +273,9 @@ Remove the dev route branch in `App.tsx`, delete the camera lab view, lab librar
 - Do not upload document images or telemetry.
 - Do not add manual crop UI to the normal journey.
 - Do not expose the calibration lab in production navigation.
+- Do not use URL query parameters as the only access gate.
+- Do not weaken Vercel Authentication.
+- Do not treat `VITE_ENABLE_CAMERA_LAB` as a secret or token.
 - Do not implement native mobile bridges in D8.
 - Do not promote calibration thresholds to production defaults without physical-device evidence.
 - Do not deploy or push.

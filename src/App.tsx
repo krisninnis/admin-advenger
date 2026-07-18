@@ -25,6 +25,7 @@ import {
   hasAcceptedCurrentTerms,
   resetTermsAcceptance,
 } from "./lib/termsAcceptance";
+import { isCameraCalibrationLabEnabled } from "./lib/cameraCalibrationLabAccess";
 import { TermsSafetyGate } from "./components/TermsSafetyGate";
 import {
   createAdminAvengerBackup,
@@ -98,7 +99,11 @@ const caseStatusLabels: Record<AdminCaseStatus, string> = {
 };
 
 const CAMERA_LAB_ROUTE_PATH = "/dev/camera-lab";
-const DevCameraCalibrationLabView = import.meta.env.DEV
+const CAMERA_LAB_BUILD_ENABLED =
+  import.meta.env.DEV || import.meta.env.VITE_ENABLE_CAMERA_LAB === "true";
+const CAMERA_LAB_ENABLED =
+  CAMERA_LAB_BUILD_ENABLED && isCameraCalibrationLabEnabled(import.meta.env);
+const DevCameraCalibrationLabView = CAMERA_LAB_BUILD_ENABLED
   ? lazy(() =>
       import("./views/CameraCalibrationLabView").then((module) => ({
         default: module.CameraCalibrationLabView,
@@ -203,7 +208,7 @@ function App() {
     loadInboxScanSettings,
   );
   const isDevCameraLabRoute =
-    import.meta.env.DEV &&
+    CAMERA_LAB_ENABLED &&
     typeof window !== "undefined" &&
     window.location.pathname === CAMERA_LAB_ROUTE_PATH;
 

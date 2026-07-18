@@ -3,13 +3,17 @@ import {
   A4_PORTRAIT_ASPECT_RATIO,
   analyzeCameraLabFrame,
   buildCameraLabVideoConstraints,
+  calculateQuadAreaDelta,
   calculateQuadAreaRatio,
+  calculateQuadIoU,
   calculateQuadSkewMetric,
   createA4GuideRect,
   createCameraLabTelemetryEntry,
+  evaluateQuadStability,
   getDefaultCameraLabSettings,
   hasCapability,
   isImageCaptureAvailable,
+  selectCameraLabGuidanceInstruction,
   shouldTriggerAssistedCapture,
   type CameraLabQualityMeasurements,
 } from "../cameraCalibrationLab";
@@ -45,12 +49,30 @@ const readyMetrics = (): Omit<CameraLabQualityMeasurements, "readyState" | "warn
   glareAcceptable: true,
   sharpnessAcceptable: true,
   cameraStable: true,
+  quadStable: true,
   documentCoverage: 0.5,
   skewMetric: 0.02,
   brightnessMetric: 150,
   glareMetric: 0.01,
   sharpnessMetric: 120,
+  quadIoU: 0.95,
+  quadAreaDelta: 0.02,
   stabilityDurationMs: 1400,
+});
+
+const readyQuad: DocumentScannerQuad = {
+  topLeft: { x: 100, y: 100 },
+  topRight: { x: 900, y: 100 },
+  bottomRight: { x: 900, y: 1600 },
+  bottomLeft: { x: 100, y: 1600 },
+};
+
+const readyMeasurements = (overrides: Partial<CameraLabQualityMeasurements> = {}): CameraLabQualityMeasurements => ({
+  ...readyMetrics(),
+  readyState: "ready",
+  warnings: [],
+  quad: readyQuad,
+  ...overrides,
 });
 
 describe("A4 camera calibration lab pure helpers", () => {
@@ -73,6 +95,27 @@ describe("A4 camera calibration lab pure helpers", () => {
 
     expect(calculateQuadAreaRatio(quad, 100, 200)).toBeCloseTo(0.42, 2);
     expect(calculateQuadSkewMetric(quad)).toBe(0);
+  });
+
+  it("calculates quad stability from IoU and area delta", () => {
+    const shiftedQuad: DocumentScannerQuad = {
+      topLeft: { x: 108, y: 106 },
+      topRight: { x: 908, y: 106 },
+      bottomRight: { x: 908, y: 1606 },
+      bottomLeft: { x: 108, y: 1606 },
+    };
+    const enlargedQuad: DocumentScannerQuad = {
+      topLeft: { x: 50, y: 50 },
+      topRight: { x: 950, y: 50 },
+      bottomRight: { x: 950, y: 1700 },
+      bottomLeft: { x: 50, y: 1700 },
+    };
+    const settings = getDefaultCameraLabSettings();
+
+    expect(calculateQuadIoU(shiftedQuad, readyQuad)).toBeGreaterThan(0.85);
+    expect(calculateQuadAreaDelta(shiftedQuad, readyQuad)).toBeLessThan(0.15);
+    expect(evaluateQuadStability(shiftedQuad, readyQuad, settings).quadStable).toBe(true);
+    expect(evaluateQuadStability(enlargedQuad, readyQuad, settings).quadStable).toBe(false);
   });
 
   it("reports Ready only after all quality checks and stability pass", () => {
@@ -98,37 +141,88 @@ describe("A4 camera calibration lab pure helpers", () => {
     expect(stable.allFourCornersVisible).toBe(true);
   });
 
-  it("keeps assisted capture gated by sustained readiness and duplicate prevention", () => {
+  it("selects the highest-priority one-instruction guidance", () => {
+    const settings = getDefaultCameraLabSettings();
+
+    expect(selectCameraLabGuidanceInstruction(readyMeasurements({ quad: undefined }), settings)).toBe(
+      "No document found.",
+    );
+    expect(
+      selectCameraLabGuidanceInstruction(
+        readyMeasurements({ allFourCornersVisible: false, documentInsideFrame: false }),
+        settings,
+      ),
+    ).toBe("Keep all four corners inside.");
+    expect(selectCameraLabGuidanceInstruction(readyMeasurements({ documentCoverage: 0.95 }), settings)).toBe(
+      "Move further away.",
+    );
+    expect(selectCameraLabGuidanceInstruction(readyMeasurements({ documentCoverage: 0.1 }), settings)).toBe(
+      "Move closer.",
+    );
+    expect(selectCameraLabGuidanceInstruction(readyMeasurements({ skewAcceptable: false }), settings)).toBe(
+      "Hold the phone level.",
+    );
+    expect(
+      selectCameraLabGuidanceInstruction(
+        readyMeasurements({ brightnessAcceptable: false, brightnessMetric: 30 }),
+        settings,
+      ),
+    ).toBe("More light needed.");
+    expect(selectCameraLabGuidanceInstruction(readyMeasurements({ glareAcceptable: false }), settings)).toBe(
+      "Reduce glare.",
+    );
+    expect(selectCameraLabGuidanceInstruction(readyMeasurements({ quadStable: false }), settings)).toBe(
+      "Hold still.",
+    );
+    expect(selectCameraLabGuidanceInstruction(readyMeasurements(), settings)).toBe("Ready.");
+  });
+
+  it("keeps assisted capture gated by readiness, sustained stability, cooldown and duplicate prevention", () => {
+    const measurements = readyMeasurements();
+
     expect(
       shouldTriggerAssistedCapture({
         assistedCapture: true,
-        readyState: "ready",
+        measurements,
         isCapturing: false,
         captureAlreadyTriggered: false,
+        cooldownRemainingMs: 0,
       }),
     ).toBe(true);
     expect(
       shouldTriggerAssistedCapture({
         assistedCapture: true,
-        readyState: "almost_ready",
+        measurements: readyMeasurements({ cameraStable: false, readyState: "almost_ready" }),
         isCapturing: false,
         captureAlreadyTriggered: false,
+        cooldownRemainingMs: 0,
       }),
     ).toBe(false);
     expect(
       shouldTriggerAssistedCapture({
         assistedCapture: true,
-        readyState: "ready",
+        measurements,
         isCapturing: true,
         captureAlreadyTriggered: false,
+        cooldownRemainingMs: 0,
       }),
     ).toBe(false);
     expect(
       shouldTriggerAssistedCapture({
         assistedCapture: true,
-        readyState: "ready",
+        measurements,
         isCapturing: false,
         captureAlreadyTriggered: true,
+        cooldownRemainingMs: 0,
+      }),
+    ).toBe(false);
+    expect(
+      shouldTriggerAssistedCapture({
+        assistedCapture: true,
+        measurements,
+        isCapturing: false,
+        captureAlreadyTriggered: false,
+        cooldownRemainingMs: 500,
       }),
     ).toBe(false);
   });
@@ -164,6 +258,14 @@ describe("A4 camera calibration lab pure helpers", () => {
     });
   });
 
+  it("keeps research-backed auto-capture defaults scoped to the lab", () => {
+    const settings = getDefaultCameraLabSettings();
+
+    expect(settings.quadIoUThreshold).toBe(0.85);
+    expect(settings.maxAreaDelta).toBe(0.15);
+    expect(settings.stabilityDurationMs).toBe(700);
+  });
+
   it("telemetry omits image pixels, document names, paths, and raw File objects", () => {
     const sourceFile = new File(["private pixels"], "real-bank-letter.jpg", { type: "image/jpeg" });
     const scannedFile = new File(["prepared private pixels"], "scan-real-bank-letter.jpg", {
@@ -180,11 +282,19 @@ describe("A4 camera calibration lab pure helpers", () => {
         video: true,
         localPath: "C:\\Users\\example\\secret-photo.jpg",
         token: "abc",
+        apiKey: "sk-test-secret",
       },
-      actualSettings: { width: 1920, height: 1080 },
+      actualSettings: {
+        width: 1920,
+        height: 1080,
+        username: "private-user",
+        documentName: "benefit-letter.png",
+      },
       captureMethod: "canvas",
       sourceDimensions: { width: 1920, height: 1080 },
       outputDimensions: { width: 1920, height: 1080 },
+      fileSizeBytes: 12345,
+      captureSharpnessMetric: 88,
       measurements: {
         ...readyMetrics(),
         readyState: "ready",
@@ -203,6 +313,14 @@ describe("A4 camera calibration lab pure helpers", () => {
         },
         warnings: [],
       },
+      lifecycleEvents: [
+        {
+          event: "successful_capture",
+          timestamp: "2026-07-18T12:00:01.000Z",
+          hadStream: true,
+          stoppedTrackCount: 1,
+        },
+      ],
       processingDurationMs: 250,
     });
     const json = JSON.stringify(entry);
@@ -211,7 +329,12 @@ describe("A4 camera calibration lab pure helpers", () => {
     expect(json).not.toContain("real-bank-letter");
     expect(json).not.toContain("C:\\Users");
     expect(json).not.toContain("abc");
+    expect(json).not.toContain("sk-test-secret");
+    expect(json).not.toContain("private-user");
+    expect(json).not.toContain("benefit-letter");
     expect(json).not.toContain("sourceFile");
     expect(json).not.toContain("scannedFile");
+    expect(json).toContain("successful_capture");
+    expect(json).toContain("captureSharpnessMetric");
   });
 });

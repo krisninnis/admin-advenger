@@ -49,6 +49,8 @@ const createDependencies = (
     frameRate: true,
     facingMode: true,
   })),
+  inspectFileDimensions: vi.fn(async () => ({ width: 1600, height: 2200 })),
+  measureCaptureSharpness: vi.fn(async () => 91),
   createObjectURL: vi.fn(() => "blob:scan-preview"),
   revokeObjectURL: vi.fn(),
   now: vi.fn(() => 1000),
@@ -148,7 +150,7 @@ describe("CameraCalibrationLabView", () => {
   });
 
   it("uses the canvas capture path when ImageCapture is unavailable", async () => {
-    const { stream } = createFakeCamera();
+    const { stream, stop } = createFakeCamera();
     const capturedFile = new File(["synthetic lab image"], "camera-lab-capture.jpg", {
       type: "image/jpeg",
     });
@@ -157,6 +159,7 @@ describe("CameraCalibrationLabView", () => {
       method: "canvas",
       sourceDimensions: { width: 1280, height: 720 },
       outputDimensions: { width: 1280, height: 720 },
+      fileSizeBytes: capturedFile.size,
     };
     const captureCanvasFrame = vi.fn(async () => captureResult);
     const scanDocumentFile = vi.fn(async (file: File) => ({
@@ -184,6 +187,10 @@ describe("CameraCalibrationLabView", () => {
     await waitFor(() => expect(captureCanvasFrame).toHaveBeenCalledTimes(1));
     expect(scanDocumentFile).toHaveBeenCalledWith(capturedFile);
     expect(await screen.findByText("rejected")).toBeTruthy();
+    expect(screen.getByText(`${capturedFile.size} bytes`)).toBeTruthy();
+    expect(screen.getByText("91.0")).toBeTruthy();
+    expect(stop).toHaveBeenCalled();
+    expect(screen.getByText(/successful_capture: 1 track\(s\) stopped/)).toBeTruthy();
   });
 
   it("uses the ImageCapture path when selected and supported", async () => {
@@ -199,6 +206,7 @@ describe("CameraCalibrationLabView", () => {
       method: "image_capture",
       sourceDimensions: { width: 4032, height: 3024 },
       outputDimensions: { width: 4032, height: 3024 },
+      fileSizeBytes: capturedFile.size,
     };
     const captureImageCapturePhoto = vi.fn(async () => captureResult);
     const scanDocumentFile = vi.fn(async (file: File) => ({
@@ -237,6 +245,108 @@ describe("CameraCalibrationLabView", () => {
     expect(screen.getByAltText("Prepared scan from calibration capture")).toBeTruthy();
   });
 
+  it("uses system camera and gallery file inputs without requesting camera permission", async () => {
+    const { stream } = createFakeCamera();
+    const requestStream = vi.fn(async () => stream);
+    const scanDocumentFile = vi.fn(async (file: File) => ({
+      status: "rejected" as const,
+      sourceFile: file,
+      sourceDimensions: { width: 1600, height: 2200 },
+      code: "no_document_detected" as const,
+      message: "No clear document",
+      warnings: [],
+    }));
+    const systemFile = new File(["synthetic system camera image"], "system-camera.jpg", {
+      type: "image/jpeg",
+    });
+    const galleryFile = new File(["synthetic gallery image"], "gallery-image.jpg", {
+      type: "image/jpeg",
+    });
+
+    render(
+      <CameraCalibrationLabView
+        dependencies={createDependencies(stream, { requestStream, scanDocumentFile })}
+      />,
+    );
+
+    const systemInput = screen.getByLabelText("System camera capture input") as HTMLInputElement;
+    const galleryInput = screen.getByLabelText("Gallery upload input") as HTMLInputElement;
+    expect(systemInput.accept).toBe("image/*");
+    expect(systemInput.getAttribute("capture")).toBe("environment");
+    expect(galleryInput.accept).toBe("image/*");
+    expect(galleryInput.getAttribute("capture")).toBeNull();
+
+    await userEvent.upload(systemInput, systemFile);
+    await waitFor(() => expect(scanDocumentFile).toHaveBeenCalledWith(systemFile));
+    expect(requestStream).not.toHaveBeenCalled();
+    expect(await screen.findByText("system_camera")).toBeTruthy();
+
+    await userEvent.upload(galleryInput, galleryFile);
+    await waitFor(() => expect(scanDocumentFile).toHaveBeenCalledWith(galleryFile));
+    expect(requestStream).not.toHaveBeenCalled();
+    expect(await screen.findByText("gallery")).toBeTruthy();
+  });
+
+  it("opens file input strategies from the capture-strategy selector", async () => {
+    const { stream } = createFakeCamera();
+    const systemClick = vi.spyOn(HTMLInputElement.prototype, "click").mockImplementation(() => undefined);
+
+    render(<CameraCalibrationLabView dependencies={createDependencies(stream)} />);
+
+    await userEvent.selectOptions(screen.getByLabelText("Capture method"), "system_camera");
+    await userEvent.click(screen.getByRole("button", { name: "Manual capture" }));
+
+    expect(systemClick).toHaveBeenCalled();
+  });
+
+  it("shows review experiment modes without adding a functional edge editor", async () => {
+    const { stream } = createFakeCamera();
+    const capturedFile = new File(["synthetic lab image"], "camera-lab-capture.jpg", {
+      type: "image/jpeg",
+    });
+    const scannedFile = new File(["prepared synthetic scan"], "scan-camera-lab-capture.jpg", {
+      type: "image/jpeg",
+    });
+    const captureCanvasFrame = vi.fn(async () => ({
+      file: capturedFile,
+      method: "canvas" as const,
+      sourceDimensions: { width: 1280, height: 720 },
+      outputDimensions: { width: 1280, height: 720 },
+      fileSizeBytes: capturedFile.size,
+    }));
+    const scanDocumentFile = vi.fn(async (file: File) => ({
+      status: "ready" as const,
+      sourceFile: file,
+      scannedFile,
+      sourceDimensions: { width: 1280, height: 720 },
+      quad: {
+        topLeft: { x: 100, y: 100 },
+        topRight: { x: 900, y: 100 },
+        bottomRight: { x: 900, y: 1600 },
+        bottomLeft: { x: 100, y: 1600 },
+      },
+      warnings: [],
+    }));
+
+    render(
+      <CameraCalibrationLabView
+        dependencies={createDependencies(stream, { captureCanvasFrame, scanDocumentFile })}
+      />,
+    );
+    await userEvent.selectOptions(screen.getByLabelText("Review experiment"), "comparison");
+    await userEvent.click(screen.getByRole("button", { name: "Open camera" }));
+    await userEvent.click(screen.getByRole("button", { name: "Manual capture" }));
+
+    expect(await screen.findByAltText("Original calibration capture")).toBeTruthy();
+    expect(screen.getByAltText("Prepared scan from calibration capture")).toBeTruthy();
+
+    await userEvent.selectOptions(screen.getByLabelText("Review experiment"), "fix_edges");
+
+    const fixEdges = await screen.findByRole("button", { name: "Fix edges experiment placeholder" });
+    expect((fixEdges as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText(/not an editor/i)).toBeTruthy();
+  });
+
   it("downloads telemetry only after a local capture and excludes image payloads", async () => {
     const { stream } = createFakeCamera();
     const capturedFile = new File(["synthetic lab image"], "camera-lab-capture.jpg", {
@@ -248,6 +358,7 @@ describe("CameraCalibrationLabView", () => {
       method: "canvas" as const,
       sourceDimensions: { width: 1280, height: 720 },
       outputDimensions: { width: 1280, height: 720 },
+      fileSizeBytes: capturedFile.size,
     }));
     const scanDocumentFile = vi.fn(async (file: File) => ({
       status: "rejected" as const,
@@ -281,6 +392,11 @@ describe("CameraCalibrationLabView", () => {
     expect(payload).not.toContain("synthetic lab image");
     expect(payload).not.toContain("camera-lab-capture.jpg");
     expect(payload).not.toContain("sourceFile");
+    expect(payload).toContain("captureStrategy");
+    expect(payload).toContain("fileSizeBytes");
+    expect(payload).toContain("captureSharpnessMetric");
+    expect(payload).toContain("processingDurationMs");
+    expect(payload).toContain("successful_capture");
   });
 
   it("stops camera tracks on close and unmount", async () => {
@@ -303,6 +419,46 @@ describe("CameraCalibrationLabView", () => {
     unmount();
 
     expect(second.stop).toHaveBeenCalled();
+  });
+
+  it("stops camera tracks on cancel, route change, and capture failure", async () => {
+    const cancelCamera = createFakeCamera();
+    const { unmount, rerender } = render(
+      <CameraCalibrationLabView dependencies={createDependencies(cancelCamera.stream)} />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Open camera" }));
+    await userEvent.click(screen.getByRole("button", { name: "Cancel camera" }));
+
+    expect(cancelCamera.stop).toHaveBeenCalled();
+    expect(await screen.findByText(/cancel: 1 track\(s\) stopped/)).toBeTruthy();
+
+    const routeCamera = createFakeCamera();
+    rerender(<CameraCalibrationLabView dependencies={createDependencies(routeCamera.stream)} />);
+    await userEvent.click(screen.getByRole("button", { name: "Open camera" }));
+    window.dispatchEvent(new PopStateEvent("popstate"));
+
+    await waitFor(() => expect(routeCamera.stop).toHaveBeenCalled());
+    expect(await screen.findByText(/route_change: 1 track\(s\) stopped/)).toBeTruthy();
+
+    unmount();
+    cleanup();
+
+    const errorCamera = createFakeCamera();
+    const captureCanvasFrame = vi.fn(async () => {
+      throw new Error("broken capture");
+    });
+    render(
+      <CameraCalibrationLabView
+        dependencies={createDependencies(errorCamera.stream, { captureCanvasFrame })}
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Open camera" }));
+    await userEvent.click(screen.getByRole("button", { name: "Manual capture" }));
+
+    expect(await screen.findByText("broken capture")).toBeTruthy();
+    expect(errorCamera.stop).toHaveBeenCalled();
+    expect(screen.getByText(/capture_error: 1 track\(s\) stopped/)).toBeTruthy();
   });
 });
 

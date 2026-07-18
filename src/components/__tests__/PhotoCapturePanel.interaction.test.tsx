@@ -17,8 +17,14 @@ import {
 } from "vitest";
 import { PhotoCapturePanel } from "../PhotoCapturePanel";
 import {
+  CAMERA_GUIDANCE_FIT_MESSAGE,
+  PHOTO_CANCEL_LABEL,
+  PHOTO_DETECTING_MESSAGE,
   PHOTO_SCAN_REVIEW_QUESTION,
+  PHOTO_TAKE_NEW_PHOTO_LABEL,
+  PHOTO_TAKE_PHOTO_LABEL,
   PHOTO_TRY_AGAIN_LABEL,
+  PHOTO_UPLOAD_ANOTHER_LABEL,
   PHOTO_USE_SCAN_LABEL,
 } from "../../lib/photoCapture";
 
@@ -32,6 +38,7 @@ vi.mock("../../lib/documentScanner", () => ({
 
 const createObjectUrlMock = vi.fn((file: File) => `blob:${file.name}`);
 const revokeObjectUrlMock = vi.fn();
+const originalMediaDevices = navigator.mediaDevices;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -49,6 +56,11 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
+  Object.defineProperty(navigator, "mediaDevices", {
+    configurable: true,
+    value: originalMediaDevices,
+  });
 });
 
 const createReadyScanFixture = () => {
@@ -84,7 +96,213 @@ const createReadyScanFixture = () => {
   return { scannedFile, sourceFile };
 };
 
+const createPendingScanFixture = () => {
+  const sourceFile = new File(["original photo"], "pending-letter.jpg", {
+    type: "image/jpeg",
+  });
+  let resolveScan: (value: Awaited<ReturnType<typeof scanDocumentFileMock>>) => void =
+    () => undefined;
+
+  scanDocumentFileMock.mockReturnValue(
+    new Promise((resolve) => {
+      resolveScan = resolve;
+    }),
+  );
+
+  return { resolveScan, sourceFile };
+};
+
+const createCameraFixture = () => {
+  const stopTrack = vi.fn();
+  const stream = {
+    getTracks: () => [{ stop: stopTrack }],
+  } as unknown as MediaStream;
+  const getUserMedia = vi.fn().mockResolvedValue(stream);
+
+  Object.defineProperty(navigator, "mediaDevices", {
+    configurable: true,
+    value: { getUserMedia },
+  });
+
+  return { getUserMedia, stopTrack, stream };
+};
+
+const installCanvasCapture = () => {
+  const drawImage = vi.fn();
+
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+    drawImage,
+  } as unknown as CanvasRenderingContext2D);
+  vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation(
+    (callback: BlobCallback, type?: string) => {
+      callback(new Blob(["captured photo"], { type: type ?? "image/jpeg" }));
+    },
+  );
+
+  return { drawImage };
+};
+
+const chooseTakePhoto = async () => {
+  const choiceLabel = screen.getByText(PHOTO_TAKE_NEW_PHOTO_LABEL);
+  const choiceButton = choiceLabel.closest("button");
+
+  expect(choiceButton).toBeTruthy();
+  await userEvent.click(choiceButton as HTMLButtonElement);
+};
+
 describe("PhotoCapturePanel rendered scan confirmation", () => {
+  it("does not request camera permission on page load", () => {
+    const { getUserMedia } = createCameraFixture();
+
+    render(
+      <PhotoCapturePanel
+        onUsePhotos={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(getUserMedia).not.toHaveBeenCalled();
+    expect(screen.getByText(PHOTO_UPLOAD_ANOTHER_LABEL.replace("another ", "existing "))).toBeTruthy();
+  });
+
+  it("shows an unobstructed live camera preview with text guidance and no fixed A4 guide", async () => {
+    const { getUserMedia } = createCameraFixture();
+    const { container } = render(
+      <PhotoCapturePanel
+        onUsePhotos={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    await chooseTakePhoto();
+
+    expect(getUserMedia).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText(CAMERA_GUIDANCE_FIT_MESSAGE)).toBeTruthy();
+    expect(screen.getByRole("button", { name: PHOTO_TAKE_PHOTO_LABEL })).toBeTruthy();
+    expect(screen.getByRole("button", { name: PHOTO_CANCEL_LABEL })).toBeTruthy();
+    expect(container.querySelector("[data-capture-guide]")).toBeNull();
+    expect(container.querySelector("[data-testid='camera-lab-a4-guide']")).toBeNull();
+    expect(screen.queryByText(/inside the guide/i)).toBeNull();
+  });
+
+  it("keeps manual capture available without requiring A4 readiness", async () => {
+    createCameraFixture();
+    installCanvasCapture();
+    const { scannedFile } = createReadyScanFixture();
+    const onUsePhotos = vi.fn();
+
+    render(
+      <PhotoCapturePanel
+        onUsePhotos={onUsePhotos}
+        onClose={vi.fn()}
+      />,
+    );
+
+    await chooseTakePhoto();
+    await userEvent.click(await screen.findByRole("button", { name: PHOTO_TAKE_PHOTO_LABEL }));
+    await screen.findByText(PHOTO_SCAN_REVIEW_QUESTION);
+    await userEvent.click(screen.getByRole("button", { name: PHOTO_USE_SCAN_LABEL }));
+
+    expect(onUsePhotos).toHaveBeenCalledWith([
+      expect.objectContaining({
+        file: scannedFile,
+        isDocumentScan: true,
+      }),
+    ]);
+  });
+
+  it("still shows document-analysis status while preparing the scan", async () => {
+    const { resolveScan, sourceFile } = createPendingScanFixture();
+
+    render(
+      <PhotoCapturePanel
+        initialPhotoFile={sourceFile}
+        onUsePhotos={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText(PHOTO_DETECTING_MESSAGE)).toBeTruthy();
+
+    resolveScan({
+      status: "rejected",
+      code: "no_document",
+      message: "No clear document.",
+      sourceDimensions: { width: 1200, height: 800 },
+      warnings: [],
+    });
+
+    expect(await screen.findByText("We couldn\u2019t find a clear document in this photo.")).toBeTruthy();
+  });
+
+  it("keeps the prepared-scan review free of guide overlays", async () => {
+    const { sourceFile } = createReadyScanFixture();
+    const { container } = render(
+      <PhotoCapturePanel
+        initialPhotoFile={sourceFile}
+        onUsePhotos={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText(PHOTO_SCAN_REVIEW_QUESTION)).toBeTruthy();
+    expect(screen.getByAltText("Prepared document scan preview")).toBeTruthy();
+    expect(container.querySelector("[data-capture-guide]")).toBeNull();
+    expect(container.querySelector("[data-testid='camera-lab-a4-guide']")).toBeNull();
+  });
+
+  it("stops camera tracks after cancel", async () => {
+    const { stopTrack } = createCameraFixture();
+
+    render(
+      <PhotoCapturePanel
+        onUsePhotos={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    await chooseTakePhoto();
+    await screen.findByRole("button", { name: PHOTO_TAKE_PHOTO_LABEL });
+    await userEvent.click(screen.getByRole("button", { name: PHOTO_CANCEL_LABEL }));
+
+    expect(stopTrack).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops camera tracks after successful capture", async () => {
+    const { stopTrack } = createCameraFixture();
+    installCanvasCapture();
+    createReadyScanFixture();
+
+    render(
+      <PhotoCapturePanel
+        onUsePhotos={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    await chooseTakePhoto();
+    await userEvent.click(await screen.findByRole("button", { name: PHOTO_TAKE_PHOTO_LABEL }));
+
+    await waitFor(() => expect(stopTrack).toHaveBeenCalledTimes(1));
+  });
+
+  it("stops camera tracks after unmount", async () => {
+    const { stopTrack } = createCameraFixture();
+    const { unmount } = render(
+      <PhotoCapturePanel
+        onUsePhotos={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    await chooseTakePhoto();
+    await screen.findByRole("button", { name: PHOTO_TAKE_PHOTO_LABEL });
+
+    unmount();
+
+    expect(stopTrack).toHaveBeenCalledTimes(1);
+  });
+
   it("does not hand a prepared scan to OCR until the user confirms it", async () => {
     const { scannedFile, sourceFile } = createReadyScanFixture();
     const onUsePhotos = vi.fn();

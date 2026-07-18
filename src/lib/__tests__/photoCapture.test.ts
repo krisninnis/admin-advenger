@@ -5,7 +5,6 @@ import homeViewSource from "../../views/HomeView.tsx?raw";
 import {
   CAMERA_GUIDANCE_CLOSE_UP_MESSAGE,
   CAMERA_GUIDANCE_FIT_MESSAGE,
-  CAMERA_GUIDANCE_TIPS,
   CAMERA_IDEAL_HEIGHT,
   CAMERA_IDEAL_WIDTH,
   CAMERA_PERMISSION_DENIED_MESSAGE,
@@ -21,7 +20,6 @@ import {
   PHOTO_DETECTING_MESSAGE,
   PHOTO_LOADING_MESSAGE,
   PHOTO_NO_DOCUMENT_MESSAGE,
-  PHOTO_PREPARE_AFTER_CAPTURE_MESSAGE,
   PHOTO_RETAKE_PHOTO_LABEL,
   PHOTO_REVIEW_ACTIONS_CLASSNAME,
   PHOTO_REVIEW_CONTENT_CLASSNAME,
@@ -486,13 +484,13 @@ describe("document capture coach camera guidance copy", () => {
   });
 
   it("shows the required simple camera guidance message", () => {
-    expect(CAMERA_GUIDANCE_FIT_MESSAGE).toBe("Line the page up inside the guide.");
+    expect(CAMERA_GUIDANCE_FIT_MESSAGE).toBe("Fit the whole page in the photo");
   });
 
   it("keeps the default flow as a single full-page photo with a simple label", () => {
     expect(getPhotoCaptureSectionTitle("full_page")).toBe(PHOTO_SECTION_FULL_PAGE_TITLE);
     expect(PHOTO_SECTION_FULL_PAGE_TITLE).toBe("Full page photo");
-    expect(getCameraGuidanceFitMessage("full_page")).toBe("Line the page up inside the guide.");
+    expect(getCameraGuidanceFitMessage("full_page")).toBe("Fit the whole page in the photo");
     expect(getPhotoCaptureSectionLabel("full_page")).toBe(PHOTO_SECTION_FULL_PAGE_LABEL);
     expect(PHOTO_SECTION_FULL_PAGE_LABEL).toBe("Main photo");
   });
@@ -528,7 +526,6 @@ describe("document capture coach camera guidance copy", () => {
       PHOTO_SECTION_ADDITIONAL_TITLE,
       CAMERA_GUIDANCE_FIT_MESSAGE,
       CAMERA_GUIDANCE_CLOSE_UP_MESSAGE,
-      ...CAMERA_GUIDANCE_TIPS,
       PHOTO_TAKE_PHOTO_LABEL,
       PHOTO_USE_SCAN_LABEL,
       PHOTO_TRY_AGAIN_LABEL,
@@ -549,6 +546,7 @@ describe("document capture coach camera guidance copy", () => {
       /\bQuick scan\b/i,
       /\bscan mode\b/i,
       /\bconfidence\b/i,
+      /\binside the guide\b/i,
     ];
 
     for (const message of allCopy) {
@@ -556,16 +554,6 @@ describe("document capture coach camera guidance copy", () => {
         expect(message).not.toMatch(pattern);
       }
     }
-  });
-
-  it("shows the required mobile capture tips", () => {
-    expect(CAMERA_GUIDANCE_TIPS).toEqual([
-      "Fill most of the guide with the page.",
-      "Review the prepared scan before reading the text.",
-      "Use good light.",
-      "Keep the page flat.",
-      "Avoid shadows.",
-    ]);
   });
 
   it("uses short, safe guidance copy", () => {
@@ -582,7 +570,6 @@ describe("document capture coach camera guidance copy", () => {
     for (const message of [
       CAMERA_GUIDANCE_FIT_MESSAGE,
       CAMERA_GUIDANCE_CLOSE_UP_MESSAGE,
-      ...CAMERA_GUIDANCE_TIPS,
       PHOTO_SCAN_REVIEW_QUESTION,
       PHOTO_NO_DOCUMENT_MESSAGE,
     ]) {
@@ -600,11 +587,6 @@ describe("document capture coach camera guidance copy", () => {
     expect(photoCapturePanelSource).toContain("min-h-12");
   });
 
-  it("states that AdminAvenger prepares the document automatically after capture", () => {
-    expect(PHOTO_PREPARE_AFTER_CAPTURE_MESSAGE).toBe(
-      "AdminAvenger will prepare the document automatically after you take the photo.",
-    );
-  });
 });
 
 // ---- Capture resolution: intrinsic video size, not the CSS preview size ----
@@ -699,7 +681,6 @@ describe("capturePhotoFromVideoElement uses the video's intrinsic resolution", (
 describe("camera flow copy never implies a cloud upload, send, or contact", () => {
   const allMessages = [
     PHOTO_STAYS_LOCAL_MESSAGE,
-    PHOTO_PREPARE_AFTER_CAPTURE_MESSAGE,
     PHOTO_SCAN_REVIEW_QUESTION,
     PHOTO_NO_DOCUMENT_MESSAGE,
     CAMERA_PERMISSION_DENIED_MESSAGE,

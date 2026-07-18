@@ -40,8 +40,6 @@ export const PHOTO_DETECTING_MESSAGE = "Finding the document...";
 export const PHOTO_SCAN_REVIEW_QUESTION = "Does the whole document look clear?";
 export const PHOTO_NO_DOCUMENT_MESSAGE =
   "We couldn\u2019t find a clear document in this photo.";
-export const PHOTO_PREPARE_AFTER_CAPTURE_MESSAGE =
-  "AdminAvenger will prepare the document automatically after you take the photo.";
 export const PHOTO_USE_SCAN_LABEL = "Yes, use this";
 export const PHOTO_TRY_AGAIN_LABEL = "No, try again";
 export const PHOTO_UPLOAD_ANOTHER_LABEL = "Upload another photo";
@@ -78,17 +76,9 @@ export const CAMERA_IDEAL_HEIGHT = 1080;
 // Shown around the camera preview (see src/components/PhotoCapturePanel.tsx)
 // as simple photo guidance only. The user confirms the prepared scan after
 // AdminAvenger has found the document locally.
-export const CAMERA_GUIDANCE_FIT_MESSAGE = "Line the page up inside the guide.";
+export const CAMERA_GUIDANCE_FIT_MESSAGE = "Fit the whole page in the photo";
 export const CAMERA_GUIDANCE_CLOSE_UP_MESSAGE =
   "Take a clear close-up photo of the hard-to-read section.";
-
-export const CAMERA_GUIDANCE_TIPS = [
-  "Fill most of the guide with the page.",
-  "Review the prepared scan before reading the text.",
-  "Use good light.",
-  "Keep the page flat.",
-  "Avoid shadows.",
-];
 
 export const CAMERA_PREVIEW_ACTIONS_CLASSNAME =
   "sticky bottom-0 z-10 mt-auto grid gap-2 rounded-xl border border-white/10 bg-slate-900/95 p-2 shadow-2xl shadow-slate-950/50 backdrop-blur sm:grid-cols-2";

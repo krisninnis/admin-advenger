@@ -2,7 +2,6 @@ import { useEffect, useReducer, useRef, useState } from "react";
 import { photoCaptureAcceptAttribute } from "../lib/fileIntakeAccept";
 import { FILE_SIZE_LIMIT_HELPER, getFileTooLargeMessage, isFileWithinSizeLimit } from "../lib/fileSizeLimit";
 import {
-  CAMERA_GUIDANCE_TIPS,
   CAMERA_PERMISSION_DENIED_MESSAGE,
   CAMERA_PREVIEW_ACTIONS_CLASSNAME,
   CAMERA_UNAVAILABLE_MESSAGE,
@@ -10,7 +9,6 @@ import {
   PHOTO_DETECTING_MESSAGE,
   PHOTO_LOADING_MESSAGE,
   PHOTO_NO_DOCUMENT_MESSAGE,
-  PHOTO_PREPARE_AFTER_CAPTURE_MESSAGE,
   PHOTO_RETAKE_PHOTO_LABEL,
   PHOTO_REVIEW_ACTIONS_CLASSNAME,
   PHOTO_REVIEW_CONTENT_CLASSNAME,
@@ -432,12 +430,14 @@ export function PhotoCapturePanel({
 
         {stage === "camera_preview" ? (
           <div className="mt-4 flex min-h-0 flex-1 flex-col gap-2">
-            <div className="shrink-0 rounded-lg border border-cyan-300/25 bg-cyan-300/10 px-4 py-3 text-cyan-50">
+            <div
+              role="status"
+              aria-live="polite"
+              aria-atomic="true"
+              className="shrink-0 rounded-lg border border-cyan-300/25 bg-cyan-300/10 px-4 py-3 text-cyan-50"
+            >
               <p className="text-sm font-black">{currentSectionTitle}</p>
               <p className="mt-1 text-base font-black leading-6">{currentGuidanceMessage}</p>
-              <p className="mt-1 text-sm leading-6 text-cyan-50/85">
-                {PHOTO_PREPARE_AFTER_CAPTURE_MESSAGE}
-              </p>
             </div>
             <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-lg border border-white/10 bg-black">
               <video
@@ -447,24 +447,7 @@ export function PhotoCapturePanel({
                 muted
                 className="max-h-[calc(100dvh-15rem)] min-h-0 w-full object-contain"
               />
-              <div
-                aria-hidden="true"
-                data-capture-guide
-                className="pointer-events-none absolute left-1/2 top-1/2 h-[76%] max-h-[calc(100%-2rem)] w-[72%] max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 rounded-sm border-2 border-cyan-100/90 bg-cyan-100/5 shadow-[0_0_0_9999px_rgb(0_0_0_/_0.28)]"
-                style={{ aspectRatio: "1 / 1.414" }}
-              />
-              <p
-                aria-hidden="true"
-                className="pointer-events-none absolute inset-x-0 top-2 text-center text-xs font-bold text-white [text-shadow:0_1px_3px_rgb(0_0_0_/_0.8)]"
-              >
-                {currentGuidanceMessage}
-              </p>
             </div>
-            <ul className="grid shrink-0 grid-cols-2 gap-x-3 gap-y-1 text-xs leading-5 text-slate-400 sm:grid-cols-4">
-              {CAMERA_GUIDANCE_TIPS.map((tip) => (
-                <li key={tip}>{tip}</li>
-              ))}
-            </ul>
             <div className={CAMERA_PREVIEW_ACTIONS_CLASSNAME}>
               <button
                 type="button"

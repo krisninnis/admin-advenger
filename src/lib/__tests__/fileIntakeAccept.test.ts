@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  attachmentCameraAcceptAttribute,
   attachmentPickerAcceptAttribute,
   classifyFileForIntake,
   classifyUploadedFile,
@@ -237,9 +236,6 @@ describe("attachment picker accept attributes", () => {
     expect(attachmentPickerAcceptAttribute).toContain(".pdf");
   });
 
-  it("the attachment camera control accepts images", () => {
-    expect(attachmentCameraAcceptAttribute).toBe("image/*");
-  });
 });
 
 describe("getAttachmentUnsupportedMessage", () => {

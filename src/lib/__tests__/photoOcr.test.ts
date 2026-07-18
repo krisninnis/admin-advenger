@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import photoOcrSource from "../photoOcr.ts?raw";
+import localOcrServiceSource from "../../services/localOcrService.ts?raw";
 
 const recognizeMock = vi.fn();
 
@@ -52,6 +54,15 @@ const fakeImage = new Blob(["pretend jpeg bytes"], { type: "image/jpeg" });
 
 beforeEach(() => {
   recognizeMock.mockReset();
+});
+
+describe("OCR runtime loading", () => {
+  it("keeps heavy OCR runtime code out of the initial bundle by using dynamic imports", () => {
+    expect(photoOcrSource).not.toMatch(/import\s+.*\s+from\s+["']tesseract\.js["']/);
+    expect(localOcrServiceSource).not.toMatch(/import\s+.*\s+from\s+["']tesseract\.js["']/);
+    expect(photoOcrSource).toContain('import("tesseract.js")');
+    expect(localOcrServiceSource).toContain('import("tesseract.js")');
+  });
 });
 
 // ---- readTextFromImage: happy path ----

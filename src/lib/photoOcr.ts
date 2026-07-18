@@ -6,8 +6,11 @@
 // text that the user must review before AdminAvenger uses it (see
 // OCR_ON_DEVICE_MESSAGE below), matching the same "human always decides" rule
 // as every other input path (paste, file upload, camera capture).
-import * as Tesseract from "tesseract.js";
 import { normalizeOcrText } from "./photoIntake";
+
+type TesseractModule = typeof import("tesseract.js");
+
+const loadTesseract = async (): Promise<TesseractModule> => import("tesseract.js");
 
 export type OcrProgress = {
   status: string;
@@ -512,6 +515,7 @@ export const readTextFromImage = async (
   }
 
   try {
+    const Tesseract = await loadTesseract();
     const result = await Tesseract.recognize(sourceForOcr, "eng", {
       logger: (message) => {
         onProgress?.({

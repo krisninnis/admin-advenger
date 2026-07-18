@@ -252,17 +252,12 @@ export const VISIBLE_INPUT_DROP_HELPER =
   "DOCX, PDF, TXT, images - read locally in your browser.";
 
 export const ATTACHMENT_HELPER =
-  "Choose photos, text files, Word documents (.docx), or PDFs from your device, take a new photo, or drag files here. AdminAvenger reads them locally in this browser and does not send them anywhere.";
+  "Choose photos, text files, Word documents (.docx), or PDFs from your device, or drag files here. AdminAvenger reads them locally in this browser and does not send them anywhere.";
 
 export const ATTACHMENT_CHOOSE_BUTTON_LABEL = "Choose photos or files";
 
 export const ATTACHMENT_CHOOSE_HELPER =
   "On phones, your browser may let you choose from Photos, Google Photos, Files, or similar apps.";
-
-export const ATTACHMENT_TAKE_PHOTO_BUTTON_LABEL = "Take photo";
-
-export const ATTACHMENT_TAKE_PHOTO_HELPER =
-  "On supported phones, this opens the camera. You can still choose an existing photo instead.";
 
 export const ATTACHMENT_DRAG_DROP_LABEL = "Drag document photos, text files, Word documents, or PDFs here";
 

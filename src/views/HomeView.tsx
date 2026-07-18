@@ -55,7 +55,7 @@ import {
 import {
   classifyUploadedFile,
   isSupportedTextFile,
-  photoAcceptAttribute,
+  photoCaptureAcceptAttribute,
   quickUploadAcceptAttribute,
   UNSUPPORTED_FILE_MESSAGE,
 } from "../lib/fileIntakeAccept";
@@ -400,6 +400,7 @@ const sampleInputs: Array<{ label: string; title: string; sourceType: SourceType
 ];
 
 type OcrStatus = "idle" | "reading" | "success" | "error";
+type PhotoCaptureIntent = "replace" | "append" | "attachment";
 
 function FactList({ title, items }: { title: string; items: string[] }) {
   if (items.length === 0) {
@@ -516,7 +517,7 @@ export function HomeView({
   const [ocrWarnings, setOcrWarnings] = useState<string[]>([]);
   const [ocrSectionWarnings, setOcrSectionWarnings] = useState<string[]>([]);
   const [ocrSourceMode, setOcrSourceMode] = useState<"single" | "multi">("single");
-  const [photoCaptureIntent, setPhotoCaptureIntent] = useState<"replace" | "append">("replace");
+  const [photoCaptureIntent, setPhotoCaptureIntent] = useState<PhotoCaptureIntent>("replace");
   const [inputResetKey, setInputResetKey] = useState(0);
   const [aiSettings, setAiSettings] = useState(loadAiProviderSettings);
   const [aiStatus, setAiStatus] = useState<ServiceStatus>("idle");
@@ -530,16 +531,18 @@ export function HomeView({
   const [workplaceBetaResult, setWorkplaceBetaResult] = useState<WorkplaceBetaResult | undefined>();
   const [showPhotoCapturePanel, setShowPhotoCapturePanel] = useState(false);
   // An image chosen from the "Upload a file" area (or the "+" upload menu) is
-  // handed to PhotoCapturePanel so it opens on the "Adjust document area" step,
-  // exactly like an image uploaded via "Take or upload a photo".
+  // handed to PhotoCapturePanel so it uses the same automatic scan review as
+  // an image uploaded via "Take or upload a photo".
   const [pendingPhotoFile, setPendingPhotoFile] = useState<File | undefined>();
+  const [pendingAttachmentImageIds, setPendingAttachmentImageIds] = useState<string[]>([]);
+  const [activeAttachmentImageId, setActiveAttachmentImageId] = useState<string | undefined>();
   const [showExamples, setShowExamples] = useState(false);
   const [showDeveloperOptions, setShowDeveloperOptions] = useState(false);
   const [showInboxTools, setShowInboxTools] = useState(false);
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [isDesktopPointer, setIsDesktopPointer] = useState(false);
   // Document Attachment Intake v1 - files attached beside the paste box
-  // (chosen from the device, taken with the camera, or dropped). Kept as its
+  // (chosen from the device or dropped). Kept as its
   // own small list rather than reusing the single-photo OCR state above, so
   // attaching files never disturbs the existing "Take or upload a photo" /
   // "Upload a file" tabs - it only ever feeds combined text into the same
@@ -791,6 +794,36 @@ export function HomeView({
     setIsDesktopPointer(!isCoarsePointerEnvironment());
   }, []);
 
+  useEffect(() => {
+    if (
+      showPhotoCapturePanel ||
+      activeAttachmentImageId ||
+      pendingAttachmentImageIds.length === 0
+    ) {
+      return;
+    }
+
+    const nextAttachmentId = pendingAttachmentImageIds[0];
+    const nextAttachment = attachedFiles.find(
+      (attached) =>
+        attached.id === nextAttachmentId &&
+        attached.kind === "image" &&
+        attached.status === "waiting",
+    );
+
+    if (!nextAttachment) {
+      setPendingAttachmentImageIds((current) =>
+        current.filter((attachmentId) => attachmentId !== nextAttachmentId),
+      );
+      return;
+    }
+
+    setPendingPhotoFile(nextAttachment.file);
+    setActiveAttachmentImageId(nextAttachment.id);
+    setPhotoCaptureIntent("attachment");
+    setShowPhotoCapturePanel(true);
+  }, [activeAttachmentImageId, attachedFiles, pendingAttachmentImageIds, showPhotoCapturePanel]);
+
   const clearInput = () => {
     if (imagePreviewUrl) {
       URL.revokeObjectURL(imagePreviewUrl);
@@ -818,6 +851,11 @@ export function HomeView({
     setWorkplaceBetaResult(undefined);
     setInputResetKey((current) => current + 1);
     setAttachedFiles([]);
+    setPendingAttachmentImageIds([]);
+    setActiveAttachmentImageId(undefined);
+    setPendingPhotoFile(undefined);
+    setShowPhotoCapturePanel(false);
+    setPhotoCaptureIntent("replace");
     setIsDraggingOverAttachment(false);
     onClearResult();
   };
@@ -842,6 +880,11 @@ export function HomeView({
     setShowEmailSafety(false);
     setWorkplaceBetaResult(undefined);
     setAttachedFiles([]);
+    setPendingAttachmentImageIds([]);
+    setActiveAttachmentImageId(undefined);
+    setPendingPhotoFile(undefined);
+    setShowPhotoCapturePanel(false);
+    setPhotoCaptureIntent("replace");
     setIsDraggingOverAttachment(false);
     onClearResult();
   };
@@ -1036,13 +1079,13 @@ export function HomeView({
     };
   };
 
-  const handleImageUpload = async (file?: File) => {
+  const resetPhotoOcrReview = () => {
     if (imagePreviewUrl) {
       URL.revokeObjectURL(imagePreviewUrl);
       setImagePreviewUrl("");
     }
 
-    setUploadedFileName(file?.name ?? "");
+    setUploadedFileName("");
     setInputMessage("");
     setAiExtraction(undefined);
     setPhotoMetadata(undefined);
@@ -1054,57 +1097,42 @@ export function HomeView({
     setOcrWarnings([]);
     setOcrSectionWarnings([]);
     setOcrSourceMode("single");
-
-    if (!file) {
-      setUploadNote("");
-      return;
-    }
-
-    if (!isFileWithinSizeLimit(file)) {
-      const message = getFileTooLargeMessage(file);
-      setUploadNote(message);
-      setOcrStatus("error");
-      setOcrError(message);
-      return;
-    }
-
-    if (!isSupportedPhotoFile(file)) {
-      setUploadNote(
-        "This image type may not be readable here. Try JPG, PNG, WEBP, or paste the text manually.",
-      );
-      setOcrStatus("error");
-      setOcrError("AdminAvenger could not read this photo type in the browser.");
-      return;
-    }
-
-    setImagePreviewUrl(URL.createObjectURL(file));
-    setUploadNote(
-      "Photo stays in this browser in this version. The full photo is not stored in this prototype - keep the original photo somewhere safe.",
-    );
-
-    setOcrStatus("reading");
-    setOcrWarnings([]);
-
-    try {
-      const result = await readPhotoForOcr({ file }, 0, 1);
-
-      setOcrConfidence(result.confidence);
-      setPhotoMetadata(result.metadata);
-      setOcrWarnings(result.warnings);
-      setOcrProgress(1);
-      setOcrText(result.text);
-      setOcrOriginalText(result.text);
-      setOcrStatus("success");
-      setInputMessage("");
-    } catch (error) {
-      setOcrStatus("error");
-      setOcrError(error instanceof OcrReadError ? error.message : OCR_FAILED_MESSAGE);
-    }
+    setUploadNote("");
   };
 
   const getLowestOcrConfidence = (values: Array<number | undefined>) => {
     const numericValues = values.filter((value): value is number => typeof value === "number");
     return numericValues.length > 0 ? Math.min(...numericValues) : undefined;
+  };
+
+  const finishAttachmentImageReview = (attachmentId: string) => {
+    setPendingAttachmentImageIds((current) =>
+      current.filter((queuedAttachmentId) => queuedAttachmentId !== attachmentId),
+    );
+    setActiveAttachmentImageId(undefined);
+    setPendingPhotoFile(undefined);
+    setShowPhotoCapturePanel(false);
+    setPhotoCaptureIntent("replace");
+  };
+
+  const handleRejectAttachmentImageReview = () => {
+    const attachmentId = activeAttachmentImageId;
+
+    if (!attachmentId) {
+      setShowPhotoCapturePanel(false);
+      setPendingPhotoFile(undefined);
+      setPhotoCaptureIntent("replace");
+      return;
+    }
+
+    finishAttachmentImageReview(attachmentId);
+  };
+
+  const handleCancelAttachmentImageReviewQueue = () => {
+    setPendingAttachmentImageIds([]);
+    setActiveAttachmentImageId(undefined);
+    setPendingPhotoFile(undefined);
+    setPhotoCaptureIntent("replace");
   };
 
   const handleCapturedPhotos = async (photos: CapturedPhotoForOcr[]) => {
@@ -1229,6 +1257,63 @@ export function HomeView({
     }
   };
 
+  const handleConfirmedAttachmentPhotos = async (photos: CapturedPhotoForOcr[]) => {
+    const attachmentId = activeAttachmentImageId;
+    const reviewedPhoto = photos[0];
+
+    if (!attachmentId) {
+      return;
+    }
+
+    if (!reviewedPhoto?.isDocumentScan) {
+      setAttachedFiles((current) =>
+        current.map((item) =>
+          item.id === attachmentId
+            ? { ...item, status: "failed", errorMessage: ATTACHMENT_READ_FAILED_MESSAGE }
+            : item,
+        ),
+      );
+      finishAttachmentImageReview(attachmentId);
+      return;
+    }
+
+    setAttachedFiles((current) =>
+      current.map((item) =>
+        item.id === attachmentId
+          ? { ...item, status: "reading", errorMessage: undefined, warnings: [] }
+          : item,
+      ),
+    );
+
+    try {
+      const result = await readPhotoForOcr(reviewedPhoto, 0, 1);
+
+      setAttachedFiles((current) =>
+        current.map((item) =>
+          item.id === attachmentId
+            ? {
+                ...item,
+                status: "read",
+                extractedText: result.text,
+                confidence: result.confidence,
+                warnings: result.warnings,
+              }
+            : item,
+        ),
+      );
+    } catch {
+      setAttachedFiles((current) =>
+        current.map((item) =>
+          item.id === attachmentId
+            ? { ...item, status: "failed", errorMessage: ATTACHMENT_READ_FAILED_MESSAGE }
+            : item,
+        ),
+      );
+    } finally {
+      finishAttachmentImageReview(attachmentId);
+    }
+  };
+
   // "Check this text" - uses the reviewed/edited OCR text (never the raw
   // untouched OCR output) and feeds it straight into the same Check a
   // message flow every other input path uses. Never auto-saves or uploads
@@ -1267,7 +1352,7 @@ export function HomeView({
   // same "Take or upload a photo" panel used to get here, rather than
   // introducing a second way to pick a photo.
   const handleRetakePhoto = () => {
-    void handleImageUpload(undefined);
+    resetPhotoOcrReview();
     setPendingPhotoFile(undefined);
     setPhotoCaptureIntent("replace");
     setShowPhotoCapturePanel(true);
@@ -1285,7 +1370,7 @@ export function HomeView({
   // "Cancel" - backs out of the photo/OCR review without picking a new
   // photo. Reuses the same reset path as clearing/removing a photo.
   const handleCancelOcrReview = () => {
-    void handleImageUpload(undefined);
+    resetPhotoOcrReview();
   };
 
   const handleFileUpload = async (file?: File) => {
@@ -1347,7 +1432,7 @@ export function HomeView({
   // Routes any file chosen from an upload control (the "Upload a file" area
   // and the compact "+" upload menu) to the right place. An image goes
   // through the same photo OCR flow as "Take or upload a photo", opening the
-  // panel on the "Adjust document area" step - so an image is never shown an
+  // panel on the automatic scan review step - so an image is never shown an
   // unsupported or "not active in this mode" message. Text files use the
   // existing text reader; anything else falls through to the "not supported
   // yet" message inside handleFileUpload.
@@ -1398,8 +1483,9 @@ export function HomeView({
 
   // Document Attachment Intake v1 (+ Document File Support v1) - adds newly
   // chosen/dropped files to the attachment list, then reads each one in the
-  // order they were attached: images through the same on-device OCR as every
-  // other photo path, text files through the browser's own File.text(), and
+  // order they were attached: images are queued through the same browser-local
+  // PhotoCapturePanel scan confirmation path as every other photo, text files
+  // through the browser's own File.text(), and
   // DOCX/PDF files through the local extractors in
   // src/lib/documentFileText.ts. A read failure on one file only marks that
   // file as failed - it never stops the other files from being read, and
@@ -1412,9 +1498,16 @@ export function HomeView({
 
     const newEntries = newFiles.map((file) => createAttachedFile(file));
     setAttachedFiles((current) => [...current, ...newEntries]);
+    const queuedImageIds = newEntries
+      .filter((entry) => entry.kind === "image" && entry.status === "waiting")
+      .map((entry) => entry.id);
+
+    if (queuedImageIds.length > 0) {
+      setPendingAttachmentImageIds((current) => [...current, ...queuedImageIds]);
+    }
 
     for (const entry of newEntries) {
-      if (entry.status === "failed") {
+      if (entry.status === "failed" || entry.kind === "image") {
         continue;
       }
 
@@ -1423,25 +1516,7 @@ export function HomeView({
       );
 
       try {
-        if (entry.kind === "image") {
-          // Sequential, in attachment order - see buildAttachedFilesCombinedText.
-          // eslint-disable-next-line no-await-in-loop
-          const result = await readTextFromImage(entry.file);
-
-          setAttachedFiles((current) =>
-            current.map((item) =>
-              item.id === entry.id
-                ? {
-                    ...item,
-                    status: "read",
-                    extractedText: result.text,
-                    confidence: result.confidence,
-                    warnings: result.warnings,
-                  }
-                : item,
-            ),
-          );
-        } else if (entry.kind === "docx" || entry.kind === "pdf") {
+        if (entry.kind === "docx" || entry.kind === "pdf") {
           // Document File Support v1 - DOCX/PDF are read locally with
           // mammoth/pdfjs-dist (see src/lib/documentFileText.ts), never
           // uploaded anywhere. A "no selectable text" result (a scanned PDF,
@@ -1497,6 +1572,15 @@ export function HomeView({
   };
 
   const handleRemoveAttachedFile = (id: string) => {
+    setPendingAttachmentImageIds((current) =>
+      current.filter((attachmentId) => attachmentId !== id),
+    );
+    if (activeAttachmentImageId === id) {
+      setActiveAttachmentImageId(undefined);
+      setPendingPhotoFile(undefined);
+      setShowPhotoCapturePanel(false);
+      setPhotoCaptureIntent("replace");
+    }
     setAttachedFiles((current) => current.filter((item) => item.id !== id));
   };
 
@@ -1840,7 +1924,11 @@ export function HomeView({
                         <input
                           type="file"
                           accept={quickUploadAcceptAttribute}
-                          onChange={(event) => void handleUploadedFileSelection(event.target.files?.[0])}
+                          onChange={(event) => {
+                            const file = event.target.files?.[0];
+                            event.target.value = "";
+                            void handleUploadedFileSelection(file);
+                          }}
                           className="sr-only"
                         />
                       </label>
@@ -1892,12 +1980,12 @@ export function HomeView({
             </div>
           ) : (
             <div className="rounded-lg border border-dashed border-white/15 bg-slate-950/60 p-5">
-              <label className="block text-base font-bold text-white">
+              <div className="block text-base font-bold text-white">
                 {selectedInput === "image" ? "Take or upload a photo" : "Choose or drop a file"}
                 {selectedInput === "image" ? (
                   <span className="mt-2 block text-sm font-normal leading-6 text-slate-400">
-                    Take a photo of a letter, bill, receipt, or email. AdminAvenger will try to
-                    read the text on this device.
+                    Take or choose one photo of a letter, bill, receipt, or email. AdminAvenger
+                    will find the document area locally and ask you to review it before OCR.
                   </span>
                 ) : (
                   <span className="mt-2 block text-sm font-normal leading-6 text-slate-400">
@@ -1905,22 +1993,47 @@ export function HomeView({
                     into the attachment area below.
                   </span>
                 )}
-                <input
-                  key={`${selectedInput}-${inputResetKey}`}
-                  type="file"
-                  accept={selectedInput === "image" ? photoAcceptAttribute : quickUploadAcceptAttribute}
-                  capture={selectedInput === "image" ? "environment" : undefined}
-                  onChange={(event) =>
-                    selectedInput === "image"
-                      ? void handleImageUpload(event.target.files?.[0])
-                      : void handleUploadedFileSelection(event.target.files?.[0])
-                  }
-                  className="mt-4 block w-full rounded-lg border border-white/10 bg-slate-950 px-4 py-3 text-sm text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-emerald-400 file:px-3 file:py-2 file:text-sm file:font-bold file:text-slate-950"
-                />
+                {selectedInput === "image" ? (
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      onClick={handleOpenPhotoCapturePanel}
+                      className="min-h-11 rounded-lg bg-emerald-400 px-4 py-3 text-sm font-bold text-slate-950 shadow-lg shadow-emerald-950/30 transition hover:bg-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-200"
+                    >
+                      Take photo
+                    </button>
+                    <label className="flex min-h-11 cursor-pointer items-center justify-center rounded-lg border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-slate-200 transition hover:border-white/20 hover:text-white focus-within:ring-2 focus-within:ring-emerald-300/40">
+                      Upload existing photo
+                      <input
+                        key={`${selectedInput}-${inputResetKey}`}
+                        type="file"
+                        accept={photoCaptureAcceptAttribute}
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          event.target.value = "";
+                          void handleUploadedFileSelection(file);
+                        }}
+                        className="sr-only"
+                      />
+                    </label>
+                  </div>
+                ) : (
+                  <input
+                    key={`${selectedInput}-${inputResetKey}`}
+                    type="file"
+                    accept={quickUploadAcceptAttribute}
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      event.target.value = "";
+                      void handleUploadedFileSelection(file);
+                    }}
+                    className="mt-4 block w-full rounded-lg border border-white/10 bg-slate-950 px-4 py-3 text-sm text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-emerald-400 file:px-3 file:py-2 file:text-sm file:font-bold file:text-slate-950"
+                  />
+                )}
                 <span className="mt-2 block text-xs font-semibold leading-5 text-slate-500">
                   {FILE_SIZE_LIMIT_HELPER}
                 </span>
-              </label>
+              </div>
               {uploadedFileName ? (
                 <p className="mt-3 text-sm font-semibold text-slate-200">{uploadedFileName}</p>
               ) : null}
@@ -2330,11 +2443,22 @@ export function HomeView({
 
       {showPhotoCapturePanel ? (
         <PhotoCapturePanel
-          onUsePhotos={(photos) => void handleCapturedPhotos(photos)}
+          key={`${photoCaptureIntent}-${activeAttachmentImageId ?? "main"}-${pendingPhotoFile?.name ?? "new"}-${pendingPhotoFile?.lastModified ?? 0}-${pendingPhotoFile?.size ?? 0}`}
+          onUsePhotos={(photos) =>
+            photoCaptureIntent === "attachment"
+              ? void handleConfirmedAttachmentPhotos(photos)
+              : void handleCapturedPhotos(photos)
+          }
           onClose={() => {
             setShowPhotoCapturePanel(false);
             setPendingPhotoFile(undefined);
           }}
+          onCancel={
+            photoCaptureIntent === "attachment" ? handleCancelAttachmentImageReviewQueue : undefined
+          }
+          onTryAgain={
+            photoCaptureIntent === "attachment" ? handleRejectAttachmentImageReview : undefined
+          }
           defaultSection={photoCaptureIntent === "append" ? "additional" : undefined}
           initialPhotoFile={pendingPhotoFile}
         />

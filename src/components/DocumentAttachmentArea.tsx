@@ -12,11 +12,9 @@ import {
   ATTACHMENT_OCR_CAUTION_NOTE,
   ATTACHMENT_REMOVE_BUTTON_LABEL,
   ATTACHMENT_STATUS_LABELS,
-  ATTACHMENT_TAKE_PHOTO_BUTTON_LABEL,
-  ATTACHMENT_TAKE_PHOTO_HELPER,
   type AttachedFile,
 } from "../lib/documentAttachmentIntake";
-import { attachmentCameraAcceptAttribute, attachmentPickerAcceptAttribute } from "../lib/fileIntakeAccept";
+import { attachmentPickerAcceptAttribute } from "../lib/fileIntakeAccept";
 import { FILE_SIZE_LIMIT_HELPER } from "../lib/fileSizeLimit";
 
 export type DocumentAttachmentAreaProps = {
@@ -39,15 +37,15 @@ const fileListFromEvent = (event: ChangeEvent<HTMLInputElement>): File[] => {
 };
 
 // Attach document photos - complements the paste box (never replaces it).
-// Offers three native, local-only ways to bring in a document: the browser's
+// Offers two local-only ways to bring in supporting documents: the browser's
 // own "choose photos or files" picker (which is what surfaces Photos/Gallery/
 // Google Photos/Files on a phone - see docs/product/document-attachment-intake-v1.md
 // for why AdminAvenger does not integrate directly with any of those cloud
-// photo services), a camera-oriented picker where the device supports it, and
-// a desktop drag-and-drop zone. Every file stays on-device and flows through
-// the existing OCR/text intake and "Check a message" pipeline - this
-// component only collects files and reports status; it never analyses
-// anything itself.
+// photo services), and a desktop drag-and-drop zone. The main "Take photo"
+// route lives in PhotoCapturePanel so all camera photos share one scanner/
+// review flow before OCR. Every file stays on-device and flows through the
+// existing OCR/text intake and "Check a message" pipeline - this component
+// only collects files and reports status; it never analyses anything itself.
 export function DocumentAttachmentArea({
   files,
   isDraggingOver,
@@ -90,7 +88,7 @@ export function DocumentAttachmentArea({
           {isDraggingOver ? ATTACHMENT_DRAG_ACTIVE_LABEL : ATTACHMENT_DRAG_DROP_LABEL}
         </p>
 
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <div className="mt-3 grid gap-3">
           <label className="flex cursor-pointer flex-col rounded-lg border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-emerald-50 transition hover:border-emerald-300/40">
             {ATTACHMENT_CHOOSE_BUTTON_LABEL}
             <span className="mt-1 text-xs font-normal leading-5 text-slate-400">
@@ -102,22 +100,6 @@ export function DocumentAttachmentArea({
               multiple
               disabled={disabled}
               aria-label={ATTACHMENT_CHOOSE_BUTTON_LABEL}
-              onChange={(event) => onFilesSelected(fileListFromEvent(event))}
-              className="sr-only"
-            />
-          </label>
-
-          <label className="flex cursor-pointer flex-col rounded-lg border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-cyan-50 transition hover:border-cyan-300/40">
-            {ATTACHMENT_TAKE_PHOTO_BUTTON_LABEL}
-            <span className="mt-1 text-xs font-normal leading-5 text-slate-400">
-              {ATTACHMENT_TAKE_PHOTO_HELPER}
-            </span>
-            <input
-              type="file"
-              accept={attachmentCameraAcceptAttribute}
-              capture="environment"
-              disabled={disabled}
-              aria-label={ATTACHMENT_TAKE_PHOTO_BUTTON_LABEL}
               onChange={(event) => onFilesSelected(fileListFromEvent(event))}
               className="sr-only"
             />

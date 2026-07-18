@@ -6,6 +6,8 @@ Owner: AdminAvenger
 
 Date: 2026-07-18
 
+Scope note: Research-backed requirements added on 2026-07-18 expand the initial D8 implementation slice. The completion evidence below records the first implemented slice only; the expanded capture-comparison, guidance, auto-capture stability, review-experiment, and lifecycle requirements must be implemented and verified before D8 is considered complete.
+
 ## Outcome
 
 Add a development-only A4 camera calibration lab that lets builders test real mobile camera capabilities, A4 framing guidance, capture methods, live quality metrics, scanner output, and local telemetry without changing the normal Journey 5 camera flow.
@@ -22,8 +24,9 @@ Journey 5 depends on people taking clear full-page photos before local scan prep
 4. The lab displays supported constraints, track capabilities, settings, active constraints, selected camera/facing mode, frame size, frame rate, zoom/focus/torch support, and live A4 readiness.
 5. The developer adjusts supported camera/lab settings.
 6. The developer captures manually, or enables assisted capture after sustained readiness.
-7. The lab captures by canvas or `ImageCapture.takePhoto()` when supported.
-8. The lab sends only the captured image to the existing local scanner, records local telemetry, and offers a user-triggered JSON download.
+7. The lab captures by canvas, `ImageCapture.takePhoto()` when supported, system camera file input, or gallery upload.
+8. The lab sends only the captured or selected image to the existing local scanner, records local telemetry, and offers a user-triggered JSON download.
+9. The developer compares guidance, capture, scan, and review variants without changing the normal Journey 5 user flow.
 
 ## Development-Only Access
 
@@ -64,8 +67,16 @@ Journey 5 depends on people taking clear full-page photos before local scan prep
 
 - Support existing video-frame/canvas capture.
 - Support `ImageCapture.takePhoto()` when available.
+- Support system camera capture through a file input using `accept="image/*"` and `capture="environment"`.
+- Support existing gallery upload as a universal fallback.
+- Compare all four capture strategies:
+  - video-frame canvas capture;
+  - `ImageCapture.takePhoto()` when available;
+  - system camera capture through the environment file input;
+  - gallery upload.
+- Do not assume `ImageCapture` exists on iOS.
 - Fall back honestly when `ImageCapture` is unavailable.
-- Record source and output dimensions for each capture.
+- Record image dimensions, file size, sharpness, scan result, and processing time for every method.
 - Do not claim either method is better.
 
 ## Live Document-Quality Measurements
@@ -81,6 +92,23 @@ Journey 5 depends on people taking clear full-page photos before local scan prep
   - sharpness acceptable;
   - stable duration.
 - Show state: Not ready, Almost ready, Ready.
+- Keep raw metrics visible only in the developer panel.
+
+## User-Facing Guidance Experiment
+
+- Provide an experiment mode that shows only one highest-priority instruction at a time.
+- Use this priority order:
+  1. No document found.
+  2. Keep all four corners inside.
+  3. Move further away.
+  4. Move closer.
+  5. Hold the phone level.
+  6. More light needed.
+  7. Reduce glare.
+  8. Hold still.
+  9. Ready.
+- The guidance mode should be plain-language and suitable for later user testing.
+- Developer-only panels may still show the underlying raw metrics.
 
 ## Manual and Assisted Capture
 
@@ -89,12 +117,52 @@ Journey 5 depends on people taking clear full-page photos before local scan prep
 - Prevent duplicate captures.
 - Show countdown/feedback.
 
+## Auto-Capture Safety
+
+- Auto-capture must require:
+  - a valid four-corner quadrilateral;
+  - page completely inside the frame;
+  - acceptable page coverage;
+  - acceptable skew;
+  - acceptable sharpness and brightness;
+  - low glare where measurable;
+  - quad stability across consecutive frames;
+  - sustained readiness for a configurable period;
+  - no capture already in progress;
+  - cooldown after capture.
+- Manual capture must always remain available.
+- Use these only as initial calibration defaults:
+  - quad IoU: `0.85`;
+  - maximum area delta: `0.15`;
+  - stable duration: `700 ms`.
+- Do not promote these calibration defaults to production without physical-device evidence.
+
+## Review Experiment
+
+- Add a developer-only experiment comparing:
+  - prepared scan only;
+  - original/prepared toggle;
+  - prepared scan with conditional "Fix edges".
+- Do not change the normal Journey 5 review screen during the lab.
+- Do not reintroduce manual crop or edge fixing to the normal journey.
+
 ## Perspective-Correction Handling
 
 - Reuse `scanDocumentFile` for final full-resolution scan preparation.
 - Detection may analyse reduced preview frames, but final scan must use the highest practical captured image.
 - Do not add public manual crop controls or restore removed crop helpers.
 - Keep the normal Journey 5 "Does the whole document look clear?" confirmation unchanged.
+
+## Capture Lifecycle
+
+- Verify and record that all camera tracks stop after:
+  - successful capture;
+  - Cancel;
+  - close;
+  - route change;
+  - component unmount;
+  - capture error.
+- Lifecycle results should be visible in the developer panel and included in local telemetry.
 
 ## Telemetry and Export Format
 
@@ -115,10 +183,19 @@ For every capture, record locally in memory:
 - glare metric;
 - stability duration;
 - scanner result;
+- lifecycle/track-stop result;
 - warnings;
 - processing duration.
 
 Provide a user-triggered JSON download only.
+
+## Long-Term Architecture Recommendation
+
+- Android native: Google ML Kit Document Scanner.
+- iOS native: Apple VisionKit Document Camera.
+- Web: capability-selected guided/system-camera fallback.
+- Gallery: universal fallback.
+- Do not implement native mobile bridges in D8.
 
 ## Benchmark Fixture
 
@@ -134,8 +211,14 @@ Test Android Chrome, iOS Safari, and desktop Chrome where available. For each de
 - zoom/focus/torch availability;
 - canvas capture dimensions;
 - ImageCapture availability and dimensions;
+- system camera file-input capture dimensions;
+- gallery upload dimensions;
 - A4 readiness behavior at good/poor distance, skew, low light, glare, and motion;
 - scanner success/rejection;
+- one-instruction guidance behavior;
+- auto-capture stability and cooldown behavior;
+- review experiment behavior;
+- track-stop lifecycle behavior;
 - telemetry export content.
 
 ## Acceptance Criteria
@@ -145,12 +228,19 @@ Test Android Chrome, iOS Safari, and desktop Chrome where available. For each de
 - Unsupported camera controls are disabled.
 - Rejected `applyConstraints()` errors are visible and non-fatal.
 - Canvas and ImageCapture capture paths are selectable when supported.
+- System camera file-input and gallery upload capture paths are available.
 - Canvas fallback is honest when ImageCapture is unavailable.
+- The lab does not assume ImageCapture support on iOS.
+- Every capture method records image dimensions, file size, sharpness, scan result, and processing time.
 - Live A4 readiness uses the true A4 ratio and shows Not ready, Almost ready, or Ready.
-- Assisted capture requires sustained readiness and prevents duplicate captures.
+- Guidance experiment shows one highest-priority instruction at a time while developer metrics remain separately visible.
+- Assisted capture requires a valid stable quadrilateral, document inside frame, acceptable coverage/skew/sharpness/brightness/glare, sustained readiness, no in-flight capture, and cooldown.
+- Assisted capture defaults remain calibration-only and are not production defaults.
+- Manual capture remains available.
+- Review experiment compares prepared-only, original/prepared toggle, and prepared-with-conditional-Fix-edges variants without changing normal Journey 5.
 - Every capture runs through the existing local scanner.
 - Telemetry download excludes prohibited content.
-- Camera tracks stop on close, cancellation, and unmount.
+- Camera tracks stop on successful capture, Cancel, close, route change, component unmount, and capture error; results are recorded.
 - Production navigation does not expose the lab.
 - Normal Journey 5 confirmation behavior remains unchanged.
 
@@ -160,8 +250,8 @@ Remove the dev route branch in `App.tsx`, delete the camera lab view, lab librar
 
 ## Tests
 
-- Pure measurement tests for A4 guide geometry, readiness, capability support, assisted capture gating, duplicate prevention, and telemetry sanitization.
-- Rendered lab tests for camera-open behavior, capability display/control disabling, settings display, rejected constraints, ImageCapture/canvas selection, track cleanup, and telemetry export.
+- Pure measurement tests for A4 guide geometry, readiness, guidance priority, quad stability, capability support, assisted capture gating, cooldown, duplicate prevention, and telemetry sanitization.
+- Rendered lab tests for camera-open behavior, capability display/control disabling, settings display, rejected constraints, canvas/ImageCapture/system-camera/gallery selection, review variants, lifecycle recording, track cleanup, and telemetry export.
 - Sidebar/navigation test proving production navigation does not expose the lab.
 - Existing Journey 5 interaction tests must pass.
 - Existing photo/scanner tests must pass.
@@ -175,6 +265,8 @@ Remove the dev route branch in `App.tsx`, delete the camera lab view, lab librar
 - Do not upload document images or telemetry.
 - Do not add manual crop UI to the normal journey.
 - Do not expose the calibration lab in production navigation.
+- Do not implement native mobile bridges in D8.
+- Do not promote calibration thresholds to production defaults without physical-device evidence.
 - Do not deploy or push.
 - Do not use real personal documents as fixtures.
 
@@ -204,6 +296,7 @@ git diff --check
 - 2026-07-18: `npm run build` passed with the existing large chunk-size warning.
 - 2026-07-18: `powershell -ExecutionPolicy Bypass -File scripts\verify.ps1` passed all verification checks.
 - 2026-07-18: `git diff --check` passed with only the normal Windows LF/CRLF warning for `src/App.tsx`.
+- 2026-07-18: Research-backed requirements were added after the initial implementation slice. The existing implementation evidence does not yet prove the expanded capture-comparison, guidance, auto-capture stability, review-experiment, and lifecycle requirements.
 
 ## Decisions Made During Implementation
 
@@ -211,3 +304,4 @@ git diff --check
 - 2026-07-18: The lab will use small pure functions for A4 geometry, readiness, assisted capture gating, capability support, and telemetry safety.
 - 2026-07-18: Final scan preparation will call the existing `scanDocumentFile`; no new scanner or manual crop UI will be introduced.
 - 2026-07-18: Spec approved after inspecting `PhotoCapturePanel`, `photoCapture`, `documentScanner`, `documentImageQuality`, `App`, `Sidebar`, and existing Journey 5 tests.
+- 2026-07-18: Added research-backed requirements for comparing canvas, ImageCapture, system camera input, and gallery upload; highest-priority user guidance; safer auto-capture stability/cooldown; developer-only review variants; track lifecycle recording; and long-term native/web/gallery architecture.

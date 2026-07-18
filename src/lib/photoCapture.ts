@@ -600,7 +600,12 @@ export const photoCaptureReducer = (
     case "camera_error":
       return action.kind === "permission_denied" ? "permission_denied" : "camera_unavailable";
     case "photo_captured":
-      return stage === "camera_preview" || stage === "choice" ? "captured" : stage;
+      return stage === "camera_preview" ||
+        stage === "choice" ||
+        stage === "permission_denied" ||
+        stage === "camera_unavailable"
+        ? "captured"
+        : stage;
     case "retake":
       return "requesting_camera";
     case "cancel":

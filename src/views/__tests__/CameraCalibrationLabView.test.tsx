@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Sidebar } from "../../components/Sidebar";
@@ -63,6 +63,49 @@ afterEach(() => {
   Reflect.deleteProperty(window, "ImageCapture");
 });
 
+const setPreviewContainerSize = (width: number, height: number) => {
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function getBoundingClientRect(
+    this: HTMLElement,
+  ) {
+    if (this.querySelector?.("video")) {
+      return {
+        width,
+        height,
+        top: 0,
+        left: 0,
+        right: width,
+        bottom: height,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      } as DOMRect;
+    }
+
+    return {
+      width: 0,
+      height: 0,
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    } as DOMRect;
+  });
+};
+
+const setVideoIntrinsicSize = (video: HTMLVideoElement, width: number, height: number) => {
+  Object.defineProperty(video, "videoWidth", {
+    configurable: true,
+    value: width,
+  });
+  Object.defineProperty(video, "videoHeight", {
+    configurable: true,
+    value: height,
+  });
+};
+
 describe("CameraCalibrationLabView", () => {
   it("does not request camera access before deliberate user action", async () => {
     const { stream } = createFakeCamera();
@@ -80,6 +123,125 @@ describe("CameraCalibrationLabView", () => {
 
     expect(requestStream).toHaveBeenCalledTimes(1);
     await screen.findByText("Camera opened. No image has been uploaded or saved.");
+  });
+
+  it("keeps the A4 guide inside the rendered portrait video content when the container is wide", async () => {
+    const { stream } = createFakeCamera({
+      settings: {
+        width: 1080,
+        height: 1920,
+      },
+    });
+    setPreviewContainerSize(720, 360);
+
+    render(<CameraCalibrationLabView dependencies={createDependencies(stream)} />);
+    await userEvent.click(screen.getByRole("button", { name: "Open camera" }));
+
+    const video = document.querySelector("video");
+    expect(video).toBeInstanceOf(HTMLVideoElement);
+    setVideoIntrinsicSize(video as HTMLVideoElement, 1080, 1920);
+    fireEvent.loadedMetadata(video as HTMLVideoElement);
+
+    const guide = await screen.findByTestId("camera-lab-a4-guide");
+
+    expect(parseFloat(guide.style.left)).toBeGreaterThanOrEqual(258.75);
+    expect(parseFloat(guide.style.left) + parseFloat(guide.style.width)).toBeLessThanOrEqual(461.25);
+    expect(parseFloat(guide.style.top)).toBeGreaterThanOrEqual(0);
+    expect(parseFloat(guide.style.top) + parseFloat(guide.style.height)).toBeLessThanOrEqual(360);
+  });
+
+  it("uses a neutral not-ready state until video geometry is available", async () => {
+    const { stream } = createFakeCamera();
+    setPreviewContainerSize(720, 360);
+
+    render(<CameraCalibrationLabView dependencies={createDependencies(stream)} />);
+    await userEvent.click(screen.getByRole("button", { name: "Open camera" }));
+
+    expect(screen.queryByTestId("camera-lab-a4-guide")).toBeNull();
+    expect(await screen.findByText("Not ready.")).toBeTruthy();
+  });
+
+  it("recalculates guide geometry after the preview container resizes", async () => {
+    const { stream } = createFakeCamera({
+      settings: {
+        width: 1080,
+        height: 1920,
+      },
+    });
+    let previewSize = { width: 720, height: 360 };
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function getBoundingClientRect(
+      this: HTMLElement,
+    ) {
+      if (this.querySelector?.("video")) {
+        return {
+          width: previewSize.width,
+          height: previewSize.height,
+          top: 0,
+          left: 0,
+          right: previewSize.width,
+          bottom: previewSize.height,
+          x: 0,
+          y: 0,
+          toJSON: () => ({}),
+        } as DOMRect;
+      }
+
+      return {
+        width: 0,
+        height: 0,
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      } as DOMRect;
+    });
+
+    render(<CameraCalibrationLabView dependencies={createDependencies(stream)} />);
+    await userEvent.click(screen.getByRole("button", { name: "Open camera" }));
+
+    const video = document.querySelector("video") as HTMLVideoElement;
+    setVideoIntrinsicSize(video, 1080, 1920);
+    fireEvent.loadedMetadata(video);
+    const guide = await screen.findByTestId("camera-lab-a4-guide");
+    const initialLeft = parseFloat(guide.style.left);
+
+    previewSize = { width: 360, height: 720 };
+    fireEvent(window, new Event("resize"));
+
+    await waitFor(() => expect(parseFloat(guide.style.left)).not.toBe(initialLeft));
+    expect(parseFloat(guide.style.left)).toBeGreaterThanOrEqual(0);
+    expect(parseFloat(guide.style.left) + parseFloat(guide.style.width)).toBeLessThanOrEqual(360);
+  });
+
+  it("does not open a duplicate camera stream while a request is pending", async () => {
+    const { stream } = createFakeCamera();
+    let resolveStream: (stream: MediaStream) => void = () => undefined;
+    const requestStream = vi.fn(
+      () =>
+        new Promise<MediaStream>((resolve) => {
+          resolveStream = resolve;
+        }),
+    );
+
+    render(
+      <CameraCalibrationLabView
+        dependencies={createDependencies(stream, { requestStream })}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Open camera" }));
+
+    const openingButton = screen.getByRole("button", { name: "Opening..." });
+    expect((openingButton as HTMLButtonElement).disabled).toBe(true);
+    await userEvent.click(openingButton);
+    expect(requestStream).toHaveBeenCalledTimes(1);
+
+    resolveStream(stream);
+    await screen.findByRole("button", { name: "Camera open" });
+    expect(requestStream).toHaveBeenCalledTimes(1);
   });
 
   it("disables capability controls when the track does not support them", async () => {

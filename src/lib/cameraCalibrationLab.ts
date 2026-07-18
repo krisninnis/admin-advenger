@@ -58,6 +58,14 @@ export type CameraLabGuideRect = {
   scale: number;
 };
 
+export type CameraLabRenderedMediaRect = {
+  renderedWidth: number;
+  renderedHeight: number;
+  left: number;
+  top: number;
+  scale: number;
+};
+
 export type CameraLabQualityMeasurements = {
   readyState: CameraLabReadinessState;
   allFourCornersVisible: boolean;
@@ -186,6 +194,45 @@ export const getDefaultCameraLabSettings = (): CameraLabSettings => ({
 const clamp = (value: number, min: number, max: number): number =>
   Math.min(Math.max(value, min), max);
 
+export const calculateObjectFitContainRect = ({
+  containerWidth,
+  containerHeight,
+  mediaWidth,
+  mediaHeight,
+}: {
+  containerWidth: number;
+  containerHeight: number;
+  mediaWidth: number;
+  mediaHeight: number;
+}): CameraLabRenderedMediaRect => {
+  if (
+    !(containerWidth > 0) ||
+    !(containerHeight > 0) ||
+    !(mediaWidth > 0) ||
+    !(mediaHeight > 0)
+  ) {
+    return {
+      renderedWidth: 0,
+      renderedHeight: 0,
+      left: 0,
+      top: 0,
+      scale: 0,
+    };
+  }
+
+  const scale = Math.min(containerWidth / mediaWidth, containerHeight / mediaHeight);
+  const renderedWidth = mediaWidth * scale;
+  const renderedHeight = mediaHeight * scale;
+
+  return {
+    renderedWidth,
+    renderedHeight,
+    left: (containerWidth - renderedWidth) / 2,
+    top: (containerHeight - renderedHeight) / 2,
+    scale,
+  };
+};
+
 export const createA4GuideRect = (
   frameWidth: number,
   frameHeight: number,
@@ -210,6 +257,68 @@ export const createA4GuideRect = (
     scale: safeScale,
   };
 };
+
+export const createA4GuideRectInRenderedMedia = (
+  renderedMediaRect: CameraLabRenderedMediaRect,
+  scale: number,
+): CameraLabGuideRect => {
+  if (!(renderedMediaRect.renderedWidth > 0) || !(renderedMediaRect.renderedHeight > 0)) {
+    return {
+      width: 0,
+      height: 0,
+      left: renderedMediaRect.left,
+      top: renderedMediaRect.top,
+      scale: 0,
+    };
+  }
+
+  const guide = createA4GuideRect(
+    renderedMediaRect.renderedWidth,
+    renderedMediaRect.renderedHeight,
+    scale,
+  );
+
+  return {
+    ...guide,
+    left: renderedMediaRect.left + guide.left,
+    top: renderedMediaRect.top + guide.top,
+  };
+};
+
+export const mapPointBetweenRects = (
+  point: DocumentScannerPoint,
+  source: CameraLabGuideRect | CameraLabRenderedMediaRect | CameraLabCaptureDimensions,
+  destination: CameraLabGuideRect | CameraLabRenderedMediaRect | CameraLabCaptureDimensions,
+): DocumentScannerPoint => {
+  const sourceWidth = "renderedWidth" in source ? source.renderedWidth : source.width;
+  const sourceHeight = "renderedHeight" in source ? source.renderedHeight : source.height;
+  const sourceLeft = "left" in source ? source.left : 0;
+  const sourceTop = "top" in source ? source.top : 0;
+  const destinationWidth = "renderedWidth" in destination ? destination.renderedWidth : destination.width;
+  const destinationHeight = "renderedHeight" in destination ? destination.renderedHeight : destination.height;
+  const destinationLeft = "left" in destination ? destination.left : 0;
+  const destinationTop = "top" in destination ? destination.top : 0;
+
+  if (!(sourceWidth > 0) || !(sourceHeight > 0) || !(destinationWidth > 0) || !(destinationHeight > 0)) {
+    return { x: destinationLeft, y: destinationTop };
+  }
+
+  return {
+    x: destinationLeft + ((point.x - sourceLeft) / sourceWidth) * destinationWidth,
+    y: destinationTop + ((point.y - sourceTop) / sourceHeight) * destinationHeight,
+  };
+};
+
+export const mapQuadBetweenRects = (
+  quad: DocumentScannerQuad,
+  source: CameraLabGuideRect | CameraLabRenderedMediaRect | CameraLabCaptureDimensions,
+  destination: CameraLabGuideRect | CameraLabRenderedMediaRect | CameraLabCaptureDimensions,
+): DocumentScannerQuad => ({
+  topLeft: mapPointBetweenRects(quad.topLeft, source, destination),
+  topRight: mapPointBetweenRects(quad.topRight, source, destination),
+  bottomRight: mapPointBetweenRects(quad.bottomRight, source, destination),
+  bottomLeft: mapPointBetweenRects(quad.bottomLeft, source, destination),
+});
 
 const getQuadPoints = (quad: DocumentScannerQuad): DocumentScannerPoint[] => [
   quad.topLeft,

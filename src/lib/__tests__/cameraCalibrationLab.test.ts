@@ -3,16 +3,19 @@ import {
   A4_PORTRAIT_ASPECT_RATIO,
   analyzeCameraLabFrame,
   buildCameraLabVideoConstraints,
+  calculateObjectFitContainRect,
   calculateQuadAreaDelta,
   calculateQuadAreaRatio,
   calculateQuadIoU,
   calculateQuadSkewMetric,
+  createA4GuideRectInRenderedMedia,
   createA4GuideRect,
   createCameraLabTelemetryEntry,
   evaluateQuadStability,
   getDefaultCameraLabSettings,
   hasCapability,
   isImageCaptureAvailable,
+  mapQuadBetweenRects,
   selectCameraLabGuidanceInstruction,
   shouldTriggerAssistedCapture,
   type CameraLabQualityMeasurements,
@@ -83,6 +86,131 @@ describe("A4 camera calibration lab pure helpers", () => {
     expect(guide.width / guide.height).toBeCloseTo(1 / Math.sqrt(2), 5);
     expect(guide.left).toBeGreaterThanOrEqual(0);
     expect(guide.top).toBeGreaterThanOrEqual(0);
+  });
+
+  it("calculates rendered content for portrait video inside a wide mobile container", () => {
+    const content = calculateObjectFitContainRect({
+      containerWidth: 720,
+      containerHeight: 360,
+      mediaWidth: 1080,
+      mediaHeight: 1920,
+    });
+
+    expect(content.renderedWidth).toBeCloseTo(202.5, 4);
+    expect(content.renderedHeight).toBe(360);
+    expect(content.left).toBeCloseTo(258.75, 4);
+    expect(content.top).toBe(0);
+    expect(content.scale).toBeCloseTo(0.1875, 4);
+  });
+
+  it("calculates rendered content for landscape video inside a tall container", () => {
+    const content = calculateObjectFitContainRect({
+      containerWidth: 360,
+      containerHeight: 720,
+      mediaWidth: 1920,
+      mediaHeight: 1080,
+    });
+
+    expect(content.renderedWidth).toBe(360);
+    expect(content.renderedHeight).toBeCloseTo(202.5, 4);
+    expect(content.left).toBe(0);
+    expect(content.top).toBeCloseTo(258.75, 4);
+    expect(content.scale).toBeCloseTo(0.1875, 4);
+  });
+
+  it("fills the container when media and container aspect ratios match", () => {
+    const content = calculateObjectFitContainRect({
+      containerWidth: 640,
+      containerHeight: 360,
+      mediaWidth: 1920,
+      mediaHeight: 1080,
+    });
+
+    expect(content.renderedWidth).toBe(640);
+    expect(content.renderedHeight).toBe(360);
+    expect(content.left).toBe(0);
+    expect(content.top).toBe(0);
+  });
+
+  it("returns neutral geometry for unavailable dimensions", () => {
+    const content = calculateObjectFitContainRect({
+      containerWidth: 640,
+      containerHeight: 360,
+      mediaWidth: 0,
+      mediaHeight: 1920,
+    });
+    const guide = createA4GuideRectInRenderedMedia(content, 0.78);
+
+    expect(content).toEqual({
+      renderedWidth: 0,
+      renderedHeight: 0,
+      left: 0,
+      top: 0,
+      scale: 0,
+    });
+    expect(guide.width).toBe(0);
+    expect(guide.height).toBe(0);
+  });
+
+  it("keeps the A4 guide inside horizontal letterboxing for the physical Android regression", () => {
+    const content = calculateObjectFitContainRect({
+      containerWidth: 720,
+      containerHeight: 360,
+      mediaWidth: 1080,
+      mediaHeight: 1920,
+    });
+    const guide = createA4GuideRectInRenderedMedia(content, 0.78);
+
+    expect(guide.left).toBeGreaterThanOrEqual(content.left);
+    expect(guide.top).toBeGreaterThanOrEqual(content.top);
+    expect(guide.left + guide.width).toBeLessThanOrEqual(content.left + content.renderedWidth);
+    expect(guide.top + guide.height).toBeLessThanOrEqual(content.top + content.renderedHeight);
+    expect(guide.width / guide.height).toBeCloseTo(A4_PORTRAIT_ASPECT_RATIO, 5);
+  });
+
+  it("keeps the A4 guide inside vertical letterboxing", () => {
+    const content = calculateObjectFitContainRect({
+      containerWidth: 360,
+      containerHeight: 720,
+      mediaWidth: 1920,
+      mediaHeight: 1080,
+    });
+    const guide = createA4GuideRectInRenderedMedia(content, 0.78);
+
+    expect(guide.left).toBeGreaterThanOrEqual(content.left);
+    expect(guide.top).toBeGreaterThanOrEqual(content.top);
+    expect(guide.left + guide.width).toBeLessThanOrEqual(content.left + content.renderedWidth);
+    expect(guide.top + guide.height).toBeLessThanOrEqual(content.top + content.renderedHeight);
+  });
+
+  it("maps document coordinates between reduced analysis, rendered preview and full capture rectangles", () => {
+    const analysisQuad: DocumentScannerQuad = {
+      topLeft: { x: 20, y: 40 },
+      topRight: { x: 180, y: 40 },
+      bottomRight: { x: 180, y: 300 },
+      bottomLeft: { x: 20, y: 300 },
+    };
+    const rendered = calculateObjectFitContainRect({
+      containerWidth: 720,
+      containerHeight: 360,
+      mediaWidth: 1080,
+      mediaHeight: 1920,
+    });
+    const previewQuad = mapQuadBetweenRects(
+      analysisQuad,
+      { width: 202.5, height: 360 },
+      rendered,
+    );
+    const captureQuad = mapQuadBetweenRects(
+      analysisQuad,
+      { width: 202.5, height: 360 },
+      { width: 1080, height: 1920 },
+    );
+
+    expect(previewQuad.topLeft.x).toBeCloseTo(rendered.left + 20, 4);
+    expect(previewQuad.topLeft.y).toBeCloseTo(40, 4);
+    expect(captureQuad.topLeft.x).toBeCloseTo(106.67, 2);
+    expect(captureQuad.bottomRight.y).toBe(1600);
   });
 
   it("calculates document coverage and skew from a quadrilateral", () => {

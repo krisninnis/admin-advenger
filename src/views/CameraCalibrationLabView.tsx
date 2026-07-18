@@ -4,10 +4,11 @@ import {
   CAMERA_LAB_TELEMETRY_FILE_NAME,
   analyzeCameraLabFrame,
   buildCameraLabVideoConstraints,
+  calculateObjectFitContainRect,
   captureCameraLabCanvasFrame,
   captureCameraLabImageCapturePhoto,
+  createA4GuideRectInRenderedMedia,
   createCameraLabFileCaptureResult,
-  createA4GuideRect,
   createCameraLabTelemetryEntry,
   createCameraLabTelemetryExport,
   evaluateQuadStability,
@@ -16,6 +17,7 @@ import {
   getDefaultCameraLabSettings,
   hasCapability,
   isImageCaptureAvailable,
+  mapQuadBetweenRects,
   selectCameraLabGuidanceInstruction,
   shouldTriggerAssistedCapture,
   type CameraLabCaptureMethod,
@@ -60,6 +62,11 @@ export type CameraCalibrationLabDependencies = {
 type CameraCalibrationLabViewProps = {
   onClose?: () => void;
   dependencies?: CameraCalibrationLabDependencies;
+};
+
+type PreviewBoxSize = {
+  width: number;
+  height: number;
 };
 
 const createEmptyMeasurements = (): CameraLabQualityMeasurements => ({
@@ -179,8 +186,12 @@ export function CameraCalibrationLabView({
   const [lifecycleRecords, setLifecycleRecords] = useState<CameraLabLifecycleRecord[]>([]);
   const [scanPreviewUrl, setScanPreviewUrl] = useState("");
   const [originalPreviewUrl, setOriginalPreviewUrl] = useState("");
+  const [cameraOpening, setCameraOpening] = useState(false);
+  const [previewBoxSize, setPreviewBoxSize] = useState<PreviewBoxSize>({ width: 0, height: 0 });
+  const [videoDimensions, setVideoDimensions] = useState<PreviewBoxSize>({ width: 0, height: 0 });
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const previewFrameRef = useRef<HTMLDivElement | null>(null);
   const analysisCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const systemCameraInputRef = useRef<HTMLInputElement | null>(null);
   const galleryInputRef = useRef<HTMLInputElement | null>(null);
@@ -236,6 +247,7 @@ export function CameraCalibrationLabView({
       if (updateState) {
         setStream(null);
         setMeasurements(createEmptyMeasurements());
+        setVideoDimensions({ width: 0, height: 0 });
       }
       if (videoRef.current) {
         videoRef.current.srcObject = null;
@@ -253,6 +265,7 @@ export function CameraCalibrationLabView({
     stableSinceRef.current = undefined;
     assistedCaptureTriggeredRef.current = false;
     setStream(null);
+    setVideoDimensions({ width: 0, height: 0 });
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
@@ -284,6 +297,85 @@ export function CameraCalibrationLabView({
     }
     streamRef.current = stream;
   }, [stream]);
+
+  const refreshVideoDimensions = useCallback(() => {
+    const video = videoRef.current;
+    const nextDimensions = {
+      width: video?.videoWidth ?? 0,
+      height: video?.videoHeight ?? 0,
+    };
+
+    setVideoDimensions((current) =>
+      current.width === nextDimensions.width && current.height === nextDimensions.height
+        ? current
+        : nextDimensions,
+    );
+  }, []);
+
+  const refreshPreviewBoxSize = useCallback(() => {
+    const frame = previewFrameRef.current;
+
+    if (!frame) {
+      return;
+    }
+
+    const rect = frame.getBoundingClientRect();
+    const nextSize = {
+      width: rect.width,
+      height: rect.height,
+    };
+
+    setPreviewBoxSize((current) =>
+      current.width === nextSize.width && current.height === nextSize.height ? current : nextSize,
+    );
+  }, []);
+
+  useEffect(() => {
+    refreshPreviewBoxSize();
+
+    const frame = previewFrameRef.current;
+    const handleViewportChange = () => {
+      refreshPreviewBoxSize();
+      refreshVideoDimensions();
+    };
+    const resizeObserver =
+      typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(() => refreshPreviewBoxSize())
+        : undefined;
+
+    if (frame) {
+      resizeObserver?.observe(frame);
+    }
+    window.addEventListener("resize", handleViewportChange);
+    window.addEventListener("orientationchange", handleViewportChange);
+
+    return () => {
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", handleViewportChange);
+      window.removeEventListener("orientationchange", handleViewportChange);
+    };
+  }, [refreshPreviewBoxSize, refreshVideoDimensions]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+
+    if (!video) {
+      return;
+    }
+
+    const handleVideoGeometryChange = () => {
+      refreshVideoDimensions();
+      refreshPreviewBoxSize();
+    };
+
+    video.addEventListener("loadedmetadata", handleVideoGeometryChange);
+    video.addEventListener("resize", handleVideoGeometryChange);
+
+    return () => {
+      video.removeEventListener("loadedmetadata", handleVideoGeometryChange);
+      video.removeEventListener("resize", handleVideoGeometryChange);
+    };
+  }, [refreshPreviewBoxSize, refreshVideoDimensions]);
 
   useEffect(() => {
     revokeObjectURLRef.current = revokeObjectURL;
@@ -339,10 +431,15 @@ export function CameraCalibrationLabView({
   );
 
   const handleOpenCamera = async () => {
+    if (streamRef.current || cameraOpening) {
+      return;
+    }
+
     setCameraError("");
     setConstraintError("");
     const constraints = buildCameraLabVideoConstraints(settings, selectedDeviceId || undefined);
     setActiveConstraints(constraints);
+    setCameraOpening(true);
 
     try {
       stopCurrentStream();
@@ -353,6 +450,8 @@ export function CameraCalibrationLabView({
       setCaptureNotice("Camera opened. No image has been uploaded or saved.");
     } catch (error) {
       setCameraError(error instanceof Error ? error.message : "Could not open the camera.");
+    } finally {
+      setCameraOpening(false);
     }
   };
 
@@ -649,19 +748,47 @@ export function CameraCalibrationLabView({
     setSettings((current) => ({ ...current, [key]: value }));
   };
 
-  const guideRect = createA4GuideRect(
-    trackSettings?.width ?? 1280,
-    trackSettings?.height ?? 720,
-    settings.guideScale,
-  );
+  const renderedMediaRect = calculateObjectFitContainRect({
+    containerWidth: previewBoxSize.width,
+    containerHeight: previewBoxSize.height,
+    mediaWidth: videoDimensions.width,
+    mediaHeight: videoDimensions.height,
+  });
+  const analysisScale =
+    videoDimensions.width > 0 && videoDimensions.height > 0
+      ? Math.min(1, 360 / Math.max(videoDimensions.width, videoDimensions.height))
+      : 0;
+  const analysisFrameDimensions = {
+    width: Math.max(0, Math.round(videoDimensions.width * analysisScale)),
+    height: Math.max(0, Math.round(videoDimensions.height * analysisScale)),
+  };
+  const guideRect = createA4GuideRectInRenderedMedia(renderedMediaRect, settings.guideScale);
+  const hasRenderedVideoGeometry =
+    Boolean(stream) &&
+    renderedMediaRect.renderedWidth > 0 &&
+    renderedMediaRect.renderedHeight > 0 &&
+    guideRect.width > 0 &&
+    guideRect.height > 0;
+  const renderedDocumentQuad =
+    measurements.quad && hasRenderedVideoGeometry
+      ? mapQuadBetweenRects(measurements.quad, analysisFrameDimensions, renderedMediaRect)
+      : undefined;
+  const fullResolutionDocumentQuad =
+    measurements.quad && videoDimensions.width > 0 && videoDimensions.height > 0
+      ? mapQuadBetweenRects(measurements.quad, analysisFrameDimensions, videoDimensions)
+      : undefined;
   const countdownRemainingMs = Math.max(0, settings.stabilityDurationMs - measurements.stabilityDurationMs);
   const cooldownRemainingMs = lastAutoCaptureAtRef.current
     ? Math.max(0, settings.captureCooldownMs - (now() - lastAutoCaptureAtRef.current))
     : 0;
-  const guidanceInstruction = selectCameraLabGuidanceInstruction(measurements, settings);
+  const guidanceInstruction =
+    stream && !hasRenderedVideoGeometry
+      ? "Not ready."
+      : selectCameraLabGuidanceInstruction(measurements, settings);
   const liveCaptureMethodSelected =
     settings.captureMethod === "canvas" || settings.captureMethod === "image_capture";
   const manualCaptureDisabled = captureInProgress || (liveCaptureMethodSelected && !stream);
+  const openCameraDisabled = cameraOpening || Boolean(stream);
 
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-4 text-slate-100 sm:px-6 lg:px-8">
@@ -687,23 +814,29 @@ export function CameraCalibrationLabView({
 
         <section className="grid gap-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(22rem,0.75fr)]">
           <div className="space-y-3">
-            <div className="relative overflow-hidden rounded-lg border border-white/10 bg-black">
+            <div
+              ref={previewFrameRef}
+              className="relative overflow-hidden rounded-lg border border-white/10 bg-black"
+            >
               <video
                 ref={videoRef}
                 autoPlay
                 playsInline
                 muted
+                onLoadedMetadata={refreshVideoDimensions}
                 className="aspect-video max-h-[72vh] w-full object-contain"
               />
-              {stream ? (
+              {hasRenderedVideoGeometry ? (
                 <div
                   aria-hidden="true"
-                  className="pointer-events-none absolute left-1/2 top-1/2 rounded-sm border-2 border-cyan-100/90 bg-cyan-100/5 shadow-[0_0_0_9999px_rgb(0_0_0_/_0.30)]"
+                  data-testid="camera-lab-a4-guide"
+                  className="pointer-events-none absolute rounded-sm border-2 border-cyan-100/90 bg-cyan-100/5 shadow-[0_0_0_9999px_rgb(0_0_0_/_0.30)]"
                   style={{
                     aspectRatio: "1 / 1.41421356237",
-                    width: `${Math.min(86, (guideRect.width / Math.max(1, trackSettings?.width ?? 1280)) * 100)}%`,
-                    maxHeight: "88%",
-                    transform: "translate(-50%, -50%)",
+                    width: `${guideRect.width}px`,
+                    height: `${guideRect.height}px`,
+                    left: `${guideRect.left}px`,
+                    top: `${guideRect.top}px`,
                   }}
                 />
               ) : null}
@@ -716,9 +849,10 @@ export function CameraCalibrationLabView({
               <button
                 type="button"
                 onClick={() => void handleOpenCamera()}
-                className="min-h-12 rounded-lg bg-cyan-300 px-4 py-3 text-sm font-black text-slate-950 hover:bg-cyan-200"
+                disabled={openCameraDisabled}
+                className="min-h-12 rounded-lg bg-cyan-300 px-4 py-3 text-sm font-black text-slate-950 hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Open camera
+                {cameraOpening ? "Opening..." : stream ? "Camera open" : "Open camera"}
               </button>
               <button
                 type="button"
@@ -1249,7 +1383,15 @@ export function CameraCalibrationLabView({
               aspectRatio: "1 / sqrt(2)",
               width: guideRect.width,
               height: guideRect.height,
+              left: guideRect.left,
+              top: guideRect.top,
               scale: guideRect.scale,
+              previewContainer: previewBoxSize,
+              intrinsicVideo: videoDimensions,
+              analysisFrame: analysisFrameDimensions,
+              renderedVideo: renderedMediaRect,
+              renderedDocumentQuad,
+              fullResolutionDocumentQuad,
             }}
           />
         </section>

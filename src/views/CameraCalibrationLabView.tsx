@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import {
   CAMERA_LAB_ROUTE_PATH,
   CAMERA_LAB_TELEMETRY_FILE_NAME,
@@ -6,16 +6,23 @@ import {
   buildCameraLabVideoConstraints,
   captureCameraLabCanvasFrame,
   captureCameraLabImageCapturePhoto,
+  createCameraLabFileCaptureResult,
   createA4GuideRect,
   createCameraLabTelemetryEntry,
   createCameraLabTelemetryExport,
+  evaluateQuadStability,
+  measureCameraLabFileSharpness,
   getCameraLabReadinessLabel,
   getDefaultCameraLabSettings,
   hasCapability,
   isImageCaptureAvailable,
+  selectCameraLabGuidanceInstruction,
   shouldTriggerAssistedCapture,
   type CameraLabCaptureMethod,
+  type CameraLabCaptureDimensions,
   type CameraLabCaptureResult,
+  type CameraLabLifecycleEvent,
+  type CameraLabLifecycleRecord,
   type CameraLabQualityMeasurements,
   type CameraLabSettings,
   type CameraLabTelemetryEntry,
@@ -42,6 +49,8 @@ export type CameraCalibrationLabDependencies = {
   scanDocumentFile?: typeof scanDocumentFileDefault;
   captureCanvasFrame?: typeof captureCameraLabCanvasFrame;
   captureImageCapturePhoto?: typeof captureCameraLabImageCapturePhoto;
+  inspectFileDimensions?: (blob: Blob) => Promise<CameraLabCaptureDimensions>;
+  measureCaptureSharpness?: typeof measureCameraLabFileSharpness;
   createObjectURL?: (blob: Blob) => string;
   revokeObjectURL?: (url: string) => void;
   downloadJson?: (fileName: string, payload: unknown) => void;
@@ -63,11 +72,14 @@ const createEmptyMeasurements = (): CameraLabQualityMeasurements => ({
   glareAcceptable: true,
   sharpnessAcceptable: false,
   cameraStable: false,
+  quadStable: false,
   documentCoverage: 0,
   skewMetric: 1,
   brightnessMetric: 0,
   glareMetric: 0,
   sharpnessMetric: 0,
+  quadIoU: 0,
+  quadAreaDelta: 1,
   stabilityDurationMs: 0,
   warnings: ["Open the camera to begin."],
 });
@@ -137,6 +149,8 @@ export function CameraCalibrationLabView({
   const scanDocumentFile = dependencies.scanDocumentFile ?? scanDocumentFileDefault;
   const captureCanvasFrame = dependencies.captureCanvasFrame ?? captureCameraLabCanvasFrame;
   const captureImageCapturePhoto = dependencies.captureImageCapturePhoto ?? captureCameraLabImageCapturePhoto;
+  const inspectFileDimensions = dependencies.inspectFileDimensions;
+  const measureCaptureSharpness = dependencies.measureCaptureSharpness ?? measureCameraLabFileSharpness;
   const createObjectURL = dependencies.createObjectURL ?? URL.createObjectURL.bind(URL);
   const revokeObjectURL = dependencies.revokeObjectURL ?? URL.revokeObjectURL.bind(URL);
   const downloadJson = dependencies.downloadJson ?? defaultDownloadJson;
@@ -159,27 +173,85 @@ export function CameraCalibrationLabView({
   const [captureInProgress, setCaptureInProgress] = useState(false);
   const [captureNotice, setCaptureNotice] = useState("");
   const [lastCapture, setLastCapture] = useState<CameraLabCaptureResult>();
+  const [lastCaptureSharpness, setLastCaptureSharpness] = useState<number>();
   const [lastScannerResult, setLastScannerResult] = useState<DocumentScanFileResult>();
   const [telemetry, setTelemetry] = useState<CameraLabTelemetryEntry[]>([]);
+  const [lifecycleRecords, setLifecycleRecords] = useState<CameraLabLifecycleRecord[]>([]);
   const [scanPreviewUrl, setScanPreviewUrl] = useState("");
+  const [originalPreviewUrl, setOriginalPreviewUrl] = useState("");
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const analysisCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const systemCameraInputRef = useRef<HTMLInputElement | null>(null);
+  const galleryInputRef = useRef<HTMLInputElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const scanPreviewUrlRef = useRef("");
+  const originalPreviewUrlRef = useRef("");
   const revokeObjectURLRef = useRef(revokeObjectURL);
   const stableSinceRef = useRef<number | undefined>(undefined);
+  const previousQuadRef = useRef<CameraLabQualityMeasurements["quad"]>(undefined);
   const assistedCaptureTriggeredRef = useRef(false);
   const captureInProgressRef = useRef(false);
+  const lastAutoCaptureAtRef = useRef<number | undefined>(undefined);
+  const lifecycleRecordsRef = useRef<CameraLabLifecycleRecord[]>([]);
 
   const imageCaptureSupported = useMemo(() => {
     const track = stream?.getVideoTracks()[0];
     return Boolean(track) && isImageCaptureAvailable(window as unknown as { ImageCapture?: unknown });
   }, [stream]);
 
+  const appendLifecycleRecord = useCallback(
+    (
+      event: CameraLabLifecycleEvent,
+      hadStream: boolean,
+      stoppedTrackCount: number,
+      updateState = true,
+    ): CameraLabLifecycleRecord => {
+      const record = {
+        event,
+        timestamp: new Date().toISOString(),
+        hadStream,
+        stoppedTrackCount,
+      };
+      lifecycleRecordsRef.current = [...lifecycleRecordsRef.current, record];
+      if (updateState) {
+        setLifecycleRecords(lifecycleRecordsRef.current);
+      }
+      return record;
+    },
+    [],
+  );
+
+  const stopStreamForLifecycle = useCallback(
+    (event: CameraLabLifecycleEvent, updateState = true): CameraLabLifecycleRecord => {
+      const currentStream = streamRef.current;
+      const tracks = currentStream?.getTracks() ?? [];
+      const record = appendLifecycleRecord(event, Boolean(currentStream), tracks.length, updateState);
+
+      stopMediaStreamTracks(currentStream);
+      streamRef.current = null;
+      previousQuadRef.current = undefined;
+      stableSinceRef.current = undefined;
+      assistedCaptureTriggeredRef.current = false;
+      if (updateState) {
+        setStream(null);
+        setMeasurements(createEmptyMeasurements());
+      }
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+      }
+
+      return record;
+    },
+    [appendLifecycleRecord],
+  );
+
   const stopCurrentStream = useCallback(() => {
     stopMediaStreamTracks(streamRef.current);
     streamRef.current = null;
+    previousQuadRef.current = undefined;
+    stableSinceRef.current = undefined;
+    assistedCaptureTriggeredRef.current = false;
     setStream(null);
     if (videoRef.current) {
       videoRef.current.srcObject = null;
@@ -192,6 +264,14 @@ export function CameraCalibrationLabView({
     }
     scanPreviewUrlRef.current = nextUrl;
     setScanPreviewUrl(nextUrl);
+  }, []);
+
+  const replaceOriginalPreviewUrl = useCallback((nextUrl: string) => {
+    if (originalPreviewUrlRef.current) {
+      revokeObjectURLRef.current(originalPreviewUrlRef.current);
+    }
+    originalPreviewUrlRef.current = nextUrl;
+    setOriginalPreviewUrl(nextUrl);
   }, []);
 
   useEffect(() => {
@@ -211,13 +291,37 @@ export function CameraCalibrationLabView({
 
   useEffect(
     () => () => {
-      stopMediaStreamTracks(streamRef.current);
+      if (streamRef.current) {
+        const currentStream = streamRef.current;
+        const trackCount = currentStream.getTracks().length;
+        appendLifecycleRecord("unmount", true, trackCount, false);
+        stopMediaStreamTracks(currentStream);
+        streamRef.current = null;
+      }
       if (scanPreviewUrlRef.current) {
         revokeObjectURLRef.current(scanPreviewUrlRef.current);
       }
+      if (originalPreviewUrlRef.current) {
+        revokeObjectURLRef.current(originalPreviewUrlRef.current);
+      }
     },
-    [],
+    [appendLifecycleRecord],
   );
+
+  useEffect(() => {
+    const handleRouteChange = () => {
+      if (streamRef.current) {
+        stopStreamForLifecycle("route_change");
+      }
+    };
+
+    window.addEventListener("popstate", handleRouteChange);
+    window.addEventListener("hashchange", handleRouteChange);
+    return () => {
+      window.removeEventListener("popstate", handleRouteChange);
+      window.removeEventListener("hashchange", handleRouteChange);
+    };
+  }, [stopStreamForLifecycle]);
 
   const refreshTrackDetails = useCallback(
     (currentStream: MediaStream) => {
@@ -321,11 +425,26 @@ export function CameraCalibrationLabView({
         width,
         height,
         settings,
-        settings.stabilityDurationMs,
+        0,
+      );
+      const quadStability = evaluateQuadStability(
+        withoutStability.quad,
+        previousQuadRef.current,
+        settings,
       );
       const currentTime = now();
+      const basicQualityReady =
+        Boolean(withoutStability.quad) &&
+        withoutStability.allFourCornersVisible &&
+        withoutStability.documentInsideFrame &&
+        withoutStability.coverageWithinRange &&
+        withoutStability.skewAcceptable &&
+        withoutStability.brightnessAcceptable &&
+        withoutStability.glareAcceptable &&
+        withoutStability.sharpnessAcceptable &&
+        quadStability.quadStable;
 
-      if (withoutStability.readyState === "ready") {
+      if (basicQualityReady) {
         stableSinceRef.current ??= currentTime;
       } else {
         stableSinceRef.current = undefined;
@@ -333,19 +452,24 @@ export function CameraCalibrationLabView({
       }
 
       const stableDuration = stableSinceRef.current ? currentTime - stableSinceRef.current : 0;
-      const nextMeasurements = analyzeCameraLabFrame(pixels, width, height, settings, stableDuration);
+      const nextMeasurements = analyzeCameraLabFrame(
+        pixels,
+        width,
+        height,
+        settings,
+        stableDuration,
+        quadStability,
+      );
+      previousQuadRef.current = withoutStability.quad;
       setMeasurements(nextMeasurements);
     }, 250);
 
     return () => window.clearInterval(interval);
   }, [now, settings, stream]);
 
-  const handleCapture = useCallback(
-    async (requestedMethod: CameraLabCaptureMethod = settings.captureMethod) => {
-      const track = stream?.getVideoTracks()[0];
-      const video = videoRef.current;
-
-      if (!track || !video || captureInProgressRef.current) {
+  const processCaptureResult = useCallback(
+    async (capture: CameraLabCaptureResult, notice?: string) => {
+      if (captureInProgressRef.current) {
         return;
       }
 
@@ -355,18 +479,14 @@ export function CameraCalibrationLabView({
       const startedAt = now();
 
       try {
-        const shouldUseImageCapture = requestedMethod === "image_capture" && imageCaptureSupported;
-        const capture = shouldUseImageCapture
-          ? await captureImageCapturePhoto(track)
-          : await captureCanvasFrame(video, settings);
-        if (requestedMethod === "image_capture" && !imageCaptureSupported) {
-          setCaptureNotice("ImageCapture is not available; captured with canvas fallback.");
-        }
-
+        const captureSharpnessMetric = await measureCaptureSharpness(capture.file);
         const scannerResult = await scanDocumentFile(capture.file);
         const processingDurationMs = now() - startedAt;
+        stopStreamForLifecycle("successful_capture");
         setLastCapture(capture);
+        setLastCaptureSharpness(captureSharpnessMetric);
         setLastScannerResult(scannerResult);
+        replaceOriginalPreviewUrl(createObjectURL(capture.file));
 
         if (scannerResult.status === "ready") {
           replaceScanPreviewUrl(createObjectURL(scannerResult.scannedFile));
@@ -384,16 +504,22 @@ export function CameraCalibrationLabView({
               hardwareConcurrency: navigator.hardwareConcurrency,
             },
             requestedConstraints: activeConstraints,
-            actualSettings: track.getSettings?.() ?? {},
+            actualSettings: streamRef.current?.getVideoTracks()[0]?.getSettings?.() ?? trackSettings ?? {},
             captureMethod: capture.method,
             sourceDimensions: capture.sourceDimensions,
             outputDimensions: capture.outputDimensions,
+            fileSizeBytes: capture.fileSizeBytes,
+            captureSharpnessMetric,
             measurements,
             scannerResult,
+            lifecycleEvents: lifecycleRecordsRef.current,
             processingDurationMs,
           }),
         ]);
+        lastAutoCaptureAtRef.current = now();
+        setCaptureNotice(notice ?? "Capture processed locally.");
       } catch (error) {
+        stopStreamForLifecycle("capture_error");
         setCaptureNotice(error instanceof Error ? error.message : "Capture failed.");
       } finally {
         setCaptureInProgress(false);
@@ -402,37 +528,121 @@ export function CameraCalibrationLabView({
     },
     [
       activeConstraints,
-      captureCanvasFrame,
-      captureImageCapturePhoto,
       createObjectURL,
-      imageCaptureSupported,
+      measureCaptureSharpness,
       measurements,
       now,
+      replaceOriginalPreviewUrl,
       replaceScanPreviewUrl,
       scanDocumentFile,
+      stopStreamForLifecycle,
+      trackSettings,
+    ],
+  );
+
+  const handleFileCapture = useCallback(
+    async (
+      event: ChangeEvent<HTMLInputElement>,
+      method: Extract<CameraLabCaptureMethod, "system_camera" | "gallery">,
+    ) => {
+      const file = event.currentTarget.files?.[0];
+      event.currentTarget.value = "";
+
+      if (!file) {
+        return;
+      }
+
+      try {
+        const capture = await createCameraLabFileCaptureResult(file, method, inspectFileDimensions);
+        await processCaptureResult(capture);
+      } catch (error) {
+        stopStreamForLifecycle("capture_error");
+        setCaptureNotice(error instanceof Error ? error.message : "Could not inspect the selected image.");
+      }
+    },
+    [inspectFileDimensions, processCaptureResult, stopStreamForLifecycle],
+  );
+
+  const handleCapture = useCallback(
+    async (requestedMethod: CameraLabCaptureMethod = settings.captureMethod) => {
+      if (requestedMethod === "system_camera") {
+        systemCameraInputRef.current?.click();
+        return;
+      }
+      if (requestedMethod === "gallery") {
+        galleryInputRef.current?.click();
+        return;
+      }
+
+      const track = stream?.getVideoTracks()[0];
+      const video = videoRef.current;
+
+      if (!track || !video || captureInProgressRef.current) {
+        return;
+      }
+
+      try {
+        const shouldUseImageCapture = requestedMethod === "image_capture" && imageCaptureSupported;
+        const capture = shouldUseImageCapture
+          ? await captureImageCapturePhoto(track)
+          : await captureCanvasFrame(video, settings);
+        await processCaptureResult(
+          capture,
+          requestedMethod === "image_capture" && !imageCaptureSupported
+            ? "ImageCapture is not available; captured with canvas fallback."
+            : undefined,
+        );
+      } catch (error) {
+        stopStreamForLifecycle("capture_error");
+        setCaptureNotice(error instanceof Error ? error.message : "Capture failed.");
+      }
+    },
+    [
+      captureCanvasFrame,
+      captureImageCapturePhoto,
+      imageCaptureSupported,
+      processCaptureResult,
       settings,
+      stopStreamForLifecycle,
       stream,
     ],
   );
 
   useEffect(() => {
+    const lastCaptureAt = lastAutoCaptureAtRef.current;
+    const cooldownRemainingMs = lastCaptureAt
+      ? Math.max(0, settings.captureCooldownMs - (now() - lastCaptureAt))
+      : 0;
+
     if (
+      (settings.captureMethod === "canvas" || settings.captureMethod === "image_capture") &&
       shouldTriggerAssistedCapture({
         assistedCapture: settings.assistedCapture,
-        readyState: measurements.readyState,
+        measurements,
         isCapturing: captureInProgress,
         captureAlreadyTriggered: assistedCaptureTriggeredRef.current,
+        cooldownRemainingMs,
       })
     ) {
       assistedCaptureTriggeredRef.current = true;
       void handleCapture(settings.captureMethod);
     }
-  }, [captureInProgress, handleCapture, measurements.readyState, settings.assistedCapture, settings.captureMethod]);
+  }, [captureInProgress, handleCapture, measurements, now, settings.assistedCapture, settings.captureCooldownMs, settings.captureMethod]);
 
   const handleClose = () => {
-    stopCurrentStream();
+    if (streamRef.current) {
+      stopStreamForLifecycle("close");
+    }
     replaceScanPreviewUrl("");
+    replaceOriginalPreviewUrl("");
     onClose?.();
+  };
+
+  const handleCancelCamera = () => {
+    if (streamRef.current) {
+      stopStreamForLifecycle("cancel");
+    }
+    setCaptureNotice("Camera cancelled. Tracks stopped.");
   };
 
   const updateSetting = <Key extends keyof CameraLabSettings>(key: Key, value: CameraLabSettings[Key]) => {
@@ -445,6 +655,13 @@ export function CameraCalibrationLabView({
     settings.guideScale,
   );
   const countdownRemainingMs = Math.max(0, settings.stabilityDurationMs - measurements.stabilityDurationMs);
+  const cooldownRemainingMs = lastAutoCaptureAtRef.current
+    ? Math.max(0, settings.captureCooldownMs - (now() - lastAutoCaptureAtRef.current))
+    : 0;
+  const guidanceInstruction = selectCameraLabGuidanceInstruction(measurements, settings);
+  const liveCaptureMethodSelected =
+    settings.captureMethod === "canvas" || settings.captureMethod === "image_capture";
+  const manualCaptureDisabled = captureInProgress || (liveCaptureMethodSelected && !stream);
 
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-4 text-slate-100 sm:px-6 lg:px-8">
@@ -495,7 +712,7 @@ export function CameraCalibrationLabView({
               </div>
             </div>
 
-            <div className="grid gap-2 sm:grid-cols-3">
+            <div className="grid gap-2 sm:grid-cols-4">
               <button
                 type="button"
                 onClick={() => void handleOpenCamera()}
@@ -505,8 +722,16 @@ export function CameraCalibrationLabView({
               </button>
               <button
                 type="button"
+                onClick={handleCancelCamera}
+                disabled={!stream}
+                className="min-h-12 rounded-lg border border-white/10 bg-slate-900 px-4 py-3 text-sm font-bold text-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Cancel camera
+              </button>
+              <button
+                type="button"
                 onClick={() => void handleCapture(settings.captureMethod)}
-                disabled={!stream || captureInProgress}
+                disabled={manualCaptureDisabled}
                 className="min-h-12 rounded-lg bg-emerald-400 px-4 py-3 text-sm font-black text-slate-950 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {captureInProgress ? "Capturing..." : "Manual capture"}
@@ -524,6 +749,32 @@ export function CameraCalibrationLabView({
               >
                 Download telemetry JSON
               </button>
+            </div>
+
+            <div className="grid gap-2 sm:grid-cols-2">
+              <label className="grid gap-2 rounded-lg border border-white/10 bg-slate-900 px-4 py-3 text-sm font-bold text-slate-100">
+                System camera capture
+                <input
+                  ref={systemCameraInputRef}
+                  aria-label="System camera capture input"
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={(event) => void handleFileCapture(event, "system_camera")}
+                  className="text-xs text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-cyan-300 file:px-3 file:py-2 file:text-xs file:font-black file:text-slate-950"
+                />
+              </label>
+              <label className="grid gap-2 rounded-lg border border-white/10 bg-slate-900 px-4 py-3 text-sm font-bold text-slate-100">
+                Gallery upload
+                <input
+                  ref={galleryInputRef}
+                  aria-label="Gallery upload input"
+                  type="file"
+                  accept="image/*"
+                  onChange={(event) => void handleFileCapture(event, "gallery")}
+                  className="text-xs text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-cyan-300 file:px-3 file:py-2 file:text-xs file:font-black file:text-slate-950"
+                />
+              </label>
             </div>
 
             {cameraError ? (
@@ -544,6 +795,10 @@ export function CameraCalibrationLabView({
           </div>
 
           <aside className="space-y-3">
+            <div className="rounded-lg border border-cyan-200/20 bg-cyan-200/10 p-4">
+              <p className="text-xs font-black uppercase tracking-wider text-cyan-100">Guidance experiment</p>
+              <p className="mt-2 text-2xl font-black text-white">{guidanceInstruction}</p>
+            </div>
             <div className="rounded-lg border border-white/10 bg-slate-900 p-4">
               <p className="text-sm font-black text-white">Live readiness</p>
               <div className="mt-3 grid gap-2">
@@ -554,6 +809,7 @@ export function CameraCalibrationLabView({
                 <BooleanMetric label="Brightness acceptable" value={measurements.brightnessAcceptable} />
                 <BooleanMetric label="Glare acceptable" value={measurements.glareAcceptable} />
                 <BooleanMetric label="Sharpness acceptable" value={measurements.sharpnessAcceptable} />
+                <BooleanMetric label="Quad stable" value={measurements.quadStable} />
                 <BooleanMetric label="Camera stable" value={measurements.cameraStable} />
               </div>
               <div className="mt-3 grid grid-cols-2 gap-2">
@@ -562,7 +818,10 @@ export function CameraCalibrationLabView({
                 <MetricValue label="Brightness" value={measurements.brightnessMetric.toFixed(1)} />
                 <MetricValue label="Glare" value={measurements.glareMetric.toFixed(3)} />
                 <MetricValue label="Sharpness" value={measurements.sharpnessMetric.toFixed(1)} />
+                <MetricValue label="Quad IoU" value={measurements.quadIoU.toFixed(3)} />
+                <MetricValue label="Area delta" value={measurements.quadAreaDelta.toFixed(3)} />
                 <MetricValue label="Stable" value={`${Math.round(measurements.stabilityDurationMs)}ms`} />
+                <MetricValue label="Cooldown" value={`${Math.round(cooldownRemainingMs)}ms`} />
               </div>
               {settings.assistedCapture ? (
                 <p className="mt-3 rounded-lg border border-emerald-300/20 bg-emerald-300/10 px-3 py-2 text-sm font-bold text-emerald-50">
@@ -719,6 +978,45 @@ export function CameraCalibrationLabView({
               </label>
               <div className="grid grid-cols-2 gap-2">
                 <label className="grid gap-1 text-sm font-bold text-slate-200">
+                  Quad IoU min
+                  <input
+                    aria-label="Quad IoU minimum"
+                    type="number"
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    value={settings.quadIoUThreshold}
+                    onChange={(event) => updateSetting("quadIoUThreshold", Number(event.target.value))}
+                    className="rounded-lg border border-white/10 bg-slate-950 px-3 py-2"
+                  />
+                </label>
+                <label className="grid gap-1 text-sm font-bold text-slate-200">
+                  Area delta max
+                  <input
+                    aria-label="Area delta maximum"
+                    type="number"
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    value={settings.maxAreaDelta}
+                    onChange={(event) => updateSetting("maxAreaDelta", Number(event.target.value))}
+                    className="rounded-lg border border-white/10 bg-slate-950 px-3 py-2"
+                  />
+                </label>
+              </div>
+              <label className="grid gap-1 text-sm font-bold text-slate-200">
+                Capture cooldown
+                <input
+                  aria-label="Capture cooldown"
+                  type="number"
+                  min={0}
+                  value={settings.captureCooldownMs}
+                  onChange={(event) => updateSetting("captureCooldownMs", Number(event.target.value))}
+                  className="rounded-lg border border-white/10 bg-slate-950 px-3 py-2"
+                />
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="grid gap-1 text-sm font-bold text-slate-200">
                   Coverage min
                   <input
                     aria-label="Coverage minimum"
@@ -795,6 +1093,21 @@ export function CameraCalibrationLabView({
                   <option value="image_capture" disabled={!imageCaptureSupported}>
                     ImageCapture.takePhoto() {imageCaptureSupported ? "" : "(unavailable)"}
                   </option>
+                  <option value="system_camera">System camera file input</option>
+                  <option value="gallery">Gallery upload</option>
+                </select>
+              </label>
+              <label className="grid gap-1 text-sm font-bold text-slate-200">
+                Review experiment
+                <select
+                  aria-label="Review experiment"
+                  value={settings.reviewMode}
+                  onChange={(event) => updateSetting("reviewMode", event.target.value as CameraLabSettings["reviewMode"])}
+                  className="rounded-lg border border-white/10 bg-slate-950 px-3 py-2"
+                >
+                  <option value="prepared">Prepared scan only</option>
+                  <option value="comparison">Original and prepared comparison</option>
+                  <option value="fix_edges">Prepared scan with Fix edges placeholder</option>
                 </select>
               </label>
               <label className="flex min-h-12 items-center gap-3 text-sm font-bold text-slate-200">
@@ -817,6 +1130,14 @@ export function CameraCalibrationLabView({
                 value={lastCapture?.method ? lastCapture.method : "None yet"}
               />
               <MetricValue
+                label="File size"
+                value={lastCapture ? `${lastCapture.fileSizeBytes} bytes` : "None yet"}
+              />
+              <MetricValue
+                label="Capture sharpness"
+                value={lastCaptureSharpness === undefined ? "None yet" : lastCaptureSharpness.toFixed(1)}
+              />
+              <MetricValue
                 label="Source dimensions"
                 value={
                   lastCapture
@@ -837,13 +1158,69 @@ export function CameraCalibrationLabView({
                 value={lastScannerResult?.status ?? "None yet"}
               />
               <MetricValue label="Telemetry entries" value={String(telemetry.length)} />
+              <MetricValue label="Lifecycle records" value={String(lifecycleRecords.length)} />
             </div>
-            {scanPreviewUrl ? (
+            {scanPreviewUrl && settings.reviewMode === "prepared" ? (
               <img
                 src={scanPreviewUrl}
                 alt="Prepared scan from calibration capture"
                 className="mt-3 max-h-64 w-full rounded-lg border border-white/10 bg-black object-contain"
               />
+            ) : null}
+            {settings.reviewMode === "comparison" && (originalPreviewUrl || scanPreviewUrl) ? (
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                {originalPreviewUrl ? (
+                  <figure>
+                    <img
+                      src={originalPreviewUrl}
+                      alt="Original calibration capture"
+                      className="max-h-64 w-full rounded-lg border border-white/10 bg-black object-contain"
+                    />
+                    <figcaption className="mt-1 text-xs font-bold text-slate-400">Original</figcaption>
+                  </figure>
+                ) : null}
+                {scanPreviewUrl ? (
+                  <figure>
+                    <img
+                      src={scanPreviewUrl}
+                      alt="Prepared scan from calibration capture"
+                      className="max-h-64 w-full rounded-lg border border-white/10 bg-black object-contain"
+                    />
+                    <figcaption className="mt-1 text-xs font-bold text-slate-400">Prepared</figcaption>
+                  </figure>
+                ) : null}
+              </div>
+            ) : null}
+            {settings.reviewMode === "fix_edges" && scanPreviewUrl ? (
+              <div className="mt-3 space-y-2">
+                <img
+                  src={scanPreviewUrl}
+                  alt="Prepared scan from calibration capture"
+                  className="max-h-64 w-full rounded-lg border border-white/10 bg-black object-contain"
+                />
+                <button
+                  type="button"
+                  disabled
+                  className="min-h-12 w-full rounded-lg border border-amber-200/30 bg-amber-200/10 px-4 py-3 text-sm font-black text-amber-50 opacity-80"
+                >
+                  Fix edges experiment placeholder
+                </button>
+                <p className="text-xs leading-5 text-slate-400">
+                  Placeholder only. This lab is comparing whether an edge-fix option is useful; it is not an editor.
+                </p>
+              </div>
+            ) : null}
+            {lifecycleRecords.length > 0 ? (
+              <div className="mt-3 rounded-lg border border-white/10 bg-slate-950/70 p-3">
+                <p className="text-xs font-black uppercase tracking-wider text-slate-400">Track lifecycle</p>
+                <ul className="mt-2 space-y-1 text-xs text-slate-200">
+                  {lifecycleRecords.slice(-5).map((record) => (
+                    <li key={`${record.event}-${record.timestamp}`}>
+                      {record.event}: {record.stoppedTrackCount} track(s) stopped
+                    </li>
+                  ))}
+                </ul>
+              </div>
             ) : null}
           </div>
         </section>

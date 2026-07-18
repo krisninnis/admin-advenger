@@ -15,7 +15,15 @@ export const CAMERA_LAB_RESULT_FILE_NAME = "camera-lab-capture.jpg";
 export const CAMERA_LAB_TELEMETRY_FILE_NAME = "admin-avenger-camera-lab-telemetry.json";
 
 export type CameraLabReadinessState = "not_ready" | "almost_ready" | "ready";
-export type CameraLabCaptureMethod = "canvas" | "image_capture";
+export type CameraLabCaptureMethod = "canvas" | "image_capture" | "system_camera" | "gallery";
+export type CameraLabReviewMode = "prepared" | "comparison" | "fix_edges";
+export type CameraLabLifecycleEvent =
+  | "successful_capture"
+  | "cancel"
+  | "close"
+  | "route_change"
+  | "unmount"
+  | "capture_error";
 
 export type CameraLabSettings = {
   preferredWidth: number;
@@ -31,11 +39,15 @@ export type CameraLabSettings = {
   brightnessMax: number;
   glareMax: number;
   sharpnessMin: number;
+  quadIoUThreshold: number;
+  maxAreaDelta: number;
+  captureCooldownMs: number;
   outputMaxLongEdge: number;
   outputMimeType: "image/jpeg" | "image/webp";
   outputQuality: number;
   captureMethod: CameraLabCaptureMethod;
   assistedCapture: boolean;
+  reviewMode: CameraLabReviewMode;
 };
 
 export type CameraLabGuideRect = {
@@ -56,11 +68,14 @@ export type CameraLabQualityMeasurements = {
   glareAcceptable: boolean;
   sharpnessAcceptable: boolean;
   cameraStable: boolean;
+  quadStable: boolean;
   documentCoverage: number;
   skewMetric: number;
   brightnessMetric: number;
   glareMetric: number;
   sharpnessMetric: number;
+  quadIoU: number;
+  quadAreaDelta: number;
   stabilityDurationMs: number;
   warnings: string[];
   quad?: DocumentScannerQuad;
@@ -76,6 +91,14 @@ export type CameraLabCaptureResult = {
   sourceDimensions: CameraLabCaptureDimensions;
   outputDimensions: CameraLabCaptureDimensions;
   method: CameraLabCaptureMethod;
+  fileSizeBytes: number;
+};
+
+export type CameraLabLifecycleRecord = {
+  event: CameraLabLifecycleEvent;
+  timestamp: string;
+  hadStream: boolean;
+  stoppedTrackCount: number;
 };
 
 export type CameraLabScannerTelemetry =
@@ -102,17 +125,23 @@ export type CameraLabTelemetryEntry = {
   };
   requestedConstraints: unknown;
   actualSettings: unknown;
+  captureStrategy: CameraLabCaptureMethod;
   captureMethod: CameraLabCaptureMethod;
   sourceDimensions: CameraLabCaptureDimensions;
   outputDimensions: CameraLabCaptureDimensions;
+  fileSizeBytes: number;
+  captureSharpnessMetric: number;
   documentCoverage: number;
   allFourCornersVisible: boolean;
   skewMetric: number;
   sharpnessMetric: number;
   brightnessMetric: number;
   glareMetric: number;
+  quadIoU: number;
+  quadAreaDelta: number;
   stabilityDurationMs: number;
   scannerResult: CameraLabScannerTelemetry;
+  lifecycleEvents: CameraLabLifecycleRecord[];
   warnings: string[];
   processingDurationMs: number;
 };
@@ -135,7 +164,7 @@ export const getDefaultCameraLabSettings = (): CameraLabSettings => ({
   frameRate: 30,
   facingMode: "environment",
   guideScale: 0.78,
-  stabilityDurationMs: 1200,
+  stabilityDurationMs: 700,
   documentCoverageMin: 0.34,
   documentCoverageMax: 0.9,
   skewTolerance: 0.18,
@@ -143,11 +172,15 @@ export const getDefaultCameraLabSettings = (): CameraLabSettings => ({
   brightnessMax: 235,
   glareMax: 0.18,
   sharpnessMin: 50,
+  quadIoUThreshold: 0.85,
+  maxAreaDelta: 0.15,
+  captureCooldownMs: 1500,
   outputMaxLongEdge: 2400,
   outputMimeType: "image/jpeg",
   outputQuality: 0.95,
   captureMethod: "canvas",
   assistedCapture: false,
+  reviewMode: "prepared",
 });
 
 const clamp = (value: number, min: number, max: number): number =>
@@ -203,6 +236,83 @@ export const calculateQuadAreaRatio = (
   }
 
   return Math.abs(area) / 2 / Math.max(1, frameWidth * frameHeight);
+};
+
+type BoundingRect = {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+};
+
+const getQuadBoundingRect = (quad: DocumentScannerQuad): BoundingRect => {
+  const points = getQuadPoints(quad);
+  const xs = points.map((point) => point.x);
+  const ys = points.map((point) => point.y);
+
+  return {
+    left: Math.min(...xs),
+    top: Math.min(...ys),
+    right: Math.max(...xs),
+    bottom: Math.max(...ys),
+  };
+};
+
+const getRectArea = (rect: BoundingRect): number =>
+  Math.max(0, rect.right - rect.left) * Math.max(0, rect.bottom - rect.top);
+
+export const calculateQuadIoU = (
+  currentQuad: DocumentScannerQuad | undefined,
+  previousQuad: DocumentScannerQuad | undefined,
+): number => {
+  if (!currentQuad || !previousQuad) {
+    return 0;
+  }
+
+  const currentRect = getQuadBoundingRect(currentQuad);
+  const previousRect = getQuadBoundingRect(previousQuad);
+  const intersection = {
+    left: Math.max(currentRect.left, previousRect.left),
+    top: Math.max(currentRect.top, previousRect.top),
+    right: Math.min(currentRect.right, previousRect.right),
+    bottom: Math.min(currentRect.bottom, previousRect.bottom),
+  };
+  const intersectionArea = getRectArea(intersection);
+  const unionArea = getRectArea(currentRect) + getRectArea(previousRect) - intersectionArea;
+
+  return unionArea > 0 ? intersectionArea / unionArea : 0;
+};
+
+export const calculateQuadAreaDelta = (
+  currentQuad: DocumentScannerQuad | undefined,
+  previousQuad: DocumentScannerQuad | undefined,
+): number => {
+  if (!currentQuad || !previousQuad) {
+    return 1;
+  }
+
+  const currentArea = getRectArea(getQuadBoundingRect(currentQuad));
+  const previousArea = getRectArea(getQuadBoundingRect(previousQuad));
+
+  return Math.abs(currentArea - previousArea) / Math.max(currentArea, previousArea, 1);
+};
+
+export const evaluateQuadStability = (
+  currentQuad: DocumentScannerQuad | undefined,
+  previousQuad: DocumentScannerQuad | undefined,
+  settings: Pick<CameraLabSettings, "quadIoUThreshold" | "maxAreaDelta">,
+): Pick<CameraLabQualityMeasurements, "quadStable" | "quadIoU" | "quadAreaDelta"> => {
+  const quadIoU = calculateQuadIoU(currentQuad, previousQuad);
+  const quadAreaDelta = calculateQuadAreaDelta(currentQuad, previousQuad);
+
+  return {
+    quadStable:
+      Boolean(currentQuad && previousQuad) &&
+      quadIoU >= settings.quadIoUThreshold &&
+      quadAreaDelta <= settings.maxAreaDelta,
+    quadIoU,
+    quadAreaDelta,
+  };
 };
 
 export const areQuadCornersInsideFrame = (
@@ -270,10 +380,13 @@ export const evaluateCameraLabReadiness = (
     metrics.brightnessAcceptable ? undefined : "Brightness is outside the configured range.",
     metrics.glareAcceptable ? undefined : "Glare appears excessive.",
     metrics.sharpnessAcceptable ? undefined : "Sharpness is below the configured threshold.",
+    metrics.quadStable ? undefined : "Document edges are not stable yet.",
     metrics.cameraStable ? undefined : "Hold steady until the stability timer completes.",
   ].filter((warning): warning is string => Boolean(warning));
   const blockingFailures = warnings.filter(
-    (warning) => warning !== "Hold steady until the stability timer completes.",
+    (warning) =>
+      warning !== "Hold steady until the stability timer completes." &&
+      warning !== "Document edges are not stable yet.",
   ).length;
   const readyState: CameraLabReadinessState =
     warnings.length === 0 ? "ready" : blockingFailures <= 1 ? "almost_ready" : "not_ready";
@@ -291,6 +404,11 @@ export const analyzeCameraLabFrame = (
   frameHeight: number,
   settings: CameraLabSettings,
   stabilityDurationMs: number,
+  quadStability: Pick<CameraLabQualityMeasurements, "quadStable" | "quadIoU" | "quadAreaDelta"> = {
+    quadStable: true,
+    quadIoU: 1,
+    quadAreaDelta: 0,
+  },
 ): CameraLabQualityMeasurements => {
   const detection = detectDocumentFromPixels(pixels, frameWidth, frameHeight);
   const quad = detection.status === "detected" ? detection.quad : undefined;
@@ -313,11 +431,14 @@ export const analyzeCameraLabFrame = (
     glareAcceptable: glareMetric <= settings.glareMax,
     sharpnessAcceptable: sharpnessMetric >= settings.sharpnessMin,
     cameraStable: stabilityDurationMs >= settings.stabilityDurationMs,
+    quadStable: quadStability.quadStable,
     documentCoverage,
     skewMetric,
     brightnessMetric,
     glareMetric,
     sharpnessMetric,
+    quadIoU: quadStability.quadIoU,
+    quadAreaDelta: quadStability.quadAreaDelta,
     stabilityDurationMs,
     quad,
   });
@@ -332,6 +453,59 @@ export const getCameraLabReadinessLabel = (state: CameraLabReadinessState): stri
     default:
       return "Not ready";
   }
+};
+
+export type CameraLabGuidanceInstruction =
+  | "No document found."
+  | "Keep all four corners inside."
+  | "Move further away."
+  | "Move closer."
+  | "Hold the phone level."
+  | "More light needed."
+  | "Reduce glare."
+  | "Hold still."
+  | "Ready.";
+
+export const selectCameraLabGuidanceInstruction = (
+  measurements: CameraLabQualityMeasurements,
+  settings: Pick<
+    CameraLabSettings,
+    "documentCoverageMin" | "documentCoverageMax" | "brightnessMin"
+  >,
+): CameraLabGuidanceInstruction => {
+  if (!measurements.quad) {
+    return "No document found.";
+  }
+
+  if (!measurements.allFourCornersVisible || !measurements.documentInsideFrame) {
+    return "Keep all four corners inside.";
+  }
+
+  if (measurements.documentCoverage > settings.documentCoverageMax) {
+    return "Move further away.";
+  }
+
+  if (measurements.documentCoverage < settings.documentCoverageMin) {
+    return "Move closer.";
+  }
+
+  if (!measurements.skewAcceptable) {
+    return "Hold the phone level.";
+  }
+
+  if (!measurements.brightnessAcceptable && measurements.brightnessMetric < settings.brightnessMin) {
+    return "More light needed.";
+  }
+
+  if (!measurements.glareAcceptable) {
+    return "Reduce glare.";
+  }
+
+  if (!measurements.sharpnessAcceptable || !measurements.quadStable || !measurements.cameraStable) {
+    return "Hold still.";
+  }
+
+  return "Ready.";
 };
 
 export const hasCapability = (
@@ -351,16 +525,31 @@ export const isImageCaptureAvailable = (
   globalScope: { ImageCapture?: unknown } | undefined = globalThis as { ImageCapture?: unknown },
 ): boolean => typeof globalScope?.ImageCapture === "function";
 
+export const isCameraLabCaptureReady = (measurements: CameraLabQualityMeasurements): boolean =>
+  Boolean(measurements.quad) &&
+  measurements.allFourCornersVisible &&
+  measurements.documentInsideFrame &&
+  measurements.coverageWithinRange &&
+  measurements.skewAcceptable &&
+  measurements.sharpnessAcceptable &&
+  measurements.brightnessAcceptable &&
+  measurements.glareAcceptable &&
+  measurements.quadStable &&
+  measurements.cameraStable &&
+  measurements.readyState === "ready";
+
 export const shouldTriggerAssistedCapture = (input: {
   assistedCapture: boolean;
-  readyState: CameraLabReadinessState;
+  measurements: CameraLabQualityMeasurements;
   isCapturing: boolean;
   captureAlreadyTriggered: boolean;
+  cooldownRemainingMs: number;
 }): boolean =>
   input.assistedCapture &&
-  input.readyState === "ready" &&
+  isCameraLabCaptureReady(input.measurements) &&
   !input.isCapturing &&
-  !input.captureAlreadyTriggered;
+  !input.captureAlreadyTriggered &&
+  input.cooldownRemainingMs <= 0;
 
 export const buildCameraLabVideoConstraints = (
   settings: CameraLabSettings,
@@ -420,6 +609,7 @@ export const captureCameraLabCanvasFrame = async (
     sourceDimensions: { width: sourceWidth, height: sourceHeight },
     outputDimensions: { width: outputWidth, height: outputHeight },
     method: "canvas",
+    fileSizeBytes: blob.size,
   };
 };
 
@@ -464,7 +654,61 @@ export const captureCameraLabImageCapturePhoto = async (
     },
     outputDimensions,
     method: "image_capture",
+    fileSizeBytes: blob.size,
   };
+};
+
+export const createCameraLabFileCaptureResult = async (
+  file: File,
+  method: Extract<CameraLabCaptureMethod, "system_camera" | "gallery">,
+  inspectDimensions: (blob: Blob) => Promise<CameraLabCaptureDimensions> = getImageBlobDimensions,
+): Promise<CameraLabCaptureResult> => {
+  const dimensions = await inspectDimensions(file);
+
+  return {
+    file,
+    sourceDimensions: dimensions,
+    outputDimensions: dimensions,
+    method,
+    fileSizeBytes: file.size,
+  };
+};
+
+export const measureCameraLabFileSharpness = async (
+  file: File,
+  maxLongEdge = 720,
+): Promise<number> => {
+  const objectUrl = URL.createObjectURL(file);
+  const image = new Image();
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      image.onload = () => resolve();
+      image.onerror = () => reject(new Error("Could not inspect capture sharpness."));
+      image.src = objectUrl;
+    });
+
+    const sourceWidth = image.naturalWidth || 1;
+    const sourceHeight = image.naturalHeight || 1;
+    const scale = Math.min(1, maxLongEdge / Math.max(sourceWidth, sourceHeight));
+    const width = Math.max(1, Math.round(sourceWidth * scale));
+    const height = Math.max(1, Math.round(sourceHeight * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+
+    if (!context) {
+      throw new Error("Could not inspect capture sharpness.");
+    }
+
+    context.drawImage(image, 0, 0, width, height);
+    const pixels = context.getImageData(0, 0, width, height).data;
+
+    return computeBlurVariance(pixels, width, height);
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
 };
 
 export const summarizeScannerResultForTelemetry = (
@@ -495,16 +739,25 @@ const prohibitedTelemetryKeys = new Set([
   "image",
   "imageData",
   "pixels",
+  "bytes",
+  "rawBytes",
   "ocrText",
   "text",
   "file",
   "fileName",
+  "filename",
+  "documentName",
   "name",
   "path",
+  "localPath",
+  "userName",
+  "username",
   "sourceFile",
   "scannedFile",
   "token",
   "secret",
+  "apiKey",
+  "api-key",
 ]);
 
 const prohibitedStringPattern =
@@ -538,8 +791,11 @@ export const createCameraLabTelemetryEntry = (input: {
   captureMethod: CameraLabCaptureMethod;
   sourceDimensions: CameraLabCaptureDimensions;
   outputDimensions: CameraLabCaptureDimensions;
+  fileSizeBytes: number;
+  captureSharpnessMetric: number;
   measurements: CameraLabQualityMeasurements;
   scannerResult: DocumentScanFileResult;
+  lifecycleEvents: CameraLabLifecycleRecord[];
   processingDurationMs: number;
 }): CameraLabTelemetryEntry =>
   sanitizeCameraLabTelemetryValue({
@@ -547,17 +803,23 @@ export const createCameraLabTelemetryEntry = (input: {
     browser: input.browser,
     requestedConstraints: input.requestedConstraints,
     actualSettings: input.actualSettings,
+    captureStrategy: input.captureMethod,
     captureMethod: input.captureMethod,
     sourceDimensions: input.sourceDimensions,
     outputDimensions: input.outputDimensions,
+    fileSizeBytes: input.fileSizeBytes,
+    captureSharpnessMetric: input.captureSharpnessMetric,
     documentCoverage: input.measurements.documentCoverage,
     allFourCornersVisible: input.measurements.allFourCornersVisible,
     skewMetric: input.measurements.skewMetric,
     sharpnessMetric: input.measurements.sharpnessMetric,
     brightnessMetric: input.measurements.brightnessMetric,
     glareMetric: input.measurements.glareMetric,
+    quadIoU: input.measurements.quadIoU,
+    quadAreaDelta: input.measurements.quadAreaDelta,
     stabilityDurationMs: input.measurements.stabilityDurationMs,
     scannerResult: summarizeScannerResultForTelemetry(input.scannerResult),
+    lifecycleEvents: input.lifecycleEvents,
     warnings: input.measurements.warnings,
     processingDurationMs: input.processingDurationMs,
   }) as CameraLabTelemetryEntry;

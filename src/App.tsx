@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "./components/AppShell";
 import type { AdminItemFormValues } from "./components/AddAdminItem";
 import type { CaseUpdateValues } from "./components/CaseActions";
@@ -97,6 +97,15 @@ const caseStatusLabels: Record<AdminCaseStatus, string> = {
   evidence_saved: "Evidence saved",
 };
 
+const CAMERA_LAB_ROUTE_PATH = "/dev/camera-lab";
+const DevCameraCalibrationLabView = import.meta.env.DEV
+  ? lazy(() =>
+      import("./views/CameraCalibrationLabView").then((module) => ({
+        default: module.CameraCalibrationLabView,
+      })),
+    )
+  : undefined;
+
 const normalizeOptionalText = (value?: string) => {
   const trimmedValue = value?.trim();
   return trimmedValue ? trimmedValue : undefined;
@@ -193,6 +202,10 @@ function App() {
   const [inboxScanSettings, setInboxScanSettings] = useState<InboxScanSettings>(
     loadInboxScanSettings,
   );
+  const isDevCameraLabRoute =
+    import.meta.env.DEV &&
+    typeof window !== "undefined" &&
+    window.location.pathname === CAMERA_LAB_ROUTE_PATH;
 
   const selectedCase =
     adminCases.find((adminCase) => adminCase.id === selectedCaseId) ??
@@ -1262,6 +1275,23 @@ function App() {
   // Safety Notice version. This is a hard blocker, not a dismissible banner.
   if (!hasAcceptedTerms) {
     return <TermsSafetyGate mode="blocking" onAccept={handleAcceptTerms} />;
+  }
+
+  if (isDevCameraLabRoute) {
+    if (!DevCameraCalibrationLabView) {
+      return null;
+    }
+
+    return (
+      <Suspense fallback={<div className="min-h-screen bg-slate-950 p-6 text-slate-100">Loading camera lab...</div>}>
+        <DevCameraCalibrationLabView
+          onClose={() => {
+            window.history.pushState({}, "", "/");
+            setCurrentView("home");
+          }}
+        />
+      </Suspense>
+    );
   }
 
   return (

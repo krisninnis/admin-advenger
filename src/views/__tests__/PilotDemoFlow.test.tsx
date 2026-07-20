@@ -6,6 +6,7 @@ import sidebarSource from "../../components/Sidebar.tsx?raw";
 import settingsSource from "../SettingsView.tsx?raw";
 import { demoScenarios } from "../../lib/demoScenarios";
 import { goldenLetterFixtures } from "../../lib/goldenLetters";
+import { canAccessAppView, getPublicViewAvailability } from "../../lib/publicScopePolicy";
 import { findForbiddenSafetyPhrases } from "../../lib/safetyWording";
 
 describe("Pilot demo flow", () => {
@@ -16,12 +17,13 @@ describe("Pilot demo flow", () => {
     expect(homeViewSource).toContain("Take or upload a photo");
   });
 
-  it("adds a Demo / tour route and navigation", () => {
+  it("keeps the Demo / tour route preserved but out of public navigation", () => {
     expect(appSource).toContain('currentView === "demo_tour"');
-    expect(sidebarSource).toContain("Demo / tour");
-    expect(sidebarSource).toContain('"demo_tour"');
-    expect(settingsSource).toContain("Open Demo / tour");
-    expect(settingsSource).toContain('onNavigate("demo_tour")');
+    expect(sidebarSource).not.toContain("Demo / tour");
+    expect(settingsSource).toContain("controlledFeaturesEnabled");
+    expect(getPublicViewAvailability("demo_tour")).toBe("controlled_beta");
+    expect(canAccessAppView("demo_tour", {})).toBe(false);
+    expect(canAccessAppView("demo_tour", { VITE_ENABLE_CONTROLLED_BETAS: "true" })).toBe(true);
   });
 
   it("renders the dedicated Demo / tour page copy and result label", () => {

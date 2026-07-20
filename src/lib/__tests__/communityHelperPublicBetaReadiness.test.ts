@@ -66,13 +66,13 @@ describe("Community Helper Public Beta Prep v1 readiness", () => {
     expect(report.totalCount).toBe(10);
   });
 
-  it("includes controlled public beta wording on the gated Home card", () => {
-    expect(homeViewSource).toContain("Controlled public beta");
-    expect(homeViewSource).toContain("Open controlled beta");
-    expect(homeViewSource).toContain("It does not analyse the message above");
+  it("keeps controlled public beta wording off public Home", () => {
+    expect(homeViewSource).not.toContain("Controlled public beta");
+    expect(homeViewSource).not.toContain("Open controlled beta");
+    expect(homeViewSource).not.toContain("It does not analyse the message above");
   });
 
-  it("keeps Community Helper secondary/gated from Home", () => {
+  it("keeps Community Helper hidden from Home", () => {
     const report = assessCommunityHelperPublicBetaReadiness(realInput);
     const check = report.checks.find((item) => item.id === "home_gated_secondary");
 
@@ -171,9 +171,9 @@ describe("Community Helper Public Beta Prep v1 readiness", () => {
     expect(report.allPassed).toBe(false);
   });
 
-  it("fails the relevant check when the gated Home entry is missing", () => {
+  it("fails the relevant check when a synthetic gated Home entry returns", () => {
     const unsafeInput = {
-      homeViewSource: homeViewSource.replace("Community support prep", "Something else"),
+      homeViewSource: `${homeViewSource}\n<button>Open controlled beta</button><p>Controlled public beta</p><p>Community support prep</p>`,
       demoTourViewSource,
     };
     const report = assessCommunityHelperPublicBetaReadiness(unsafeInput);
@@ -184,15 +184,8 @@ describe("Community Helper Public Beta Prep v1 readiness", () => {
   });
 
   it("fails the forbidden-phrase check on synthetic unsafe source text", () => {
-    // Injected inside the gated card's own section (between the
-    // "Community Helper Home Gated v1" marker comment and its closing
-    // </section>), so extractSection actually picks it up the same way it
-    // would pick up a real regression.
     const unsafeInput = {
-      homeViewSource: homeViewSource.replace(
-        "Open controlled beta",
-        "Open controlled beta (risk score, you qualify)",
-      ),
+      homeViewSource: `${homeViewSource}\n<p>Community helper risk score: you qualify.</p>`,
       demoTourViewSource,
     };
     const report = assessCommunityHelperPublicBetaReadiness(unsafeInput);

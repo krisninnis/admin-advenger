@@ -212,20 +212,20 @@ describe("Community Helper Controlled Intake v1", () => {
     expect(examplesSource).not.toContain("onClearResult");
   });
 
-  it("is only reachable through the existing gated Community Helper Demo/tour route, not from HomeView", () => {
-    // HomeView still only ever navigates to the Demo/tour page - it never
-    // gains its own copy of the manual intake UI, state, or handler.
+  it("is preserved in DemoTourView but no longer reachable from HomeView", () => {
+    // HomeView has no manual intake UI, state, handler, or navigation prop for
+    // Community Helper. The preserved implementation lives in DemoTourView for
+    // controlled testing only.
     expect(homeViewSource).not.toContain("Prepare community support notes");
     expect(homeViewSource).not.toContain("controlledIntakeText");
     expect(homeViewSource).not.toContain("handleRunControlledIntake");
     expect(homeViewSource).not.toContain("buildCommunityHelperPack");
     expect(homeViewSource).not.toContain("CommunityHelperPack");
     expect(homeViewSource).not.toContain("communityHelperPack");
-    expect(homeViewSource).toContain("onOpenCommunityHelperDemo");
+    expect(homeViewSource).not.toContain("onOpenCommunityHelperDemo");
 
-    // The controlled intake panel lives after the existing "Try a community
-    // support demo" scenario grid - both are reached only via Demo/tour,
-    // never HomeView.
+    // The controlled intake panel still lives after the existing "Try a community
+    // support demo" scenario grid inside DemoTourView.
     const communitySectionIndex = demoTourViewSource.indexOf("Try a community support demo");
     const scenarioGridIndex = demoTourViewSource.indexOf("communityHelperDemoScenarios.map");
     const controlledIntakeIndex = demoTourViewSource.indexOf("Prepare notes from text I choose to paste");
@@ -299,7 +299,7 @@ describe("Community Helper Controlled Intake v1", () => {
   it("keeps public beta surfaces free of unsafe claims and automatic-action wording", () => {
     const report = assessCommunityHelperPublicBetaReadiness({ homeViewSource, demoTourViewSource });
     const surfaces = [
-      ["Home gated card", getHomeCommunityHelperCardSource()],
+      ["Home public surface", homeViewSource],
       ["Controlled intake panel", getControlledIntakePanelSource()],
       ["Controlled result banner", getControlledIntakeResultBannerSource()],
       [
@@ -314,6 +314,8 @@ describe("Community Helper Controlled Intake v1", () => {
       expect(source, label).not.toHaveLength(0);
       expectNoForbiddenControlledIntakeWording(source);
     }
+
+    expect(getHomeCommunityHelperCardSource()).toHaveLength(0);
   });
 
   it("shows the feedback panel only after a controlled Community Helper result", () => {

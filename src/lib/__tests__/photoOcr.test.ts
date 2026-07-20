@@ -229,21 +229,19 @@ describe("isOcrResultUnreliable", () => {
   });
 
   it("provides the exact low-confidence OCR review copy", () => {
-    expect(OCR_UNRELIABLE_MESSAGE).toBe("We could not read this photo reliably.");
-    expect(OCR_UNRELIABLE_RETAKE_MESSAGE).toBe(
-      "Retake the photo closer, upload a clearer image, or paste the text manually.",
-    );
-    expect(OCR_UNRELIABLE_EDIT_MESSAGE).toBe(
-      "You can still edit the extracted text yourself before checking it.",
-    );
+    expect(OCR_UNRELIABLE_MESSAGE).toBe("We couldn't read this clearly enough");
+    expect(OCR_UNRELIABLE_RETAKE_MESSAGE).toBe("Retake photo");
+    expect(OCR_UNRELIABLE_EDIT_MESSAGE).toBe("Review or edit the text we could read");
     expect(OCR_CHECK_TEXT_UNRELIABLE_WARNING).toBe(
-      "Only continue if you have checked or corrected the text.",
+      "Check this against the original document before continuing.",
     );
     expect(OCR_UNRELIABLE_REVIEW_MESSAGE).toBe(
-      "We could read some text, but not reliably enough to extract key details. Retake the photo, add a close-up, or paste or edit the text manually.",
+      "We found some text, but parts may be wrong or missing. We've hidden important details rather than guessing; a clearer photo will usually work better.",
     );
-    expect(OCR_EXTRACTED_TEXT_DISCLOSURE_LABEL).toBe("Paste or edit the extracted text");
-    expect(OCR_EXTRACTED_TEXT_DISCLOSURE_HELP).toContain("background text");
+    expect(OCR_EXTRACTED_TEXT_DISCLOSURE_LABEL).toBe("Review or edit the text we could read");
+    expect(OCR_EXTRACTED_TEXT_DISCLOSURE_HELP).toBe(
+      "This text may include mistakes or background text. Only use it if you can check it against the document.",
+    );
   });
 });
 
@@ -260,10 +258,10 @@ describe("isOcrKeyDetailsReliable", () => {
 
   it("provides the exact moderate-confidence key-details copy", () => {
     expect(OCR_KEY_DETAILS_NOT_RELIABLE_MESSAGE).toBe(
-      "We could read some text, but not reliably enough to extract key details.",
+      "Key details are hidden because the photo was not clear enough.",
     );
     expect(OCR_KEY_DETAILS_REVIEW_OPTIONS_MESSAGE).toBe(
-      "Retake the photo closer, upload a clearer image, paste the text manually, or edit the text below.",
+      "Retake the photo, add a close-up, or review and correct the text before checking.",
     );
   });
 });
@@ -645,7 +643,7 @@ describe("shouldSuggestCloseUpPhoto", () => {
 
   it("states the exact suggestion copy in plain language", () => {
     expect(OCR_ADD_CLOSE_UP_SUGGESTION).toBe(
-      "Retake the photo or add a close-up of the hard-to-read section.",
+      "If some text is missing or blurry, add a close-up of that section.",
     );
   });
 });

@@ -7,7 +7,9 @@ import {
   CAMERA_UNAVAILABLE_MESSAGE,
   PHOTO_CANCEL_LABEL,
   PHOTO_DETECTING_MESSAGE,
+  PHOTO_EDIT_MANUALLY_LABEL,
   PHOTO_LOADING_MESSAGE,
+  PHOTO_CAPTURE_LOW_QUALITY_GUIDANCE,
   PHOTO_NO_DOCUMENT_MESSAGE,
   PHOTO_RETAKE_PHOTO_LABEL,
   PHOTO_REVIEW_ACTIONS_CLASSNAME,
@@ -18,7 +20,9 @@ import {
   PHOTO_TAKE_NEW_PHOTO_LABEL,
   PHOTO_TAKE_PHOTO_LABEL,
   PHOTO_TRY_AGAIN_LABEL,
-  PHOTO_UPLOAD_ANOTHER_LABEL,
+  PHOTO_UPLOAD_CLEARER_LABEL,
+  PHOTO_USE_ORIGINAL_LABEL,
+  PHOTO_USE_ORIGINAL_WARNING,
   PHOTO_USE_SCAN_LABEL,
   capturePhotoFromVideoElement,
   getCameraGuidanceFitMessage,
@@ -39,6 +43,7 @@ type PhotoCapturePanelProps = {
   onClose: () => void;
   onCancel?: () => void;
   onTryAgain?: () => void;
+  onEditManually?: () => void;
   defaultSection?: PhotoCaptureSection;
   // When an image is chosen elsewhere (e.g. the compact upload menu), it is
   // handed here so every image goes through the same scan/review gate before
@@ -88,6 +93,7 @@ export function PhotoCapturePanel({
   onClose,
   onCancel,
   onTryAgain,
+  onEditManually,
   defaultSection,
   initialPhotoFile,
 }: PhotoCapturePanelProps) {
@@ -367,6 +373,24 @@ export function PhotoCapturePanel({
     sendPhotoToOcr(scannedFile, scanWarnings, true);
   };
 
+  const handleUseOriginalPhoto = () => {
+    const sourceFile = sourceFileRef.current;
+
+    if (!sourceFile) {
+      return;
+    }
+
+    sendPhotoToOcr(sourceFile, [PHOTO_USE_ORIGINAL_WARNING], false);
+  };
+
+  const handleEditManually = () => {
+    onEditManually?.();
+    scanRequestIdRef.current += 1;
+    stopActiveStream();
+    resetPhotoReviewState();
+    dispatch({ type: "cancel" });
+  };
+
   const isCameraWorkStage =
     stage === "camera_preview" ||
     stage === "scan_ready";
@@ -519,6 +543,12 @@ export function PhotoCapturePanel({
           <div className="mt-5 grid gap-3">
             <div role="alert" aria-live="assertive" aria-atomic="true" className="rounded-lg border border-amber-300/25 bg-amber-300/10 px-4 py-4 text-sm leading-6 text-amber-50">
               <p className="font-black">{PHOTO_NO_DOCUMENT_MESSAGE}</p>
+              <p className="mt-2 text-sm leading-6 text-amber-100/90">
+                {PHOTO_CAPTURE_LOW_QUALITY_GUIDANCE}
+              </p>
+              <p className="mt-2 text-sm leading-6 text-amber-100/90">
+                {PHOTO_USE_ORIGINAL_WARNING}
+              </p>
             </div>
             <div className="grid gap-2 sm:grid-cols-2">
               <button
@@ -531,8 +561,22 @@ export function PhotoCapturePanel({
               <UploadExistingPhotoInput
                 onSelect={handleUploadExisting}
                 disabled={isBusy}
-                label={PHOTO_UPLOAD_ANOTHER_LABEL}
+                label={PHOTO_UPLOAD_CLEARER_LABEL}
               />
+              <button
+                type="button"
+                onClick={handleUseOriginalPhoto}
+                className="min-h-12 rounded-lg border border-amber-200/40 bg-slate-950/60 px-4 py-3 text-sm font-bold text-amber-50 transition hover:border-amber-100 hover:text-white"
+              >
+                {PHOTO_USE_ORIGINAL_LABEL}
+              </button>
+              <button
+                type="button"
+                onClick={handleEditManually}
+                className="min-h-12 rounded-lg border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-slate-200 transition hover:border-white/20 hover:text-white"
+              >
+                {PHOTO_EDIT_MANUALLY_LABEL}
+              </button>
             </div>
           </div>
         ) : null}

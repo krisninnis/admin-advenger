@@ -136,6 +136,11 @@ export const OCR_UNRELIABLE_RETAKE_MESSAGE =
   "Retake the photo closer, upload a clearer image, or paste the text manually.";
 export const OCR_UNRELIABLE_EDIT_MESSAGE =
   "You can still edit the extracted text yourself before checking it.";
+export const OCR_UNRELIABLE_REVIEW_MESSAGE =
+  "We could read some text, but not reliably enough to extract key details. Retake the photo, add a close-up, or paste or edit the text manually.";
+export const OCR_EXTRACTED_TEXT_DISCLOSURE_LABEL = "Paste or edit the extracted text";
+export const OCR_EXTRACTED_TEXT_DISCLOSURE_HELP =
+  "The extracted text may include background text or OCR mistakes. Open it only if you want to review or correct it yourself.";
 export const OCR_CHECK_TEXT_UNRELIABLE_WARNING =
   "Only continue if you have checked or corrected the text.";
 export const OCR_KEY_DETAILS_NOT_RELIABLE_MESSAGE =

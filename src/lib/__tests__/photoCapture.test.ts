@@ -17,7 +17,9 @@ import {
   PHOTO_ADD_CLOSE_UP_DESCRIPTION,
   PHOTO_ADD_CLOSE_UP_LABEL,
   PHOTO_CANCEL_LABEL,
+  PHOTO_CAPTURE_LOW_QUALITY_GUIDANCE,
   PHOTO_DETECTING_MESSAGE,
+  PHOTO_EDIT_MANUALLY_LABEL,
   PHOTO_LOADING_MESSAGE,
   PHOTO_NO_DOCUMENT_MESSAGE,
   PHOTO_RETAKE_PHOTO_LABEL,
@@ -34,6 +36,9 @@ import {
   PHOTO_TAKE_PHOTO_LABEL,
   PHOTO_TRY_AGAIN_LABEL,
   PHOTO_UPLOAD_ANOTHER_LABEL,
+  PHOTO_UPLOAD_CLEARER_LABEL,
+  PHOTO_USE_ORIGINAL_LABEL,
+  PHOTO_USE_ORIGINAL_WARNING,
   PHOTO_USE_SCAN_LABEL,
   capturePhotoFromVideoElement,
   classifyCameraError,
@@ -216,10 +221,16 @@ describe("simplified photo scan review workflow", () => {
   it("uses the required plain-language failure screen and choices", () => {
     expect(PHOTO_NO_DOCUMENT_MESSAGE).toBe("We couldn\u2019t find a clear document in this photo.");
     expect(PHOTO_RETAKE_PHOTO_LABEL).toBe("Retake photo");
-    expect(PHOTO_UPLOAD_ANOTHER_LABEL).toBe("Upload another photo");
+    expect(PHOTO_UPLOAD_CLEARER_LABEL).toBe("Upload clearer image");
+    expect(PHOTO_USE_ORIGINAL_LABEL).toBe("Use original photo anyway");
+    expect(PHOTO_EDIT_MANUALLY_LABEL).toBe("Edit or paste manually");
+    expect(PHOTO_USE_ORIGINAL_WARNING).toContain("background text");
+    expect(PHOTO_CAPTURE_LOW_QUALITY_GUIDANCE).toContain("other printed material");
     expect(photoCapturePanelSource).toContain("PHOTO_NO_DOCUMENT_MESSAGE");
     expect(photoCapturePanelSource).toContain("PHOTO_RETAKE_PHOTO_LABEL");
-    expect(photoCapturePanelSource).toContain("PHOTO_UPLOAD_ANOTHER_LABEL");
+    expect(photoCapturePanelSource).toContain("PHOTO_UPLOAD_CLEARER_LABEL");
+    expect(photoCapturePanelSource).toContain("PHOTO_USE_ORIGINAL_LABEL");
+    expect(photoCapturePanelSource).toContain("PHOTO_EDIT_MANUALLY_LABEL");
   });
 
   it("preserves loading and document-detection feedback before review", () => {
@@ -234,14 +245,34 @@ describe("simplified photo scan review workflow", () => {
     const readScanBlock = sliceBetween(
       photoCapturePanelSource,
       "const handleReadScan = () =>",
-      "const isCameraWorkStage",
+      "const handleUseOriginalPhoto",
     );
 
     expect(readScanBlock).toContain("scannedFileRef.current");
     expect(readScanBlock).toContain("sendPhotoToOcr(scannedFile, scanWarnings, true)");
     expect(readScanBlock).not.toContain("sourceFileRef.current");
     expect(photoCapturePanelSource).not.toContain("readTextFromImage");
-    expect(photoCapturePanelSource).not.toContain("sendPhotoToOcr(sourceFile");
+  });
+
+  it("the original photo fallback is explicit and warned, never part of automatic detection failure", () => {
+    const originalFallbackBlock = sliceBetween(
+      photoCapturePanelSource,
+      "const handleUseOriginalPhoto = () =>",
+      "const handleEditManually",
+    );
+
+    expect(originalFallbackBlock).toContain("sourceFileRef.current");
+    expect(originalFallbackBlock).toContain("PHOTO_USE_ORIGINAL_WARNING");
+    expect(originalFallbackBlock).toContain("sendPhotoToOcr(sourceFile, [PHOTO_USE_ORIGINAL_WARNING], false)");
+
+    const failureScreenBlock = sliceBetween(
+      photoCapturePanelSource,
+      'stage === "no_document"',
+      'stage === "permission_denied"',
+    );
+
+    expect(failureScreenBlock).toContain("PHOTO_USE_ORIGINAL_LABEL");
+    expect(failureScreenBlock).toContain("PHOTO_USE_ORIGINAL_WARNING");
   });
 
   it("the No action returns to choosing another photo and does not start OCR", () => {

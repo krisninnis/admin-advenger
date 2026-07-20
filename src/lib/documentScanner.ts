@@ -69,6 +69,12 @@ const MIN_DOCUMENT_AREA_RATIO = 0.12;
 const MIN_DOCUMENT_PIXEL_RATIO = 0.025;
 const MIN_MEANINGFUL_EDGE_DENSITY = 0.002;
 const MIN_MEANINGFUL_STD_DEV = 6;
+const MIN_DOCUMENT_FILL_RATIO = 0.42;
+const MIN_SAFE_DOCUMENT_AREA_WITH_TEXTURED_BACKGROUND = 0.32;
+const TEXTURED_BACKGROUND_EDGE_DENSITY = 0.012;
+const TEXTURED_BACKGROUND_BRIGHT_RATIO = 0.08;
+const UNCLEAR_FULL_FRAME_AREA_RATIO = 0.92;
+const UNCLEAR_FULL_FRAME_EDGE_DENSITY = 0.012;
 
 const clamp = (value: number, min: number, max: number): number =>
   Math.min(Math.max(value, min), max);
@@ -97,6 +103,120 @@ const getQuadArea = (quad: DocumentScannerQuad): number => {
   }
 
   return Math.abs(area) / 2;
+};
+
+const pointInQuad = (point: DocumentScannerPoint, quad: DocumentScannerQuad): boolean => {
+  const polygon = getQuadPoints(quad);
+  let inside = false;
+
+  for (
+    let index = 0, previous = polygon.length - 1;
+    index < polygon.length;
+    previous = index, index += 1
+  ) {
+    const currentPoint = polygon[index];
+    const previousPoint = polygon[previous];
+    const intersects =
+      currentPoint.y > point.y !== previousPoint.y > point.y &&
+      point.x <
+        ((previousPoint.x - currentPoint.x) * (point.y - currentPoint.y)) /
+          (previousPoint.y - currentPoint.y) +
+          currentPoint.x;
+
+    if (intersects) {
+      inside = !inside;
+    }
+  }
+
+  return inside;
+};
+
+const measureDocumentScene = (
+  pixels: Uint8ClampedArray,
+  width: number,
+  height: number,
+  quad: DocumentScannerQuad,
+  threshold: number,
+): {
+  documentFillRatio: number;
+  outsideBrightRatio: number;
+  outsideEdgeDensity: number;
+  touchesFrame: boolean;
+} => {
+  let insidePixelCount = 0;
+  let insideBrightCount = 0;
+  let outsidePixelCount = 0;
+  let outsideBrightCount = 0;
+  let outsideEdgeCount = 0;
+  let outsideEdgeComparisons = 0;
+
+  for (let row = 0; row < height; row += 1) {
+    for (let col = 0; col < width; col += 1) {
+      const offset = (row * width + col) * 4;
+      const luminance = getLuminance(pixels[offset], pixels[offset + 1], pixels[offset + 2]);
+      const inside = pointInQuad({ x: col, y: row }, quad);
+
+      if (inside) {
+        insidePixelCount += 1;
+        if (luminance >= threshold) {
+          insideBrightCount += 1;
+        }
+      } else {
+        outsidePixelCount += 1;
+        if (luminance >= threshold) {
+          outsideBrightCount += 1;
+        }
+      }
+
+      if (col + 1 < width) {
+        const rightOffset = offset + 4;
+        const right = getLuminance(
+          pixels[rightOffset],
+          pixels[rightOffset + 1],
+          pixels[rightOffset + 2],
+        );
+
+        if (!pointInQuad({ x: col + 0.5, y: row }, quad)) {
+          outsideEdgeComparisons += 1;
+          if (Math.abs(luminance - right) > 32) {
+            outsideEdgeCount += 1;
+          }
+        }
+      }
+
+      if (row + 1 < height) {
+        const belowOffset = offset + width * 4;
+        const below = getLuminance(
+          pixels[belowOffset],
+          pixels[belowOffset + 1],
+          pixels[belowOffset + 2],
+        );
+
+        if (!pointInQuad({ x: col, y: row + 0.5 }, quad)) {
+          outsideEdgeComparisons += 1;
+          if (Math.abs(luminance - below) > 32) {
+            outsideEdgeCount += 1;
+          }
+        }
+      }
+    }
+  }
+
+  const points = getQuadPoints(quad);
+  const touchesFrame = points.some(
+    (point) =>
+      point.x <= 1 ||
+      point.y <= 1 ||
+      point.x >= width - 2 ||
+      point.y >= height - 2,
+  );
+
+  return {
+    documentFillRatio: insideBrightCount / Math.max(1, insidePixelCount),
+    outsideBrightRatio: outsideBrightCount / Math.max(1, outsidePixelCount),
+    outsideEdgeDensity: outsideEdgeCount / Math.max(1, outsideEdgeComparisons),
+    touchesFrame,
+  };
 };
 
 export const orderCornerPoints = (
@@ -320,6 +440,28 @@ export const detectDocumentFromPixels = (
   }
 
   if (areaRatio > 0.98 && documentPixelRatio > 0.94 && edgeDensity < 0.008) {
+    return buildRejection("no_document_detected");
+  }
+
+  const scene = measureDocumentScene(pixels, width, height, quad, threshold);
+
+  if (scene.documentFillRatio < MIN_DOCUMENT_FILL_RATIO) {
+    return buildRejection("document_shape_unclear");
+  }
+
+  if (
+    areaRatio < MIN_SAFE_DOCUMENT_AREA_WITH_TEXTURED_BACKGROUND &&
+    scene.outsideBrightRatio > TEXTURED_BACKGROUND_BRIGHT_RATIO &&
+    scene.outsideEdgeDensity > TEXTURED_BACKGROUND_EDGE_DENSITY
+  ) {
+    return buildRejection("too_much_background");
+  }
+
+  if (
+    areaRatio > UNCLEAR_FULL_FRAME_AREA_RATIO &&
+    scene.touchesFrame &&
+    edgeDensity > UNCLEAR_FULL_FRAME_EDGE_DENSITY
+  ) {
     return buildRejection("no_document_detected");
   }
 

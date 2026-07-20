@@ -20,10 +20,17 @@ import {
   CAMERA_GUIDANCE_FIT_MESSAGE,
   PHOTO_CANCEL_LABEL,
   PHOTO_DETECTING_MESSAGE,
+  PHOTO_EDIT_MANUALLY_LABEL,
+  PHOTO_CAPTURE_LOW_QUALITY_GUIDANCE,
+  PHOTO_NO_DOCUMENT_MESSAGE,
+  PHOTO_RETAKE_PHOTO_LABEL,
   PHOTO_SCAN_REVIEW_QUESTION,
   PHOTO_TAKE_NEW_PHOTO_LABEL,
   PHOTO_TAKE_PHOTO_LABEL,
   PHOTO_TRY_AGAIN_LABEL,
+  PHOTO_UPLOAD_CLEARER_LABEL,
+  PHOTO_USE_ORIGINAL_LABEL,
+  PHOTO_USE_ORIGINAL_WARNING,
   PHOTO_UPLOAD_ANOTHER_LABEL,
   PHOTO_USE_SCAN_LABEL,
 } from "../../lib/photoCapture";
@@ -110,6 +117,26 @@ const createPendingScanFixture = () => {
   );
 
   return { resolveScan, sourceFile };
+};
+
+const createRejectedScanFixture = () => {
+  const sourceFile = new File(["original cluttered photo"], "synthetic-letter-scene.jpg", {
+    type: "image/jpeg",
+  });
+
+  scanDocumentFileMock.mockResolvedValue({
+    status: "rejected",
+    sourceFile,
+    sourceDimensions: {
+      width: 1600,
+      height: 2200,
+    },
+    code: "too_much_background",
+    message: PHOTO_NO_DOCUMENT_MESSAGE,
+    warnings: [],
+  });
+
+  return { sourceFile };
 };
 
 const createCameraFixture = () => {
@@ -233,6 +260,55 @@ describe("PhotoCapturePanel rendered scan confirmation", () => {
     });
 
     expect(await screen.findByText("We couldn\u2019t find a clear document in this photo.")).toBeTruthy();
+  });
+
+  it("does not OCR the original photo when document detection fails", async () => {
+    const { sourceFile } = createRejectedScanFixture();
+    const onUsePhotos = vi.fn();
+
+    render(
+      <PhotoCapturePanel
+        initialPhotoFile={sourceFile}
+        onUsePhotos={onUsePhotos}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText(PHOTO_NO_DOCUMENT_MESSAGE)).toBeTruthy();
+    expect(screen.getByText(PHOTO_CAPTURE_LOW_QUALITY_GUIDANCE)).toBeTruthy();
+    expect(screen.getByText(PHOTO_USE_ORIGINAL_WARNING)).toBeTruthy();
+    expect(screen.getByRole("button", { name: PHOTO_RETAKE_PHOTO_LABEL })).toBeTruthy();
+    expect(screen.getByText(PHOTO_UPLOAD_CLEARER_LABEL)).toBeTruthy();
+    expect(screen.getByRole("button", { name: PHOTO_USE_ORIGINAL_LABEL })).toBeTruthy();
+    expect(screen.getByRole("button", { name: PHOTO_EDIT_MANUALLY_LABEL })).toBeTruthy();
+    expect(onUsePhotos).not.toHaveBeenCalled();
+  });
+
+  it("only sends the original photo to OCR after explicit warned approval", async () => {
+    const { sourceFile } = createRejectedScanFixture();
+    const onUsePhotos = vi.fn();
+
+    render(
+      <PhotoCapturePanel
+        initialPhotoFile={sourceFile}
+        onUsePhotos={onUsePhotos}
+        onClose={vi.fn()}
+      />,
+    );
+
+    await screen.findByText(PHOTO_NO_DOCUMENT_MESSAGE);
+    await userEvent.click(screen.getByRole("button", { name: PHOTO_USE_ORIGINAL_LABEL }));
+
+    expect(onUsePhotos).toHaveBeenCalledTimes(1);
+    expect(onUsePhotos).toHaveBeenCalledWith([
+      expect.objectContaining({
+        file: sourceFile,
+        section: "full_page",
+        warnings: [PHOTO_USE_ORIGINAL_WARNING],
+        isDocumentScan: false,
+        sourceFileName: "synthetic-letter-scene.jpg",
+      }),
+    ]);
   });
 
   it("keeps the prepared-scan review free of guide overlays", async () => {

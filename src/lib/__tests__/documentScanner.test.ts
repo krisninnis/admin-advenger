@@ -63,6 +63,13 @@ const expectCleanRejection = (result: ReturnType<typeof detectDocumentFromPixels
   expect(result).not.toHaveProperty("suggestedCropRect");
 };
 
+const isSyntheticTextStroke = (row: number, col: number): boolean => {
+  const lineRow = row % 18;
+  const lineCol = col % 52;
+
+  return lineRow >= 4 && lineRow <= 6 && lineCol >= 6 && lineCol <= 42;
+};
+
 describe("document scanner detection", () => {
   it("detects a clear portrait document on a contrasting background", () => {
     const image = buildImage(120, 180, (row, col) =>
@@ -163,6 +170,45 @@ describe("document scanner detection", () => {
       expect.objectContaining({
         status: "rejected",
         code: "too_much_background",
+      }),
+    );
+    expectCleanRejection(result);
+  });
+
+  it("rejects a small synthetic letter on a printed background instead of sending background text to OCR", () => {
+    const image = buildImage(220, 300, (row, col) => {
+      const insideLetter = row >= 96 && row <= 210 && col >= 78 && col <= 142;
+
+      if (insideLetter) {
+        const fakeLetterLine = row % 17 >= 7 && row % 17 <= 8 && col >= 88 && col <= 132;
+        return fakeLetterLine ? [70, 70, 70] : [248, 248, 245];
+      }
+
+      return isSyntheticTextStroke(row, col) ? [38, 40, 42] : [238, 236, 228];
+    });
+
+    const result = detectDocumentFromPixels(image, 220, 300);
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        status: "rejected",
+      }),
+    );
+    expectCleanRejection(result);
+  });
+
+  it("does not count a cluttered synthetic newspaper background as a document", () => {
+    const image = buildImage(180, 240, (row, col) =>
+      isSyntheticTextStroke(row, col) || (row % 38 === 12 && col > 20 && col < 160)
+        ? [35, 36, 38]
+        : [239, 237, 230],
+    );
+
+    const result = detectDocumentFromPixels(image, 180, 240);
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        status: "rejected",
       }),
     );
     expectCleanRejection(result);

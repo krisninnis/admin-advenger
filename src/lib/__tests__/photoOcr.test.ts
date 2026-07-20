@@ -12,6 +12,8 @@ import {
   OCR_FAILED_MESSAGE,
   OCR_ADD_CLOSE_UP_SUGGESTION,
   OCR_COMBINED_PHOTOS_ON_DEVICE_MESSAGE,
+  OCR_EXTRACTED_TEXT_DISCLOSURE_HELP,
+  OCR_EXTRACTED_TEXT_DISCLOSURE_LABEL,
   OCR_EXTRA_PHOTO_LABEL,
   OCR_MAIN_PHOTO_LABEL,
   OCR_GARBLED_TEXT_WARNING,
@@ -33,6 +35,7 @@ import {
   OCR_UNRELIABLE_EDIT_MESSAGE,
   OCR_UNRELIABLE_MESSAGE,
   OCR_UNRELIABLE_RETAKE_MESSAGE,
+  OCR_UNRELIABLE_REVIEW_MESSAGE,
   OcrReadError,
   appendExtraPhotoText,
   applyGrayscaleContrast,
@@ -236,6 +239,11 @@ describe("isOcrResultUnreliable", () => {
     expect(OCR_CHECK_TEXT_UNRELIABLE_WARNING).toBe(
       "Only continue if you have checked or corrected the text.",
     );
+    expect(OCR_UNRELIABLE_REVIEW_MESSAGE).toBe(
+      "We could read some text, but not reliably enough to extract key details. Retake the photo, add a close-up, or paste or edit the text manually.",
+    );
+    expect(OCR_EXTRACTED_TEXT_DISCLOSURE_LABEL).toBe("Paste or edit the extracted text");
+    expect(OCR_EXTRACTED_TEXT_DISCLOSURE_HELP).toContain("background text");
   });
 });
 
@@ -660,6 +668,9 @@ describe("OCR copy never implies cloud upload, sending, storage, or a guaranteed
     OCR_UNRELIABLE_MESSAGE,
     OCR_UNRELIABLE_RETAKE_MESSAGE,
     OCR_UNRELIABLE_EDIT_MESSAGE,
+    OCR_UNRELIABLE_REVIEW_MESSAGE,
+    OCR_EXTRACTED_TEXT_DISCLOSURE_LABEL,
+    OCR_EXTRACTED_TEXT_DISCLOSURE_HELP,
     OCR_CHECK_TEXT_UNRELIABLE_WARNING,
     OCR_KEY_DETAILS_NOT_RELIABLE_MESSAGE,
     OCR_KEY_DETAILS_REVIEW_OPTIONS_MESSAGE,

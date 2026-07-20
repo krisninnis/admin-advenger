@@ -43,6 +43,13 @@ export const PHOTO_NO_DOCUMENT_MESSAGE =
 export const PHOTO_USE_SCAN_LABEL = "Yes, use this";
 export const PHOTO_TRY_AGAIN_LABEL = "No, try again";
 export const PHOTO_UPLOAD_ANOTHER_LABEL = "Upload another photo";
+export const PHOTO_UPLOAD_CLEARER_LABEL = "Upload clearer image";
+export const PHOTO_USE_ORIGINAL_LABEL = "Use original photo anyway";
+export const PHOTO_EDIT_MANUALLY_LABEL = "Edit or paste manually";
+export const PHOTO_USE_ORIGINAL_WARNING =
+  "This may include background text or miss parts of the document. Only continue if you want AdminAvenger to try OCR on the original photo.";
+export const PHOTO_CAPTURE_LOW_QUALITY_GUIDANCE =
+  "For a better result: fill more of the screen with the document, hold the phone directly above it, use bright even light, and keep other printed material out of the background.";
 
 // One-photo default flow. No scan-mode choice, no numbered capture sequence -
 // the user takes a single photo and can optionally add a close-up afterwards.

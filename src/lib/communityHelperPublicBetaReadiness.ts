@@ -101,18 +101,8 @@ const findLocalForbiddenPhrases = (text: string): string[] => {
 };
 
 const extractSection = (source: string, startMarker: string, endMarker: string): string => {
-  // Use the LAST occurrence of startMarker, not the first. HomeView.tsx
-  // legitimately mentions "Community Helper Home Gated v1" twice: once in
-  // a prop-type doc comment near the top of the file (documenting the
-  // onOpenCommunityHelperDemo prop), and once in the JSX comment that
-  // immediately precedes the actual rendered <section> card near the
-  // bottom of the file. Taking the first occurrence would anchor `start`
-  // at the doc comment and then grab whatever unrelated <section> happens
-  // to close next in the file - silently scanning the wrong content and
-  // missing the real card entirely. The JSX comment directly above the
-  // rendered section is always the occurrence closest to (i.e. last
-  // before) that section's own markup, so lastIndexOf reliably finds the
-  // real card even if an earlier doc comment repeats the same marker text.
+  // Use the last occurrence so a marker repeated in an explanatory comment
+  // does not make the scan grab an unrelated earlier section.
   const start = source.lastIndexOf(startMarker);
 
   if (start === -1) {
@@ -148,21 +138,22 @@ export const assessCommunityHelperPublicBetaReadiness = (
   const { homeViewSource, demoTourViewSource } = input;
   const checks: CommunityHelperPublicBetaReadinessCheck[] = [];
 
-  // 1. Remains secondary/gated from Home.
-  const homeHasGatedEntry =
-    homeViewSource.includes("Controlled public beta") &&
-    homeViewSource.includes("Community support prep") &&
-    homeViewSource.includes("Open controlled beta");
+  // 1. Remains hidden from public Home.
+  const homeHasNoPublicEntry =
+    !homeViewSource.includes("Controlled public beta") &&
+    !homeViewSource.includes("Community support prep") &&
+    !homeViewSource.includes("Open controlled beta") &&
+    !homeViewSource.includes("onOpenCommunityHelperDemo");
 
   checks.push({
     id: "home_gated_secondary",
-    label: "Community Helper remains secondary/gated from Home",
+    label: "Community Helper is hidden from public Home",
     description:
-      "HomeView shows a small, clearly labelled beta/demo entry rather than making Community Helper the default intake.",
-    status: homeHasGatedEntry ? "pass" : "fail",
-    detail: homeHasGatedEntry
-      ? "Gated 'Community support prep' controlled public beta card found on HomeView."
-      : "Gated Community Helper card not found on HomeView.",
+      "HomeView does not promote or link the Community Helper beta from the public Check a message journey.",
+    status: homeHasNoPublicEntry ? "pass" : "fail",
+    detail: homeHasNoPublicEntry
+      ? "No Community Helper public Home entry found."
+      : "Community Helper Home entry or navigation prop found - remove before public release.",
   });
 
   // 2. Not wired into the normal classifier / HomeView never references the pack.
@@ -333,8 +324,8 @@ export const assessCommunityHelperPublicBetaReadiness = (
   // 10. No forbidden phrases in public-beta-facing artifacts.
   const artifactsToScan = [
     {
-      label: "HomeView gated card",
-      text: extractSection(homeViewSource, "Community Helper Home Gated v1", "</section>"),
+      label: "HomeView public surface",
+      text: homeViewSource,
     },
     {
       label: "DemoTourView community section",
@@ -368,7 +359,7 @@ export const assessCommunityHelperPublicBetaReadiness = (
     id: "no_forbidden_phrases",
     label: "No forbidden phrases appear in Community Helper public-beta-facing artifacts",
     description:
-      "Scans the HomeView gated card, DemoTourView community section, controlled intake panel, controlled result banner, all 4 demo scenario outputs, readiness wording, and shared adviser-export boundary constants against the expanded public-beta forbidden-phrase list.",
+      "Scans the HomeView public surface, DemoTourView community section, controlled intake panel, controlled result banner, all 4 demo scenario outputs, readiness wording, and shared adviser-export boundary constants against the expanded public-beta forbidden-phrase list.",
     status: forbiddenMatches.length === 0 ? "pass" : "fail",
     detail:
       forbiddenMatches.length === 0

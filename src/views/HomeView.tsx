@@ -25,17 +25,12 @@ import {
   buildAdviserExportPack,
   getAdviserExportFilename,
   renderAdviserExportMarkdown,
-  type AdviserExportPack,
 } from "../lib/adviserExportPack";
 import { downloadAdviserExportMarkdown } from "../lib/adviserExportDownload";
 import { buildBenefitsActionPack } from "../lib/benefitsActionPack";
 import { deriveOpportunityCard, describeConfidence } from "../lib/opportunityCards";
-import { buildResultViewModel, type ResultViewModel } from "../lib/resultViewModel";
+import { buildResultViewModel } from "../lib/resultViewModel";
 import { buildStrategicNextStepPlan } from "../lib/strategicNextStep";
-import {
-  buildWorkplaceSupportPack,
-  type WorkplaceSupportPack,
-} from "../lib/workplaceSupportPack";
 import {
   createPhotoIntakeMetadata,
   getImageDimensions,
@@ -132,12 +127,6 @@ export type HomeAnalysisResult = {
   cases: AdminCase[];
 };
 
-type WorkplaceBetaResult = {
-  workplaceSupportPack: WorkplaceSupportPack;
-  resultViewModel: ResultViewModel;
-  adviserExportPack: AdviserExportPack;
-};
-
 type HomeViewProps = {
   result?: HomeAnalysisResult;
   analysisStatus: ServiceStatus;
@@ -151,13 +140,6 @@ type HomeViewProps = {
   onIgnoreInboxScanItem: (sampleId: string) => void;
   onSaveScannedItem: (item: AdminItem, findings: AdminFinding[], cases: AdminCase[]) => void;
   onSaveEmailSafetyCase: (item: AdminItem, assessment: EmailSafetyAssessment) => void;
-  // Community Helper Home Gated v1 - opens the existing, already-shipped
-  // Community Helper demo/support section on the Demo/tour page. This is a
-  // pure navigation hop: HomeView never builds a community helper pack
-  // itself, never routes pasted text into it, and never touches the
-  // decision-engine classifier or OCR/file intake. See
-  // docs/product/community-helper-home-gated-v1.md.
-  onOpenCommunityHelperDemo: () => void;
 };
 
 const categoryLabels: Record<AdminCase["category"], string> = {
@@ -497,7 +479,6 @@ export function HomeView({
   onIgnoreInboxScanItem,
   onSaveScannedItem,
   onSaveEmailSafetyCase,
-  onOpenCommunityHelperDemo,
 }: HomeViewProps) {
   const [rawText, setRawText] = useState("");
   const [inboxScanOpen, setInboxScanOpen] = useState(false);
@@ -526,8 +507,6 @@ export function HomeView({
   const [showDetailed, setShowDetailed] = useState(false);
   const [showEmailSafety, setShowEmailSafety] = useState(false);
   const [showGuidedNextStep, setShowGuidedNextStep] = useState(false);
-  const [workplaceBetaEnabled, setWorkplaceBetaEnabled] = useState(false);
-  const [workplaceBetaResult, setWorkplaceBetaResult] = useState<WorkplaceBetaResult | undefined>();
   const [showPhotoCapturePanel, setShowPhotoCapturePanel] = useState(false);
   // An image chosen from the "Upload a file" area (or the "+" upload menu) is
   // handed to PhotoCapturePanel so it uses the same automatic scan review as
@@ -630,17 +609,8 @@ export function HomeView({
           strategicNextStepPlan,
         })
       : undefined;
-  const workplaceSupportPack = workplaceBetaResult?.workplaceSupportPack;
-  const isWorkplaceBetaResultActive = Boolean(workplaceBetaResult);
-  const isSettlementWorkplaceResult =
-    workplaceSupportPack?.documentType === "settlement_agreement_signpost";
-  const hasWorkplaceResignationRisk = Boolean(
-    workplaceSupportPack?.riskWarnings.some((warning) =>
-      /resignation|constructive dismissal|resign|quitting|walking out/i.test(warning),
-    ),
-  );
-  const resultViewModel = workplaceBetaResult?.resultViewModel ?? normalResultViewModel;
-  const adviserExportPack = workplaceBetaResult?.adviserExportPack ?? normalAdviserExportPack;
+  const resultViewModel = normalResultViewModel;
+  const adviserExportPack = normalAdviserExportPack;
   const guidedMode =
     primaryCase && primaryOpportunity
       ? getGuidedCaseMode(primaryCase, primaryOpportunity)
@@ -847,7 +817,6 @@ export function HomeView({
     setAiExtraction(undefined);
     setShowDetailed(false);
     setShowEmailSafety(false);
-    setWorkplaceBetaResult(undefined);
     setInputResetKey((current) => current + 1);
     setAttachedFiles([]);
     setPendingAttachmentImageIds([]);
@@ -877,7 +846,6 @@ export function HomeView({
     setAiFallbackHint("");
     setAiExtraction(undefined);
     setShowEmailSafety(false);
-    setWorkplaceBetaResult(undefined);
     setAttachedFiles([]);
     setPendingAttachmentImageIds([]);
     setActiveAttachmentImageId(undefined);
@@ -956,7 +924,6 @@ export function HomeView({
     setAiExtraction(undefined);
     setShowDetailed(false);
     setShowEmailSafety(false);
-    setWorkplaceBetaResult(undefined);
     onClearResult();
 
     if (selectedInput === "image" && rawText.trim().length === 0) {
@@ -991,28 +958,6 @@ export function HomeView({
     }
 
     if (isChecking || isAiReading || isReadingPhoto || isReadingAttachments) {
-      return;
-    }
-
-    if (workplaceBetaEnabled) {
-      const workplacePack = buildWorkplaceSupportPack({ text: textToCheck });
-      const workplaceResultViewModel = buildResultViewModel({
-        workplaceSupportPack: workplacePack,
-      });
-      const workplaceAdviserExportPack = buildAdviserExportPack({
-        resultViewModel: workplaceResultViewModel,
-        workplaceSupportPack: workplacePack,
-      });
-
-      setInputMessage("");
-      setAiError("");
-      setAiFallbackHint("");
-      setAiStatus("idle");
-      setWorkplaceBetaResult({
-        workplaceSupportPack: workplacePack,
-        resultViewModel: workplaceResultViewModel,
-        adviserExportPack: workplaceAdviserExportPack,
-      });
       return;
     }
 
@@ -1630,7 +1575,7 @@ export function HomeView({
           AI remembers. AI explains. Humans decide.
         </p>
         <h2 className="text-2xl font-bold tracking-tight text-white sm:text-5xl">
-          Paste a bill, email, letter, CV, job advert, or message.
+          Paste a bill, email, letter, or message.
         </h2>
         <p className="max-w-xl text-base leading-7 text-slate-300 sm:text-lg sm:leading-8">
           AdminAvenger explains it in plain English, tells you what to have ready, and prepares the
@@ -1966,7 +1911,7 @@ export function HomeView({
                   }
                 }}
                 rows={9}
-                placeholder="Paste the email, bill, letter, CV, job advert, or message here..."
+                placeholder="Paste the email, bill, letter, or message here..."
                 className="mt-3 w-full resize-y rounded-lg border border-white/10 bg-slate-950 px-4 py-4 text-base leading-7 text-white outline-none transition placeholder:text-slate-600 focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20"
               />
               </div>
@@ -2283,32 +2228,6 @@ export function HomeView({
         </div>
 
         {selectedInput !== "image" ? (
-          <div className="mt-5 rounded-lg border border-indigo-300/20 bg-indigo-300/[0.07] p-4">
-            <label className="flex cursor-pointer items-start gap-3">
-              <input
-                type="checkbox"
-                checked={workplaceBetaEnabled}
-                onChange={(event) => {
-                  setWorkplaceBetaEnabled(event.target.checked);
-
-                  if (!event.target.checked) {
-                    setWorkplaceBetaResult(undefined);
-                  }
-                }}
-                className="mt-1 h-5 w-5 rounded border-white/20 bg-slate-950 text-emerald-300 focus:ring-2 focus:ring-emerald-300/40"
-              />
-              <span>
-                <span className="block text-sm font-bold text-white">Workplace support beta</span>
-                <span className="mt-1 block text-sm leading-6 text-indigo-50/85">
-                  Use this for workplace letters or messages when you want a preparation
-                  checklist. This is not legal or employment advice.
-                </span>
-              </span>
-            </label>
-          </div>
-        ) : null}
-
-        {selectedInput !== "image" ? (
           <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_auto]">
             <button
               type="button"
@@ -2375,57 +2294,17 @@ export function HomeView({
 
       {aiExtraction ? <AiExtractedFactsPanel extraction={aiExtraction} /> : null}
 
-      {workplaceSupportPack ? (
-        <section className="rounded-xl border border-indigo-300/25 bg-indigo-300/[0.08] p-4 shadow-xl shadow-slate-950/20 sm:p-5">
-          <p className="text-sm font-bold uppercase tracking-widest text-indigo-200">
-            Workplace support beta
-          </p>
-          <div className="mt-3 grid gap-3 text-sm leading-6 text-indigo-50/90">
-            <p>This is preparation only, not legal or employment advice.</p>
-            <p>AdminAvenger helps prepare. You stay in control.</p>
-            <p>
-              Ask ACAS, a union rep, HR, Citizens Advice, an adviser, solicitor
-              where appropriate, or someone trusted if you are unsure.
-            </p>
-            {isSettlementWorkplaceResult ? (
-              <p className="rounded-lg border border-amber-300/30 bg-amber-300/10 px-4 py-3 text-amber-50">
-                Settlement agreements can have serious consequences. Do not rely on
-                AdminAvenger to decide what to do with a settlement agreement. Ask
-                ACAS, a union rep, solicitor, Citizens Advice, or another qualified
-                adviser before relying on any next step.
-              </p>
-            ) : null}
-            {hasWorkplaceResignationRisk ? (
-              <p className="rounded-lg border border-amber-300/30 bg-amber-300/10 px-4 py-3 text-amber-50">
-                Get advice before making a resignation decision.
-              </p>
-            ) : null}
-          </div>
-        </section>
-      ) : null}
-
       {resultViewModel ? (
         <ResultCaseSheet
           model={resultViewModel}
-          decisionResult={isWorkplaceBetaResultActive ? undefined : primaryCase?.decisionResult}
-          benefitsActionPack={isWorkplaceBetaResultActive ? null : benefitsActionPack}
-          strategicNextStepPlan={isWorkplaceBetaResultActive ? undefined : strategicNextStepPlan}
+          decisionResult={primaryCase?.decisionResult}
+          benefitsActionPack={benefitsActionPack}
+          strategicNextStepPlan={strategicNextStepPlan}
           adviserExportPack={adviserExportPack}
-          workplaceSupportPack={workplaceSupportPack}
-          primaryAction={isWorkplaceBetaResultActive ? undefined : simplePrimaryAction}
-          secondaryActions={
-            isWorkplaceBetaResultActive
-              ? [
-                  {
-                    label: "Check another message",
-                    onClick: clearInput,
-                    emphasis: "quiet",
-                  },
-                ]
-              : simpleSecondaryActions
-          }
+          primaryAction={simplePrimaryAction}
+          secondaryActions={simpleSecondaryActions}
           guidedNextStepButton={
-            !isWorkplaceBetaResultActive && !isCareerSupportCase && guidedNextStep
+            !isCareerSupportCase && guidedNextStep
               ? {
                   label: guidedNextStep.primaryAction.label,
                   onClick: () => setShowGuidedNextStep(true),
@@ -2438,7 +2317,7 @@ export function HomeView({
         />
       ) : null}
 
-      {!isWorkplaceBetaResultActive && showDetailed && primaryOpportunity ? (
+      {showDetailed && primaryOpportunity ? (
         <section className="rounded-lg border border-white/10 bg-slate-950/55 p-4 sm:p-5">
           <p className="text-sm font-bold uppercase tracking-widest text-slate-400">
             Supporting detail
@@ -2451,7 +2330,7 @@ export function HomeView({
         </section>
       ) : null}
 
-      {!isWorkplaceBetaResultActive && showGuidedNextStep && guidedNextStep ? (
+      {showGuidedNextStep && guidedNextStep ? (
         <GuidedNextStepPanel
           guidedNextStep={guidedNextStep}
           onClose={() => setShowGuidedNextStep(false)}
@@ -2494,7 +2373,7 @@ export function HomeView({
         />
       ) : null}
 
-      {!isWorkplaceBetaResultActive && result && primaryCase && hasClearCase && showDetailed ? (
+      {result && primaryCase && hasClearCase && showDetailed ? (
         <section className="rounded-lg border border-emerald-300/25 bg-white/[0.055] p-5 shadow-xl shadow-slate-950/15 sm:p-6">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
@@ -2709,40 +2588,6 @@ export function HomeView({
         </section>
       ) : null}
 
-      {/*
-        Community Helper Home Gated v1 - a small, clearly secondary beta/demo
-        entry point, not the main "Check a message" route. Clicking it only
-        navigates to the existing Community Helper demo/support section on
-        the Demo/tour page (see DemoTourView.tsx); it never builds a
-        community helper pack from what is pasted above, and never touches
-        the decision-engine classifier or OCR/file intake. See
-        docs/product/community-helper-home-gated-v1.md.
-      */}
-      <section className="rounded-lg border border-violet-300/20 bg-violet-300/[0.05] p-4 sm:p-5">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-widest text-violet-300">
-              Controlled public beta
-            </p>
-            <p className="mt-1 text-sm font-bold text-white">Community support prep</p>
-            <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-400">
-              For carers, support workers, family helpers, or trusted people preparing
-              notes. Preparation only. AdminAvenger helps prepare. You stay in control.
-            </p>
-            <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500">
-              Opens a gated manual-text beta. It does not analyse the message above
-              or connect to file, photo, or OCR intake.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onOpenCommunityHelperDemo}
-            className="min-h-10 shrink-0 rounded-lg border border-violet-300/40 bg-violet-300/10 px-4 py-2 text-sm font-bold text-violet-100 transition hover:border-violet-300/70 hover:bg-violet-300/20 focus:outline-none focus:ring-2 focus:ring-violet-300/40"
-          >
-            Open controlled beta
-          </button>
-        </div>
-      </section>
     </div>
   );
 }

@@ -14,6 +14,7 @@ import {
   type ClearLocalDataResult,
   type LocalDataSummary,
 } from "../lib/localDataControl";
+import { isControlledFeatureEnabled } from "../lib/publicScopePolicy";
 
 type SettingsViewProps = {
   onResetDemoData: () => void;
@@ -357,6 +358,7 @@ export function SettingsView({
   const [activeLegalDocument, setActiveLegalDocument] = useState<LegalDocumentId | undefined>(
     undefined,
   );
+  const controlledFeaturesEnabled = isControlledFeatureEnabled(import.meta.env);
   const activeNotificationMethod = isSelectableNotificationMethod(
     inboxScanSettings.notificationMethod,
   )
@@ -631,20 +633,22 @@ export function SettingsView({
         title="What AdminAvenger can and cannot do"
         description="AdminAvenger prepares; you decide."
       >
-        <div className="mb-4 rounded-lg border border-cyan-300/25 bg-cyan-300/[0.07] p-4">
-          <h4 className="text-sm font-bold text-white">Demo / tour</h4>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
-            Try safe synthetic examples from the Golden Letter Corpus without using
-            a real letter.
-          </p>
-          <button
-            type="button"
-            onClick={() => onNavigate("demo_tour")}
-            className="mt-3 min-h-11 rounded-lg border border-cyan-300/30 bg-cyan-300/10 px-4 py-2.5 text-sm font-bold text-cyan-100 transition hover:border-cyan-200 hover:text-white focus:outline-none focus:ring-2 focus:ring-cyan-300/40"
-          >
-            Open Demo / tour
-          </button>
-        </div>
+        {controlledFeaturesEnabled ? (
+          <div className="mb-4 rounded-lg border border-cyan-300/25 bg-cyan-300/[0.07] p-4">
+            <h4 className="text-sm font-bold text-white">Demo / tour</h4>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
+              Try safe synthetic examples from the Golden Letter Corpus without using
+              a real letter.
+            </p>
+            <button
+              type="button"
+              onClick={() => onNavigate("demo_tour")}
+              className="mt-3 min-h-11 rounded-lg border border-cyan-300/30 bg-cyan-300/10 px-4 py-2.5 text-sm font-bold text-cyan-100 transition hover:border-cyan-200 hover:text-white focus:outline-none focus:ring-2 focus:ring-cyan-300/40"
+            >
+              Open Demo / tour
+            </button>
+          </div>
+        ) : null}
         <div className="mb-4 rounded-lg border border-cyan-300/25 bg-cyan-300/[0.07] p-4">
           <h4 className="text-sm font-bold text-white">Trust &amp; safety</h4>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
@@ -754,28 +758,30 @@ export function SettingsView({
         </p>
       </CollapsibleSection>
 
-      <CollapsibleSection
-        eyebrow="Advanced"
-        title="Founder tools"
-        description="Prototype-only screens for testing and overview."
-      >
-        <div className="flex flex-wrap gap-3">
-          <button
-            type="button"
-            onClick={() => onNavigate("dashboard")}
-            className="rounded-lg border border-white/10 bg-slate-950 px-4 py-2.5 text-sm font-bold text-slate-200 transition hover:border-emerald-300/40 hover:text-white focus:outline-none focus:ring-2 focus:ring-emerald-300/40"
-          >
-            Open dashboard
-          </button>
-          <button
-            type="button"
-            onClick={() => onNavigate("validation")}
-            className="rounded-lg border border-white/10 bg-slate-950 px-4 py-2.5 text-sm font-bold text-slate-200 transition hover:border-emerald-300/40 hover:text-white focus:outline-none focus:ring-2 focus:ring-emerald-300/40"
-          >
-            Open validation notes
-          </button>
-        </div>
-      </CollapsibleSection>
+      {import.meta.env.DEV ? (
+        <CollapsibleSection
+          eyebrow="Advanced"
+          title="Founder tools"
+          description="Prototype-only screens for testing and overview."
+        >
+          <div className="flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={() => onNavigate("dashboard")}
+              className="rounded-lg border border-white/10 bg-slate-950 px-4 py-2.5 text-sm font-bold text-slate-200 transition hover:border-emerald-300/40 hover:text-white focus:outline-none focus:ring-2 focus:ring-emerald-300/40"
+            >
+              Open dashboard
+            </button>
+            <button
+              type="button"
+              onClick={() => onNavigate("validation")}
+              className="rounded-lg border border-white/10 bg-slate-950 px-4 py-2.5 text-sm font-bold text-slate-200 transition hover:border-emerald-300/40 hover:text-white focus:outline-none focus:ring-2 focus:ring-emerald-300/40"
+            >
+              Open validation notes
+            </button>
+          </div>
+        </CollapsibleSection>
+      ) : null}
     </div>
   );
 }

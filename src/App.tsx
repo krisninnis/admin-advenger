@@ -26,6 +26,10 @@ import {
   resetTermsAcceptance,
 } from "./lib/termsAcceptance";
 import { isCameraCalibrationLabEnabled } from "./lib/cameraCalibrationLabAccess";
+import {
+  canAccessAppView,
+  getBlockedViewMessage,
+} from "./lib/publicScopePolicy";
 import { TermsSafetyGate } from "./components/TermsSafetyGate";
 import {
   createAdminAvengerBackup,
@@ -195,6 +199,13 @@ function App() {
     useState<AdminItemFormValues>(emptyAdminItemForm);
   const [homeResult, setHomeResult] = useState<HomeAnalysisResult>();
   const [currentView, setCurrentView] = useState<AppView>("home");
+  const [publicAccessMessage, setPublicAccessMessage] = useState(() =>
+    typeof window !== "undefined" &&
+    window.location.pathname === CAMERA_LAB_ROUTE_PATH &&
+    !CAMERA_LAB_ENABLED
+      ? "That testing area is not available here. Return to Check a message."
+      : "",
+  );
   const [storageSaveError, setStorageSaveError] = useState("");
   // Blocking pre-use legal/safety gate - the app is not usable at all until
   // this is true. See src/lib/termsAcceptance.ts and
@@ -314,6 +325,17 @@ function App() {
     setInboxScanSettings((current) => ({ ...current, ...updates }));
   };
 
+  const handleNavigate = (view: AppView) => {
+    if (!canAccessAppView(view, import.meta.env)) {
+      setCurrentView("home");
+      setPublicAccessMessage(getBlockedViewMessage(view));
+      return;
+    }
+
+    setPublicAccessMessage("");
+    setCurrentView(view);
+  };
+
   const handleIgnoreInboxScanItem = (sampleId: string) => {
     setInboxScanSettings((current) =>
       current.ignoredItemIds.includes(sampleId)
@@ -386,7 +408,7 @@ function App() {
     ]);
     setSelectedFindingId(safetyFinding.id);
     setSelectedCaseId(safetyCase.id);
-    setCurrentView("case_file");
+    handleNavigate("case_file");
   };
 
   const handleSelectFinding = (findingId: string) => {
@@ -400,7 +422,7 @@ function App() {
 
   const handleOpenFinding = (findingId: string) => {
     handleSelectFinding(findingId);
-    setCurrentView("case_file");
+    handleNavigate("case_file");
   };
 
   const handleOpenCase = (caseId: string) => {
@@ -412,7 +434,7 @@ function App() {
 
     setSelectedCaseId(relatedCase.id);
     setSelectedFindingId(relatedCase.findingId);
-    setCurrentView("case_file");
+    handleNavigate("case_file");
   };
 
   const runAnalysis = async (
@@ -477,7 +499,7 @@ function App() {
 
     setPreviewResult(result);
     if (openCaseFile) {
-      setCurrentView("case_file");
+      handleNavigate("case_file");
     }
     setAnalysisStatus("success");
     return result;
@@ -643,7 +665,7 @@ function App() {
     }
     setSelectedFindingId(resultCase.findingId);
     setSelectedCaseId(resultCase.id);
-    setCurrentView("case_file");
+    handleNavigate("case_file");
   };
 
   const handleClearHomeResult = () => {
@@ -1233,7 +1255,7 @@ function App() {
     setDataControlMessage(
       "Sample demo data loaded. This is not your real admin.",
     );
-    setCurrentView("home");
+    handleNavigate("home");
   };
 
   const handleDownloadLocalBackup = () => {
@@ -1292,7 +1314,7 @@ function App() {
         <DevCameraCalibrationLabView
           onClose={() => {
             window.history.pushState({}, "", "/");
-            setCurrentView("home");
+            handleNavigate("home");
           }}
         />
       </Suspense>
@@ -1302,7 +1324,7 @@ function App() {
   return (
     <AppShell
       currentView={currentView}
-      onNavigate={setCurrentView}
+      onNavigate={handleNavigate}
       caseCount={adminCases.length}
       findingCount={findings.length}
     >
@@ -1325,6 +1347,21 @@ function App() {
         </div>
       ) : null}
 
+      {publicAccessMessage ? (
+        <div className="mb-5 rounded-lg border border-amber-300/30 bg-amber-300/10 px-4 py-3 text-sm leading-6 text-amber-50">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p>{publicAccessMessage}</p>
+            <button
+              type="button"
+              onClick={() => setPublicAccessMessage("")}
+              className="rounded-lg border border-amber-200/30 px-3 py-2 text-xs font-bold text-amber-50 transition hover:bg-amber-200/10"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       {currentView === "home" ? (
         <HomeView
           result={homeResult}
@@ -1339,7 +1376,6 @@ function App() {
           onIgnoreInboxScanItem={handleIgnoreInboxScanItem}
           onSaveScannedItem={handleSaveScannedItem}
           onSaveEmailSafetyCase={handleSaveEmailSafetyCase}
-          onOpenCommunityHelperDemo={() => setCurrentView("demo_tour")}
         />
       ) : null}
 
@@ -1352,7 +1388,7 @@ function App() {
           onCheck={handleDemoTourCheck}
           onClearResult={handleClearDemoTourResult}
           onActiveDemoScenarioChange={setActiveDemoScenarioId}
-          onNavigate={setCurrentView}
+          onNavigate={handleNavigate}
         />
       ) : null}
 
@@ -1368,7 +1404,7 @@ function App() {
         <DashboardView
           findings={findings}
           cases={adminCases}
-          onNavigate={setCurrentView}
+          onNavigate={handleNavigate}
           onOpenCase={handleOpenCase}
         />
       ) : null}
@@ -1431,7 +1467,7 @@ function App() {
       {currentView === "covenant" ? <CovenantView /> : null}
 
       {currentView === "trust_safety" ? (
-        <TrustSafetyView onNavigateToSettings={() => setCurrentView("settings")} />
+        <TrustSafetyView onNavigateToSettings={() => handleNavigate("settings")} />
       ) : null}
 
       {currentView === "settings" ? (
@@ -1440,7 +1476,7 @@ function App() {
           onClearLocalData={handleClearLocalData}
           onDownloadBackup={handleDownloadLocalBackup}
           dataControlMessage={dataControlMessage}
-          onNavigate={setCurrentView}
+          onNavigate={handleNavigate}
           inboxScanSettings={inboxScanSettings}
           onUpdateInboxScanSettings={handleUpdateInboxScanSettings}
           onViewTermsAgain={handleViewTermsAgain}

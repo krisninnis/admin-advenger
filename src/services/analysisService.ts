@@ -32,7 +32,7 @@ export const analyseAdminItemWithService = async (
 
     // Future real AI integration point:
     // Replace this mock adapter call with a safe structured AI analysis request.
-    const findings = analyseAdminItem(item);
+    const findings = analyseAdminItem(item, { accessMode: "public" });
 
     return {
       status: "success",

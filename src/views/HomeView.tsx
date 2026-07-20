@@ -4,6 +4,7 @@ import { BenefitsActionPackPanel } from "../components/BenefitsActionPackPanel";
 import { GuidedNextStepPanel } from "../components/GuidedNextStepPanel";
 import { InboxScanPreview } from "../components/InboxScanPreview";
 import { InboxScanPromptCard } from "../components/InboxScanPromptCard";
+import { LowConfidenceOcrReviewPanel } from "../components/LowConfidenceOcrReviewPanel";
 import { OpportunityCardPanel } from "../components/OpportunityCardPanel";
 import { PhotoCapturePanel } from "../components/PhotoCapturePanel";
 import {
@@ -80,8 +81,6 @@ import {
   OCR_FAILED_MESSAGE,
   OCR_ADD_CLOSE_UP_SUGGESTION,
   OCR_COMBINED_PHOTOS_ON_DEVICE_MESSAGE,
-  OCR_EXTRACTED_TEXT_DISCLOSURE_HELP,
-  OCR_EXTRACTED_TEXT_DISCLOSURE_LABEL,
   OCR_MISTAKES_MESSAGE,
   OCR_ON_DEVICE_MESSAGE,
   OCR_READING_STATUS_MESSAGE,
@@ -91,7 +90,6 @@ import {
   OCR_KEY_DETAILS_NOT_RELIABLE_MESSAGE,
   OCR_KEY_DETAILS_REVIEW_OPTIONS_MESSAGE,
   OcrReadError,
-  OCR_UNRELIABLE_REVIEW_MESSAGE,
   appendExtraPhotoText,
   formatOcrSectionWarning,
   isOcrKeyDetailsReliable,
@@ -1035,6 +1033,7 @@ export function HomeView({
     setPhotoMetadata(undefined);
     setOcrStatus("idle");
     setOcrText("");
+    setOcrOriginalText("");
     setOcrProgress(0);
     setOcrError("");
     setOcrConfidence(undefined);
@@ -1263,13 +1262,14 @@ export function HomeView({
   // message flow every other input path uses. Never auto-saves or uploads
   // the photo, and never contacts anyone or counts money automatically -
   // it only runs the existing local decision-engine check.
-  const handleCheckOcrText = async () => {
-    const cleanedText = ocrText.trim();
+  const handleCheckOcrText = async (reviewedText = ocrText) => {
+    const cleanedText = reviewedText.trim();
 
     if (!cleanedText || isChecking || isAiReading || isReadingPhoto) {
       return;
     }
 
+    setOcrText(cleanedText);
     setRawText(cleanedText);
     setSelectedInput("paste");
     setAiExtraction(undefined);
@@ -1308,6 +1308,13 @@ export function HomeView({
   const handleAddCloseUpPhoto = () => {
     setPendingPhotoFile(undefined);
     setPhotoCaptureIntent("append");
+    setShowPhotoCapturePanel(true);
+  };
+
+  const handleUploadClearerPhoto = (file: File) => {
+    resetPhotoOcrReview();
+    setPendingPhotoFile(file);
+    setPhotoCaptureIntent("replace");
     setShowPhotoCapturePanel(true);
   };
 
@@ -2038,21 +2045,25 @@ export function HomeView({
                   </div>
                 </div>
               ) : null}
-              {selectedInput === "image" && ocrStatus === "success" ? (
+              {selectedInput === "image" && ocrStatus === "success" && isOcrReviewUnreliable ? (
+                <LowConfidenceOcrReviewPanel
+                  previewUrl={imagePreviewUrl}
+                  extractedText={ocrText}
+                  onRetake={handleRetakePhoto}
+                  onAddCloseUp={handleAddCloseUpPhoto}
+                  onUploadClearer={handleUploadClearerPhoto}
+                  onCheckCorrectedText={(text) => void handleCheckOcrText(text)}
+                  onCancel={handleCancelOcrReview}
+                  disabled={isChecking || isAiReading || isReadingPhoto}
+                />
+              ) : null}
+              {selectedInput === "image" && ocrStatus === "success" && !isOcrReviewUnreliable ? (
                 <div className="mt-4 rounded-lg border border-emerald-300/20 bg-emerald-300/[0.07] p-4">
                   <p role="status" aria-live="polite" aria-atomic="true" className="text-sm font-bold text-emerald-50">
                     {ocrSourceMode === "multi" ? OCR_COMBINED_PHOTOS_ON_DEVICE_MESSAGE : OCR_ON_DEVICE_MESSAGE}
                   </p>
                   <p className="mt-2 text-sm leading-6 text-emerald-50/80">{OCR_MISTAKES_MESSAGE}</p>
-                  {isOcrReviewUnreliable ? (
-                    <div className="mt-3 rounded-lg border border-amber-300/40 bg-amber-300/15 px-4 py-3">
-                      <p className="text-sm font-bold text-amber-50">Retake recommended</p>
-                      <p className="mt-1 text-sm leading-6 text-amber-100/90">
-                        {OCR_UNRELIABLE_REVIEW_MESSAGE}
-                      </p>
-                    </div>
-                  ) : null}
-                  {shouldHideOcrKeyDetails && !isOcrReviewUnreliable ? (
+                  {shouldHideOcrKeyDetails ? (
                     <div className="mt-3 rounded-lg border border-amber-300/35 bg-amber-300/10 px-4 py-3">
                       <p className="text-sm font-bold text-amber-50">
                         {OCR_KEY_DETAILS_NOT_RELIABLE_MESSAGE}
@@ -2065,7 +2076,7 @@ export function HomeView({
                       </p>
                     </div>
                   ) : null}
-                  {!isOcrReviewUnreliable && ocrWarnings.length > 0 ? (
+                  {ocrWarnings.length > 0 ? (
                     <div className="mt-3 rounded-lg border border-amber-300/30 bg-amber-300/10 px-4 py-3">
                       {ocrSectionWarnings.length > 0 ? (
                         <p className="mb-2 text-sm font-bold text-amber-50">
@@ -2079,7 +2090,7 @@ export function HomeView({
                       </ul>
                     </div>
                   ) : null}
-                  {shouldHideOcrKeyDetails && !isOcrReviewUnreliable ? (
+                  {shouldHideOcrKeyDetails ? (
                     <div className="mt-3 rounded-lg border border-amber-300/25 bg-slate-950/60 px-4 py-3">
                       <p className="text-sm font-bold text-amber-50">
                         {OCR_KEY_DETAILS_HIDDEN_UNRELIABLE_MESSAGE}
@@ -2117,35 +2128,15 @@ export function HomeView({
                       </div>
                     </div>
                   ) : null}
-                  {isOcrReviewUnreliable ? (
-                    <details className="mt-3 rounded-lg border border-white/10 bg-slate-950/60 px-4 py-3">
-                      <summary className="cursor-pointer text-sm font-bold text-emerald-50">
-                        {OCR_EXTRACTED_TEXT_DISCLOSURE_LABEL}
-                      </summary>
-                      <p className="mt-2 text-xs leading-5 text-slate-300">
-                        {OCR_EXTRACTED_TEXT_DISCLOSURE_HELP}
-                      </p>
-                      <label className="mt-3 block text-sm font-bold text-emerald-50">
-                        Edit the text if needed
-                        <textarea
-                          value={ocrText}
-                          onChange={(event) => setOcrText(event.target.value)}
-                          rows={9}
-                          className="mt-2 w-full resize-y rounded-lg border border-white/10 bg-slate-950 px-4 py-4 text-base leading-7 text-white outline-none transition placeholder:text-slate-600 focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20"
-                        />
-                      </label>
-                    </details>
-                  ) : (
-                    <label className="mt-3 block text-sm font-bold text-emerald-50">
-                      Edit the text if needed
-                      <textarea
-                        value={ocrText}
-                        onChange={(event) => setOcrText(event.target.value)}
-                        rows={9}
-                        className="mt-2 w-full resize-y rounded-lg border border-white/10 bg-slate-950 px-4 py-4 text-base leading-7 text-white outline-none transition placeholder:text-slate-600 focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20"
-                      />
-                    </label>
-                  )}
+                  <label className="mt-3 block text-sm font-bold text-emerald-50">
+                    Edit the text if needed
+                    <textarea
+                      value={ocrText}
+                      onChange={(event) => setOcrText(event.target.value)}
+                      rows={9}
+                      className="mt-2 w-full resize-y rounded-lg border border-white/10 bg-slate-950 px-4 py-4 text-base leading-7 text-white outline-none transition placeholder:text-slate-600 focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20"
+                    />
+                  </label>
                   <p className="mt-2 text-xs leading-5 text-emerald-50/70">
                     {OCR_REVIEW_BEFORE_CHECKING_MESSAGE} {OCR_RUNS_ON_DEVICE_MESSAGE}
                     {ocrConfidence === undefined ? "" : ` OCR confidence: ${Math.round(ocrConfidence)}%.`}
@@ -2170,11 +2161,7 @@ export function HomeView({
                     <button
                       type="button"
                       onClick={handleRetakePhoto}
-                      className={
-                        isOcrReviewUnreliable
-                          ? "min-h-11 rounded-lg bg-amber-300 px-4 py-3 text-sm font-bold text-slate-950 shadow-lg shadow-amber-950/30 transition hover:bg-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-100 focus:ring-offset-2 focus:ring-offset-slate-950"
-                          : "min-h-11 rounded-lg border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-slate-200 transition hover:border-white/20 hover:text-white"
-                      }
+                      className="min-h-11 rounded-lg border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-slate-200 transition hover:border-white/20 hover:text-white"
                     >
                       {PHOTO_RETAKE_PHOTO_LABEL}
                     </button>

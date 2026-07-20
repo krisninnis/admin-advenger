@@ -3,10 +3,14 @@ import type { AdminItem } from "../../types";
 import { createAdminCase } from "../caseFactory";
 import { analyseAdminItem } from "../mockAnalysis";
 
-const makeItem = (title: string, rawText: string): AdminItem => ({
+const makeItem = (
+  title: string,
+  rawText: string,
+  sourceType: AdminItem["sourceType"] = "email",
+): AdminItem => ({
   id: `item-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
   title,
-  sourceType: "email",
+  sourceType,
   rawText,
   createdAt: "2026-07-20T09:00:00.000Z",
   analysedAt: "2026-07-20T09:00:00.000Z",
@@ -93,5 +97,69 @@ describe("public MVP analysis boundary", () => {
 
     expect(finding.category).not.toBe("admin_dispute");
     expect(adminCase.decisionResult).toBeUndefined();
+  });
+
+  it.each([
+    ["Pasted text", "email"],
+    ["Loaded file text", "pdf"],
+    ["Photo text (reviewed before checking)", "email"],
+  ] as const)("routes %s through the corrected public hardship boundary", (title, sourceType) => {
+    const { finding, adminCase } = publicCaseFor(
+      makeItem(
+        title,
+        "My benefits have stopped and I cannot buy food or heat the home.",
+        sourceType,
+      ),
+    );
+
+    expect(finding.title).toBe("Specialist support may be needed");
+    expect(finding.category).toBe("important_reply");
+    expect(finding.estimatedValue).toBe("No money counted");
+    expect(finding.summary).toContain("keeping it as preparation only");
+    expect(finding.summary).toContain("not deciding what action to take");
+    expect(adminCase.decisionResult).toBeUndefined();
+    expect(adminCase.valueLabel).toBe("No money counted");
+    expect(adminCase.nextAction).toContain("Keep the original message");
+  });
+
+  it("keeps public fallback closed and safe for warrant enforcement wording", () => {
+    const { finding, adminCase } = publicCaseFor(
+      makeItem(
+        "Court warrant",
+        "A court warrant was issued for enforcement on 21 August 2026. The bailiff says they may attend.",
+      ),
+    );
+
+    expect(finding.title).toBe("This needs a careful human review");
+    expect(finding.deadline).toBe("21 August 2026");
+    expect(finding.estimatedValue).toBe("No money counted");
+    expect(finding.summary).toContain("not opening a specialist beta automatically");
+    expect(finding.suggestedAction).toContain("Keep the original message");
+    expect(finding.suggestedAction).toContain("21 August 2026");
+    expect(finding.whyItMatters).toContain("will not decide rights");
+    expect(adminCase.decisionResult).toBeUndefined();
+    expect(adminCase.valueLabel).toBe("No money counted");
+    expect(adminCase.nextAction).toContain("Keep the original message");
+    expect(adminCase.summary).toContain("not opening a specialist beta automatically");
+  });
+
+  it("keeps warranty and broadband support wording available in public intake", () => {
+    const warranty = publicCaseFor(
+      makeItem("Warranty", "Customer support can help with your boiler warranty."),
+    );
+    const broadband = publicCaseFor(
+      makeItem(
+        "Broadband price rise",
+        "The main benefit of this home broadband support package is cheaper heating controls. Your broadband price will increase from GBP 28 to GBP 31 on 1 September 2026.",
+        "bill",
+      ),
+    );
+
+    expect(warranty.finding.title).not.toBe("This needs a careful human review");
+    expect(warranty.adminCase.decisionResult?.documentType).toBe("consumer_dispute");
+    expect(warranty.adminCase.valueLabel).not.toBe("Money saved");
+    expect(broadband.finding.category).toBe("bill_increase");
+    expect(broadband.adminCase.broadbandPriceRiseAssessment).toBeDefined();
+    expect(broadband.adminCase.decisionResult).toBeUndefined();
   });
 });

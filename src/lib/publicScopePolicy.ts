@@ -1,6 +1,9 @@
 import type { AppView } from "../components/Sidebar";
 import type { AdminItem } from "../types";
-import { classifyDecisionDocument } from "./decisionEngine/classifier";
+import {
+  classifyDecisionDocument,
+  hasEssentialHardshipContext,
+} from "./decisionEngine/classifier";
 import type { DecisionDocumentType } from "./decisionEngine/types";
 
 export type PublicAvailability =
@@ -168,7 +171,7 @@ export const assessPublicIntakeScope = (item: AdminItem): PublicScopeBoundary =>
     };
   }
 
-  if (housingOrCrisisPattern.test(text)) {
+  if (housingOrCrisisPattern.test(text) || hasEssentialHardshipContext(text)) {
     return {
       status: "blocked",
       availability: "unavailable_publicly",

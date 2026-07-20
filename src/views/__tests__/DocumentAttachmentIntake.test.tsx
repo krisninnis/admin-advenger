@@ -131,7 +131,7 @@ describe("Document Attachment Intake v1 - HomeView wiring", () => {
   it("reviews multiple attached images sequentially, one active panel at a time", () => {
     const queueEffect = sliceBetween(
       homeViewSource,
-      "useEffect(() => {\n    if (\n      showPhotoCapturePanel",
+      "pendingAttachmentImageIds.length === 0",
       "const clearInput = () =>",
     );
     const selectionBlock = sliceBetween(

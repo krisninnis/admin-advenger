@@ -3,6 +3,25 @@ import type { DecisionDocumentType } from "./types";
 const hasAny = (text: string, patterns: RegExp[]) =>
   patterns.some((pattern) => pattern.test(text));
 
+export const normaliseDecisionText = (text: string) =>
+  text.trim().replace(/\s+/g, " ");
+
+const essentialHardshipPatterns = [
+  /\b(?:cannot|can't|can not|unable to|cannot afford to|can't afford to|can not afford to|cannot pay for|can't pay for|no money for)\s+(?:buy\s+|pay\s+for\s+)?food\b/i,
+  /\bno money for food\b/i,
+  /\bno food (?:in|at) (?:the )?(?:house|home)\b/i,
+  /\bthere is no food\b/i,
+  /\b(?:cannot|can't|can not|unable to|cannot afford to|can't afford to|can not afford to)\s+(?:put|turn)\s+(?:the\s+)?heating\s+on\b/i,
+  /\b(?:cannot|can't|can not|unable to)\s+(?:heat|keep warm)\s+(?:the\s+)?(?:home|house|children)\b/i,
+  /\b(?:no|without)\s+heating\b.{0,80}\b(?:cannot|can't|can not|unable to)\s+(?:keep|stay).{0,30}\bwarm\b/i,
+  /\b(?:benefits?|universal credit|\buc\b)\b.{0,80}\b(?:stopped|stops?|ended|suspended|sanctioned|reduced|deducted)\b.{0,120}\b(?:food|heating|electricity|essentials)\b/i,
+  /\b(?:homeless|evicted|eviction)\b.{0,80}\b(?:nowhere to (?:stay|sleep)|tonight|no home)\b/i,
+  /\benforcement agent\b.{0,120}\b(?:no money for essentials|cannot afford essentials|can't afford essentials)\b/i,
+];
+
+export const hasEssentialHardshipContext = (text: string): boolean =>
+  hasAny(normaliseDecisionText(text), essentialHardshipPatterns);
+
 // Broad "is this benefits-related at all" detection. Kept last in the overall
 // classifier priority order (see classifyDecisionDocument below) so that a
 // message which is clearly a parking/bailiff/TV Licence/bank/consumer/council
@@ -77,6 +96,7 @@ const benefitsPatterns = [
   /evicted/i,
   /eviction/i,
   /nowhere to sleep/i,
+  ...essentialHardshipPatterns,
 ];
 
 // Stage sub-classification, used once we already know the message is benefits-related.
@@ -144,6 +164,7 @@ const benefitsCrisisSupportPatterns = [
   /evicted/i,
   /eviction/i,
   /nowhere to sleep/i,
+  ...essentialHardshipPatterns,
 ];
 
 const benefitsWcaLcwraPatterns = [
@@ -278,7 +299,12 @@ const bailiffPatterns = [
   /bailiff/i,
   /enforcement agent/i,
   /notice of enforcement/i,
-  /warrant/i,
+  /\bwarrant of control\b/i,
+  /\bcourt warrant\b/i,
+  /\bwarrant\b.{0,80}\benforcement\b/i,
+  /\benforcement\b.{0,80}\bwarrant\b/i,
+  /\b(?:has|have|had)\s+(?:a\s+)?warrant\b/i,
+  /\bwarrant\b.{0,40}\b(?:issued|granted)\b/i,
   /liability order/i,
   /\bccj\b/i,
   /high court enforcement/i,
@@ -343,9 +369,6 @@ const councilTaxReductionPatterns = [
   /council tax support scheme/i,
   /local council tax (?:support|reduction) scheme/i,
 ];
-
-export const normaliseDecisionText = (text: string) =>
-  text.trim().replace(/\s+/g, " ");
 
 export const classifyDecisionDocument = (
   text: string,

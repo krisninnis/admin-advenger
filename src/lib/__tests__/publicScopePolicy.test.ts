@@ -90,4 +90,54 @@ describe("public MVP scope policy", () => {
       ),
     ).toEqual({ status: "allowed" });
   });
+
+  it.each([
+    "We can repair the faulty item under warranty.",
+    "Your warranty expires next month.",
+    "This is covered by the manufacturer's warranty.",
+    "The complaint was unwarranted.",
+    "A refund may be warranted after inspection.",
+  ])("allows ordinary warranty wording through public intake: %s", (text) => {
+    expect(assessPublicIntakeScope(makeItem("Warranty", text))).toEqual({ status: "allowed" });
+  });
+
+  it.each([
+    "A warrant of control has been issued.",
+    "Enforcement agents may attend under a court warrant.",
+    "The bailiff says they have a warrant.",
+    "A court warrant was issued for enforcement.",
+  ])("blocks genuine warrant/enforcement wording: %s", (text) => {
+    expect(assessPublicIntakeScope(makeItem("Warrant", text))).toMatchObject({
+      status: "blocked",
+      reason: "debt_enforcement",
+    });
+  });
+
+  it.each([
+    "My benefits have stopped and I cannot buy food or heat the home.",
+    "I have no money for food until next week.",
+    "There is no food in the house and I cannot afford electricity.",
+    "I cannot afford to put the heating on.",
+    "We have no heating and cannot keep the children warm.",
+    "My Universal Credit stopped and I cannot pay for food.",
+    "I have been evicted and have nowhere to stay tonight.",
+    "The enforcement agent is coming tomorrow and I have no money for essentials.",
+  ])("blocks essential hardship context from public intake: %s", (text) => {
+    expect(assessPublicIntakeScope(makeItem("Hardship", text))).toMatchObject({
+      status: "blocked",
+      reason: "housing_or_crisis",
+    });
+  });
+
+  it.each([
+    "The restaurant served cold food.",
+    "The oven is not heating the food.",
+    "The engineer will repair the home heating system.",
+    "This food delivery arrived late.",
+    "The main benefit is cheaper heating controls.",
+    "The router may heat up during use.",
+    "Customer support can help with your boiler warranty.",
+  ])("allows benign food/heating/support wording without hardship context: %s", (text) => {
+    expect(assessPublicIntakeScope(makeItem("Benign", text))).toEqual({ status: "allowed" });
+  });
 });

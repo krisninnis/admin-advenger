@@ -17,6 +17,15 @@ const essentialHardshipPatterns = [
   /\b(?:benefits?|universal credit|\buc\b)\b.{0,80}\b(?:stopped|stops?|ended|suspended|sanctioned|reduced|deducted)\b.{0,120}\b(?:food|heating|electricity|essentials)\b/i,
   /\b(?:homeless|evicted|eviction)\b.{0,80}\b(?:nowhere to (?:stay|sleep)|tonight|no home)\b/i,
   /\benforcement agent\b.{0,120}\b(?:no money for essentials|cannot afford essentials|can't afford essentials)\b/i,
+
+  // Compound essential-hardship phrases — utility disconnected and heating
+  // affected, or essential spending exhausted.  Each pattern requires multiple
+  // signals so isolated words like gas, food, bill, or warm do not trigger.
+  /\b(?:gas|electricity|power)\b.{0,40}(?:disconnected|cut off|shut off).{0,60}(?:cannot|can't|can not|unable to|no way to).{0,30}(?:keep|stay|heat).{0,20}(?:warm|the house|the home)\b/i,
+  /\bnothing (?:left )?for (?:the )?food\b/i,
+  /\bnothing left to buy food\b/i,
+  /\bno money left for food\b/i,
+  /\b(?:spent|used up) everything\b.{0,60}(?:cannot|can't|can not|unable to)\s+(?:afford\s+)?(?:the\s+)?(?:essentials|food)\b/i,
 ];
 
 export const hasEssentialHardshipContext = (text: string): boolean =>
@@ -316,11 +325,32 @@ const debtPatterns = [
   /collection agency/i,
   /arrears/i,
   /default notice/i,
-  /outstanding balance/i,
   /water rates/i,
   /council tax/i,
   /passed to collections/i,
 ];
+
+// Genuine outstanding balance means an amount is actually owed.  A negated or
+// zero outstanding balance (e.g. "no outstanding balance", "outstanding balance
+// is £0", "outstanding balance has been paid") is ordinary admin, not debt
+// enforcement.  The simple /outstanding balance/i regex was removed from
+// debtPatterns above and replaced by this negation-aware check so that
+// broadband price-rise notices with "no outstanding balance" continue through
+// the normal flow instead of being blocked as debt.
+const negatedOutstandingBalancePatterns = [
+  /\bno\s+outstanding\s+balance\b/i,
+  /\bnot\b.{0,15}(?:have|owe)\s+(?:an?|any)\s+outstanding\s+balance\b/i,
+  /\boutstanding\s+balance\s+(?:is\s+)?(?:zero|£0|\$0|GBP\s*0|0(?:\.00)?)\b/i,
+  /\b(?:zero|£0|\$0|GBP\s*0)\s+outstanding\s+balance\b/i,
+  /\boutstanding\s+(?:balance|amount)\s+(?:has\s+been\s+)?(?:paid|cleared|settled)\b/i,
+  /\bprevious\s+outstanding\s+balance\s+(?:has\s+been\s+)?paid\b/i,
+  /\bno\s+balance\s+(?:left\s+)?to\s+pay\b/i,
+  /\baccount\s+(?:is\s+)?fully\s+paid\b/i,
+];
+
+const hasGenuineOutstandingBalance = (text: string): boolean =>
+  /\boutstanding balance\b/i.test(text) &&
+  !negatedOutstandingBalancePatterns.some((pattern) => pattern.test(text));
 
 const tvLicencePatterns = [
   /tv licence/i,
@@ -399,7 +429,7 @@ export const classifyDecisionDocument = (
     return "council_tax_reduction";
   }
 
-  if (hasAny(normalisedText, debtPatterns)) {
+  if (hasAny(normalisedText, debtPatterns) || hasGenuineOutstandingBalance(normalisedText)) {
     return "debt_collection";
   }
 

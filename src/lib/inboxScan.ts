@@ -165,7 +165,7 @@ const buildPreview = (sample: InboxScanSample): InboxScanPreview => {
   const analysedFindings =
     getEmailSafetyRiskBand(emailSafety) === "high_risk_signals"
       ? [createEmailSafetyFinding(item, emailSafety)]
-      : analyseAdminItem(item);
+      : analyseAdminItem(item, { accessMode: "public" });
   const findings = analysedFindings.map((finding, index) => ({
     ...finding,
     id: `finding-inbox-${sample.id}-${index}`,

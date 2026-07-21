@@ -92,6 +92,34 @@ describe("public MVP scope policy", () => {
   });
 
   it.each([
+    "Your broadband price is increasing to GBP 32 per month. Your account currently has no outstanding balance.",
+    "There is no outstanding balance.",
+    "Your account has no outstanding balance.",
+    "You do not have an outstanding balance.",
+    "The outstanding balance is GBP 0.",
+    "Zero outstanding balance.",
+    "Your previous outstanding balance has been paid.",
+    "There is no balance left to pay.",
+    "The account is fully paid.",
+    "The outstanding amount has been cleared.",
+  ])("does not block negated or zero outstanding balance from public intake: %s", (text) => {
+    expect(assessPublicIntakeScope(makeItem("Admin", text))).toEqual({ status: "allowed" });
+  });
+
+  it.each([
+    "You have an outstanding balance of GBP 240.",
+    "The outstanding balance must be paid by Friday.",
+    "Your account remains overdue with an outstanding balance.",
+    "We may begin debt recovery if the outstanding balance is not paid.",
+    "An enforcement agent may attend regarding the outstanding balance.",
+  ])("blocks genuine outstanding balance from public intake: %s", (text) => {
+    expect(assessPublicIntakeScope(makeItem("Debt", text))).toMatchObject({
+      status: "blocked",
+      reason: "debt_enforcement",
+    });
+  });
+
+  it.each([
     "We can repair the faulty item under warranty.",
     "Your warranty expires next month.",
     "This is covered by the manufacturer's warranty.",
@@ -130,6 +158,21 @@ describe("public MVP scope policy", () => {
   });
 
   it.each([
+    "The gas has been disconnected and I cannot keep the house warm.",
+    "I have nothing left for food after paying the bill.",
+    "The electricity has been cut off and we cannot keep warm.",
+    "After paying the rent I have no money left for food.",
+    "I have spent everything on the bill and cannot afford essentials.",
+    "The power is disconnected and there is no way to heat the house.",
+    "There is nothing left to buy food until next week.",
+  ])("blocks compound essential hardship phrases from public intake: %s", (text) => {
+    expect(assessPublicIntakeScope(makeItem("Hardship", text))).toMatchObject({
+      status: "blocked",
+      reason: "housing_or_crisis",
+    });
+  });
+
+  it.each([
     "The restaurant served cold food.",
     "The oven is not heating the food.",
     "The engineer will repair the home heating system.",
@@ -137,6 +180,13 @@ describe("public MVP scope policy", () => {
     "The main benefit is cheaper heating controls.",
     "The router may heat up during use.",
     "Customer support can help with your boiler warranty.",
+    "The gas engineer disconnected the cooker for repair.",
+    "The electricity will be disconnected briefly during maintenance.",
+    "This blanket will keep the house warm.",
+    "The restaurant bill included food.",
+    "Nothing was left inside the food-delivery box.",
+    "The customer paid the bill after buying food.",
+    "The router feels warm after being connected.",
   ])("allows benign food/heating/support wording without hardship context: %s", (text) => {
     expect(assessPublicIntakeScope(makeItem("Benign", text))).toEqual({ status: "allowed" });
   });

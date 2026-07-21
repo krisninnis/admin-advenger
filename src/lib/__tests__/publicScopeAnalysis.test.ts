@@ -162,4 +162,17 @@ describe("public MVP analysis boundary", () => {
     expect(broadband.adminCase.broadbandPriceRiseAssessment).toBeDefined();
     expect(broadband.adminCase.decisionResult).toBeUndefined();
   });
+
+  it("blocks synthetic high-risk inbox scan content through the public analysis boundary", () => {
+    const highRiskItem = makeItem(
+      "Benefits crisis",
+      "My Universal Credit has been sanctioned and I have no money for food or heating.",
+    );
+    const [finding] = analyseAdminItem(highRiskItem, { accessMode: "public" });
+
+    expect(finding.title).toBe("Specialist support may be needed");
+    expect(finding.category).toBe("important_reply");
+    expect(finding.estimatedValue).toBe("No money counted");
+    expect(finding.summary).toContain("keeping it as preparation only");
+  });
 });

@@ -148,7 +148,7 @@ const buildHeadline = (opportunity: OpportunityCard): string => {
   }
 };
 
-const buildPreview = (sample: InboxScanSample): InboxScanPreview => {
+export const buildPreview = (sample: InboxScanSample): InboxScanPreview => {
   const now = new Date().toISOString();
   const item: AdminItem = {
     id: `item-inbox-${sample.id}`,

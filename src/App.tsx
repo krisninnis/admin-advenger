@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "./components/AppShell";
 import type { AdminItemFormValues } from "./components/AddAdminItem";
 import type { CaseUpdateValues } from "./components/CaseActions";
@@ -25,6 +25,11 @@ import {
   hasAcceptedCurrentTerms,
   resetTermsAcceptance,
 } from "./lib/termsAcceptance";
+import { isCameraCalibrationLabEnabled } from "./lib/cameraCalibrationLabAccess";
+import {
+  canAccessAppView,
+  getBlockedViewMessage,
+} from "./lib/publicScopePolicy";
 import { TermsSafetyGate } from "./components/TermsSafetyGate";
 import {
   createAdminAvengerBackup,
@@ -96,6 +101,19 @@ const caseStatusLabels: Record<AdminCaseStatus, string> = {
   no_action_needed: "No action needed",
   evidence_saved: "Evidence saved",
 };
+
+const CAMERA_LAB_ROUTE_PATH = "/dev/camera-lab";
+const CAMERA_LAB_BUILD_ENABLED =
+  import.meta.env.DEV || import.meta.env.VITE_ENABLE_CAMERA_LAB === "true";
+const CAMERA_LAB_ENABLED =
+  CAMERA_LAB_BUILD_ENABLED && isCameraCalibrationLabEnabled(import.meta.env);
+const DevCameraCalibrationLabView = CAMERA_LAB_BUILD_ENABLED
+  ? lazy(() =>
+      import("./views/CameraCalibrationLabView").then((module) => ({
+        default: module.CameraCalibrationLabView,
+      })),
+    )
+  : undefined;
 
 const normalizeOptionalText = (value?: string) => {
   const trimmedValue = value?.trim();
@@ -181,6 +199,13 @@ function App() {
     useState<AdminItemFormValues>(emptyAdminItemForm);
   const [homeResult, setHomeResult] = useState<HomeAnalysisResult>();
   const [currentView, setCurrentView] = useState<AppView>("home");
+  const [publicAccessMessage, setPublicAccessMessage] = useState(() =>
+    typeof window !== "undefined" &&
+    window.location.pathname === CAMERA_LAB_ROUTE_PATH &&
+    !CAMERA_LAB_ENABLED
+      ? "That testing area is not available here. Return to Check a message."
+      : "",
+  );
   const [storageSaveError, setStorageSaveError] = useState("");
   // Blocking pre-use legal/safety gate - the app is not usable at all until
   // this is true. See src/lib/termsAcceptance.ts and
@@ -193,6 +218,10 @@ function App() {
   const [inboxScanSettings, setInboxScanSettings] = useState<InboxScanSettings>(
     loadInboxScanSettings,
   );
+  const isDevCameraLabRoute =
+    CAMERA_LAB_ENABLED &&
+    typeof window !== "undefined" &&
+    window.location.pathname === CAMERA_LAB_ROUTE_PATH;
 
   const selectedCase =
     adminCases.find((adminCase) => adminCase.id === selectedCaseId) ??
@@ -296,6 +325,17 @@ function App() {
     setInboxScanSettings((current) => ({ ...current, ...updates }));
   };
 
+  const handleNavigate = (view: AppView) => {
+    if (!canAccessAppView(view, import.meta.env)) {
+      setCurrentView("home");
+      setPublicAccessMessage(getBlockedViewMessage(view));
+      return;
+    }
+
+    setPublicAccessMessage("");
+    setCurrentView(view);
+  };
+
   const handleIgnoreInboxScanItem = (sampleId: string) => {
     setInboxScanSettings((current) =>
       current.ignoredItemIds.includes(sampleId)
@@ -368,7 +408,7 @@ function App() {
     ]);
     setSelectedFindingId(safetyFinding.id);
     setSelectedCaseId(safetyCase.id);
-    setCurrentView("case_file");
+    handleNavigate("case_file");
   };
 
   const handleSelectFinding = (findingId: string) => {
@@ -382,7 +422,7 @@ function App() {
 
   const handleOpenFinding = (findingId: string) => {
     handleSelectFinding(findingId);
-    setCurrentView("case_file");
+    handleNavigate("case_file");
   };
 
   const handleOpenCase = (caseId: string) => {
@@ -394,7 +434,7 @@ function App() {
 
     setSelectedCaseId(relatedCase.id);
     setSelectedFindingId(relatedCase.findingId);
-    setCurrentView("case_file");
+    handleNavigate("case_file");
   };
 
   const runAnalysis = async (
@@ -403,6 +443,7 @@ function App() {
     rawText: string,
     openCaseFile: boolean,
     setPreviewResult: (result: HomeAnalysisResult | undefined) => void = setHomeResult,
+    userQuestion?: string,
   ): Promise<HomeAnalysisResult | undefined> => {
     setPreviewResult(undefined);
     const now = new Date().toISOString();
@@ -413,6 +454,7 @@ function App() {
       rawText,
       createdAt: now,
       analysedAt: now,
+      userQuestion,
     };
     setAnalysisStatus("loading");
     setAnalysisError(undefined);
@@ -459,7 +501,7 @@ function App() {
 
     setPreviewResult(result);
     if (openCaseFile) {
-      setCurrentView("case_file");
+      handleNavigate("case_file");
     }
     setAnalysisStatus("success");
     return result;
@@ -478,8 +520,9 @@ function App() {
     title: string,
     sourceType: SourceType,
     rawText: string,
+    userQuestion?: string,
   ): Promise<boolean> => {
-    const result = await runAnalysis(title, sourceType, rawText, false);
+    const result = await runAnalysis(title, sourceType, rawText, false, setHomeResult, userQuestion);
     return Boolean(result);
   };
 
@@ -625,7 +668,7 @@ function App() {
     }
     setSelectedFindingId(resultCase.findingId);
     setSelectedCaseId(resultCase.id);
-    setCurrentView("case_file");
+    handleNavigate("case_file");
   };
 
   const handleClearHomeResult = () => {
@@ -1215,7 +1258,7 @@ function App() {
     setDataControlMessage(
       "Sample demo data loaded. This is not your real admin.",
     );
-    setCurrentView("home");
+    handleNavigate("home");
   };
 
   const handleDownloadLocalBackup = () => {
@@ -1264,10 +1307,27 @@ function App() {
     return <TermsSafetyGate mode="blocking" onAccept={handleAcceptTerms} />;
   }
 
+  if (isDevCameraLabRoute) {
+    if (!DevCameraCalibrationLabView) {
+      return null;
+    }
+
+    return (
+      <Suspense fallback={<div className="min-h-screen bg-slate-950 p-6 text-slate-100">Loading camera lab...</div>}>
+        <DevCameraCalibrationLabView
+          onClose={() => {
+            window.history.pushState({}, "", "/");
+            handleNavigate("home");
+          }}
+        />
+      </Suspense>
+    );
+  }
+
   return (
     <AppShell
       currentView={currentView}
-      onNavigate={setCurrentView}
+      onNavigate={handleNavigate}
       caseCount={adminCases.length}
       findingCount={findings.length}
     >
@@ -1290,6 +1350,21 @@ function App() {
         </div>
       ) : null}
 
+      {publicAccessMessage ? (
+        <div className="mb-5 rounded-lg border border-amber-300/30 bg-amber-300/10 px-4 py-3 text-sm leading-6 text-amber-50">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p>{publicAccessMessage}</p>
+            <button
+              type="button"
+              onClick={() => setPublicAccessMessage("")}
+              className="rounded-lg border border-amber-200/30 px-3 py-2 text-xs font-bold text-amber-50 transition hover:bg-amber-200/10"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       {currentView === "home" ? (
         <HomeView
           result={homeResult}
@@ -1304,7 +1379,6 @@ function App() {
           onIgnoreInboxScanItem={handleIgnoreInboxScanItem}
           onSaveScannedItem={handleSaveScannedItem}
           onSaveEmailSafetyCase={handleSaveEmailSafetyCase}
-          onOpenCommunityHelperDemo={() => setCurrentView("demo_tour")}
         />
       ) : null}
 
@@ -1317,7 +1391,7 @@ function App() {
           onCheck={handleDemoTourCheck}
           onClearResult={handleClearDemoTourResult}
           onActiveDemoScenarioChange={setActiveDemoScenarioId}
-          onNavigate={setCurrentView}
+          onNavigate={handleNavigate}
         />
       ) : null}
 
@@ -1333,7 +1407,7 @@ function App() {
         <DashboardView
           findings={findings}
           cases={adminCases}
-          onNavigate={setCurrentView}
+          onNavigate={handleNavigate}
           onOpenCase={handleOpenCase}
         />
       ) : null}
@@ -1396,7 +1470,7 @@ function App() {
       {currentView === "covenant" ? <CovenantView /> : null}
 
       {currentView === "trust_safety" ? (
-        <TrustSafetyView onNavigateToSettings={() => setCurrentView("settings")} />
+        <TrustSafetyView onNavigateToSettings={() => handleNavigate("settings")} />
       ) : null}
 
       {currentView === "settings" ? (
@@ -1405,7 +1479,7 @@ function App() {
           onClearLocalData={handleClearLocalData}
           onDownloadBackup={handleDownloadLocalBackup}
           dataControlMessage={dataControlMessage}
-          onNavigate={setCurrentView}
+          onNavigate={handleNavigate}
           inboxScanSettings={inboxScanSettings}
           onUpdateInboxScanSettings={handleUpdateInboxScanSettings}
           onViewTermsAgain={handleViewTermsAgain}

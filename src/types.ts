@@ -68,6 +68,7 @@ export type AdminItem = {
   rawText: string;
   createdAt: string;
   analysedAt?: string;
+  userQuestion?: string;
 };
 
 export type AdminFinding = {

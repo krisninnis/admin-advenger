@@ -25,7 +25,17 @@ import {
   assessPaymentReminder,
   buildPaymentReminderSuggestedAction,
 } from "./paymentReminderAssessment";
+import {
+  assessPublicIntakeScope,
+  type PublicScopeBoundary,
+} from "./publicScopePolicy";
 import { assessEmailSafety, createEmailSafetyFinding, getEmailSafetyRiskBand } from "./suspiciousEmail";
+
+export type AdminAnalysisAccessMode = "public" | "controlled";
+
+type AdminAnalysisOptions = {
+  accessMode?: AdminAnalysisAccessMode;
+};
 
 type CategoryRule = {
   category: FindingCategory;
@@ -654,7 +664,7 @@ const decisionConfidenceMap: Record<
 };
 
 const createDecisionEngineFinding = (item: AdminItem, text: string): AdminFinding => {
-  const decision = analyseDecisionProblem(text);
+  const decision = analyseDecisionProblem(text, item.userQuestion);
 
   return {
     id: `finding-${crypto.randomUUID()}`,
@@ -672,8 +682,49 @@ const createDecisionEngineFinding = (item: AdminItem, text: string): AdminFindin
   };
 };
 
-export const analyseAdminItem = (item: AdminItem): AdminFinding[] => {
+const createPublicScopeBoundaryFinding = (
+  item: AdminItem,
+  boundary: Extract<PublicScopeBoundary, { status: "blocked" }>,
+): AdminFinding => ({
+  id: `finding-${crypto.randomUUID()}`,
+  itemId: item.id,
+  category: "important_reply",
+  title:
+    boundary.availability === "controlled_beta"
+      ? "This needs a careful human review"
+      : "Specialist support may be needed",
+  summary:
+    boundary.availability === "controlled_beta"
+      ? "This looks outside the public Check a message scope. AdminAvenger is keeping it as preparation only and is not opening a specialist beta automatically."
+      : "This may involve urgent, safeguarding, housing, crisis, or another specialist area. AdminAvenger is keeping it as preparation only and is not deciding what action to take.",
+  whyItMatters:
+    "Some topics need a qualified person, trusted helper, or the original organisation to check the details. AdminAvenger can help keep track of the wording, but it will not decide rights, entitlement, eligibility, debt, housing, employment, or safety issues from this message.",
+  suggestedAction:
+    boundary.dateMentioned
+      ? `Keep the original message and note the date mentioned: ${boundary.dateMentioned}. Review the source wording carefully before deciding what to do next.`
+      : "Keep the original message, review the source wording carefully, and decide who should look at it next.",
+  estimatedValue: "No money counted",
+  urgency: boundary.reason === "safeguarding" || boundary.reason === "housing_or_crisis" ? "high" : "medium",
+  deadline: boundary.dateMentioned,
+  confidence: "medium",
+  status: "new",
+  createdAt: new Date().toISOString(),
+});
+
+export const analyseAdminItem = (
+  item: AdminItem,
+  options: AdminAnalysisOptions = {},
+): AdminFinding[] => {
   const text = `${item.title} ${item.rawText} ${sourceTypeLabels[item.sourceType]}`.toLowerCase();
+
+  if (options.accessMode === "public" && !isBroadbandPriceRiseScenario(item)) {
+    const publicScopeBoundary = assessPublicIntakeScope(item);
+
+    if (publicScopeBoundary.status === "blocked") {
+      return [createPublicScopeBoundaryFinding(item, publicScopeBoundary)];
+    }
+  }
+
   const careerSupportPack = buildCareerSupportPack({
     text: `${item.title}\n${item.rawText}`,
   });
@@ -806,8 +857,8 @@ export const analyseAdminItem = (item: AdminItem): AdminFinding[] => {
     !appointmentTaskFinding &&
     !broadbandPriceRiseFinding &&
     !trainDelayFinding &&
-    isDecisionEngineDocument(`${item.title}\n${item.rawText}`)
-      ? createDecisionEngineFinding(item, `${item.title}\n${item.rawText}`)
+    isDecisionEngineDocument(item.rawText)
+      ? createDecisionEngineFinding(item, item.rawText)
       : undefined;
 
   const findings = categoryRules

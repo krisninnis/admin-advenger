@@ -4,6 +4,7 @@ import { BenefitsActionPackPanel } from "../components/BenefitsActionPackPanel";
 import { GuidedNextStepPanel } from "../components/GuidedNextStepPanel";
 import { InboxScanPreview } from "../components/InboxScanPreview";
 import { InboxScanPromptCard } from "../components/InboxScanPromptCard";
+import { LowConfidenceOcrReviewPanel } from "../components/LowConfidenceOcrReviewPanel";
 import { OpportunityCardPanel } from "../components/OpportunityCardPanel";
 import { PhotoCapturePanel } from "../components/PhotoCapturePanel";
 import {
@@ -25,17 +26,12 @@ import {
   buildAdviserExportPack,
   getAdviserExportFilename,
   renderAdviserExportMarkdown,
-  type AdviserExportPack,
 } from "../lib/adviserExportPack";
 import { downloadAdviserExportMarkdown } from "../lib/adviserExportDownload";
 import { buildBenefitsActionPack } from "../lib/benefitsActionPack";
 import { deriveOpportunityCard, describeConfidence } from "../lib/opportunityCards";
-import { buildResultViewModel, type ResultViewModel } from "../lib/resultViewModel";
+import { buildResultViewModel } from "../lib/resultViewModel";
 import { buildStrategicNextStepPlan } from "../lib/strategicNextStep";
-import {
-  buildWorkplaceSupportPack,
-  type WorkplaceSupportPack,
-} from "../lib/workplaceSupportPack";
 import {
   createPhotoIntakeMetadata,
   getImageDimensions,
@@ -55,7 +51,7 @@ import {
 import {
   classifyUploadedFile,
   isSupportedTextFile,
-  photoAcceptAttribute,
+  photoCaptureAcceptAttribute,
   quickUploadAcceptAttribute,
   UNSUPPORTED_FILE_MESSAGE,
 } from "../lib/fileIntakeAccept";
@@ -90,14 +86,10 @@ import {
   OCR_READING_STATUS_MESSAGE,
   OCR_REVIEW_BEFORE_CHECKING_MESSAGE,
   OCR_RUNS_ON_DEVICE_MESSAGE,
-  OCR_CHECK_TEXT_UNRELIABLE_WARNING,
   OCR_EXTRA_PHOTO_LABEL,
   OCR_KEY_DETAILS_NOT_RELIABLE_MESSAGE,
   OCR_KEY_DETAILS_REVIEW_OPTIONS_MESSAGE,
   OcrReadError,
-  OCR_UNRELIABLE_EDIT_MESSAGE,
-  OCR_UNRELIABLE_MESSAGE,
-  OCR_UNRELIABLE_RETAKE_MESSAGE,
   appendExtraPhotoText,
   formatOcrSectionWarning,
   isOcrKeyDetailsReliable,
@@ -126,6 +118,7 @@ import type {
   SourceType,
 } from "../types";
 import type { GuidedDraftToSave } from "../lib/guidedDraftSave";
+import { submitAcceptedText } from "../lib/submissionHandoff";
 
 export type HomeAnalysisResult = {
   item: AdminItem;
@@ -133,17 +126,11 @@ export type HomeAnalysisResult = {
   cases: AdminCase[];
 };
 
-type WorkplaceBetaResult = {
-  workplaceSupportPack: WorkplaceSupportPack;
-  resultViewModel: ResultViewModel;
-  adviserExportPack: AdviserExportPack;
-};
-
 type HomeViewProps = {
   result?: HomeAnalysisResult;
   analysisStatus: ServiceStatus;
   analysisError?: string;
-  onCheck: (title: string, sourceType: SourceType, rawText: string) => Promise<boolean>;
+  onCheck: (title: string, sourceType: SourceType, rawText: string, userQuestion?: string) => Promise<boolean>;
   onSaveCase: (caseId: string, draft?: GuidedDraftToSave) => void;
   onSaveRecord: (caseId: string) => void;
   onClearResult: () => void;
@@ -152,13 +139,6 @@ type HomeViewProps = {
   onIgnoreInboxScanItem: (sampleId: string) => void;
   onSaveScannedItem: (item: AdminItem, findings: AdminFinding[], cases: AdminCase[]) => void;
   onSaveEmailSafetyCase: (item: AdminItem, assessment: EmailSafetyAssessment) => void;
-  // Community Helper Home Gated v1 - opens the existing, already-shipped
-  // Community Helper demo/support section on the Demo/tour page. This is a
-  // pure navigation hop: HomeView never builds a community helper pack
-  // itself, never routes pasted text into it, and never touches the
-  // decision-engine classifier or OCR/file intake. See
-  // docs/product/community-helper-home-gated-v1.md.
-  onOpenCommunityHelperDemo: () => void;
 };
 
 const categoryLabels: Record<AdminCase["category"], string> = {
@@ -400,6 +380,7 @@ const sampleInputs: Array<{ label: string; title: string; sourceType: SourceType
 ];
 
 type OcrStatus = "idle" | "reading" | "success" | "error";
+type PhotoCaptureIntent = "replace" | "append" | "attachment";
 
 function FactList({ title, items }: { title: string; items: string[] }) {
   if (items.length === 0) {
@@ -497,7 +478,6 @@ export function HomeView({
   onIgnoreInboxScanItem,
   onSaveScannedItem,
   onSaveEmailSafetyCase,
-  onOpenCommunityHelperDemo,
 }: HomeViewProps) {
   const [rawText, setRawText] = useState("");
   const [inboxScanOpen, setInboxScanOpen] = useState(false);
@@ -505,6 +485,7 @@ export function HomeView({
   const [uploadedFileName, setUploadedFileName] = useState("");
   const [uploadNote, setUploadNote] = useState("");
   const [inputMessage, setInputMessage] = useState("");
+  const [userQuestion, setUserQuestion] = useState("");
   const [imagePreviewUrl, setImagePreviewUrl] = useState("");
   const [photoMetadata, setPhotoMetadata] = useState<PhotoIntakeMetadata | undefined>();
   const [ocrStatus, setOcrStatus] = useState<OcrStatus>("idle");
@@ -516,7 +497,7 @@ export function HomeView({
   const [ocrWarnings, setOcrWarnings] = useState<string[]>([]);
   const [ocrSectionWarnings, setOcrSectionWarnings] = useState<string[]>([]);
   const [ocrSourceMode, setOcrSourceMode] = useState<"single" | "multi">("single");
-  const [photoCaptureIntent, setPhotoCaptureIntent] = useState<"replace" | "append">("replace");
+  const [photoCaptureIntent, setPhotoCaptureIntent] = useState<PhotoCaptureIntent>("replace");
   const [inputResetKey, setInputResetKey] = useState(0);
   const [aiSettings, setAiSettings] = useState(loadAiProviderSettings);
   const [aiStatus, setAiStatus] = useState<ServiceStatus>("idle");
@@ -526,20 +507,20 @@ export function HomeView({
   const [showDetailed, setShowDetailed] = useState(false);
   const [showEmailSafety, setShowEmailSafety] = useState(false);
   const [showGuidedNextStep, setShowGuidedNextStep] = useState(false);
-  const [workplaceBetaEnabled, setWorkplaceBetaEnabled] = useState(false);
-  const [workplaceBetaResult, setWorkplaceBetaResult] = useState<WorkplaceBetaResult | undefined>();
   const [showPhotoCapturePanel, setShowPhotoCapturePanel] = useState(false);
   // An image chosen from the "Upload a file" area (or the "+" upload menu) is
-  // handed to PhotoCapturePanel so it opens on the "Adjust document area" step,
-  // exactly like an image uploaded via "Take or upload a photo".
+  // handed to PhotoCapturePanel so it uses the same automatic scan review as
+  // an image uploaded via "Take or upload a photo".
   const [pendingPhotoFile, setPendingPhotoFile] = useState<File | undefined>();
+  const [pendingAttachmentImageIds, setPendingAttachmentImageIds] = useState<string[]>([]);
+  const [activeAttachmentImageId, setActiveAttachmentImageId] = useState<string | undefined>();
   const [showExamples, setShowExamples] = useState(false);
   const [showDeveloperOptions, setShowDeveloperOptions] = useState(false);
   const [showInboxTools, setShowInboxTools] = useState(false);
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [isDesktopPointer, setIsDesktopPointer] = useState(false);
   // Document Attachment Intake v1 - files attached beside the paste box
-  // (chosen from the device, taken with the camera, or dropped). Kept as its
+  // (chosen from the device or dropped). Kept as its
   // own small list rather than reusing the single-photo OCR state above, so
   // attaching files never disturbs the existing "Take or upload a photo" /
   // "Upload a file" tabs - it only ever feeds combined text into the same
@@ -628,17 +609,8 @@ export function HomeView({
           strategicNextStepPlan,
         })
       : undefined;
-  const workplaceSupportPack = workplaceBetaResult?.workplaceSupportPack;
-  const isWorkplaceBetaResultActive = Boolean(workplaceBetaResult);
-  const isSettlementWorkplaceResult =
-    workplaceSupportPack?.documentType === "settlement_agreement_signpost";
-  const hasWorkplaceResignationRisk = Boolean(
-    workplaceSupportPack?.riskWarnings.some((warning) =>
-      /resignation|constructive dismissal|resign|quitting|walking out/i.test(warning),
-    ),
-  );
-  const resultViewModel = workplaceBetaResult?.resultViewModel ?? normalResultViewModel;
-  const adviserExportPack = workplaceBetaResult?.adviserExportPack ?? normalAdviserExportPack;
+  const resultViewModel = normalResultViewModel;
+  const adviserExportPack = normalAdviserExportPack;
   const guidedMode =
     primaryCase && primaryOpportunity
       ? getGuidedCaseMode(primaryCase, primaryOpportunity)
@@ -791,6 +763,36 @@ export function HomeView({
     setIsDesktopPointer(!isCoarsePointerEnvironment());
   }, []);
 
+  useEffect(() => {
+    if (
+      showPhotoCapturePanel ||
+      activeAttachmentImageId ||
+      pendingAttachmentImageIds.length === 0
+    ) {
+      return;
+    }
+
+    const nextAttachmentId = pendingAttachmentImageIds[0];
+    const nextAttachment = attachedFiles.find(
+      (attached) =>
+        attached.id === nextAttachmentId &&
+        attached.kind === "image" &&
+        attached.status === "waiting",
+    );
+
+    if (!nextAttachment) {
+      setPendingAttachmentImageIds((current) =>
+        current.filter((attachmentId) => attachmentId !== nextAttachmentId),
+      );
+      return;
+    }
+
+    setPendingPhotoFile(nextAttachment.file);
+    setActiveAttachmentImageId(nextAttachment.id);
+    setPhotoCaptureIntent("attachment");
+    setShowPhotoCapturePanel(true);
+  }, [activeAttachmentImageId, attachedFiles, pendingAttachmentImageIds, showPhotoCapturePanel]);
+
   const clearInput = () => {
     if (imagePreviewUrl) {
       URL.revokeObjectURL(imagePreviewUrl);
@@ -815,9 +817,13 @@ export function HomeView({
     setAiExtraction(undefined);
     setShowDetailed(false);
     setShowEmailSafety(false);
-    setWorkplaceBetaResult(undefined);
     setInputResetKey((current) => current + 1);
     setAttachedFiles([]);
+    setPendingAttachmentImageIds([]);
+    setActiveAttachmentImageId(undefined);
+    setPendingPhotoFile(undefined);
+    setShowPhotoCapturePanel(false);
+    setPhotoCaptureIntent("replace");
     setIsDraggingOverAttachment(false);
     onClearResult();
   };
@@ -840,8 +846,12 @@ export function HomeView({
     setAiFallbackHint("");
     setAiExtraction(undefined);
     setShowEmailSafety(false);
-    setWorkplaceBetaResult(undefined);
     setAttachedFiles([]);
+    setPendingAttachmentImageIds([]);
+    setActiveAttachmentImageId(undefined);
+    setPendingPhotoFile(undefined);
+    setShowPhotoCapturePanel(false);
+    setPhotoCaptureIntent("replace");
     setIsDraggingOverAttachment(false);
     onClearResult();
   };
@@ -878,13 +888,15 @@ export function HomeView({
       setShowDetailed(false);
       setShowEmailSafety(false);
 
-      const checked = await onCheck(
-        sourceTitle === "Pasted admin text"
+      const checked = await submitAcceptedText({
+        sourceTitle: sourceTitle === "Pasted admin text"
           ? "Local AI extracted admin facts"
           : `Local AI extracted admin facts from ${sourceTitle}`,
-        "email",
-        reconstructedText,
-      );
+        sourceType: "email",
+        acceptedText: reconstructedText,
+        userQuestion,
+        onCheck,
+      });
 
       if (!checked) {
         setAiExtraction(undefined);
@@ -906,7 +918,13 @@ export function HomeView({
       setShowDetailed(false);
       setShowEmailSafety(false);
 
-      await onCheck(sourceTitle, "email", textToExtract);
+      await submitAcceptedText({
+        sourceTitle,
+        sourceType: "email",
+        acceptedText: textToExtract,
+        userQuestion,
+        onCheck,
+      });
     }
   };
 
@@ -914,7 +932,6 @@ export function HomeView({
     setAiExtraction(undefined);
     setShowDetailed(false);
     setShowEmailSafety(false);
-    setWorkplaceBetaResult(undefined);
     onClearResult();
 
     if (selectedInput === "image" && rawText.trim().length === 0) {
@@ -952,28 +969,6 @@ export function HomeView({
       return;
     }
 
-    if (workplaceBetaEnabled) {
-      const workplacePack = buildWorkplaceSupportPack({ text: textToCheck });
-      const workplaceResultViewModel = buildResultViewModel({
-        workplaceSupportPack: workplacePack,
-      });
-      const workplaceAdviserExportPack = buildAdviserExportPack({
-        resultViewModel: workplaceResultViewModel,
-        workplaceSupportPack: workplacePack,
-      });
-
-      setInputMessage("");
-      setAiError("");
-      setAiFallbackHint("");
-      setAiStatus("idle");
-      setWorkplaceBetaResult({
-        workplaceSupportPack: workplacePack,
-        resultViewModel: workplaceResultViewModel,
-        adviserExportPack: workplaceAdviserExportPack,
-      });
-      return;
-    }
-
     if (isLocalOllamaMode) {
       await runOllamaExtraction(textToCheck, checkSourceTitle);
       return;
@@ -982,7 +977,13 @@ export function HomeView({
     setInputMessage("");
     setAiError("");
     setAiFallbackHint("");
-    const checked = await onCheck(checkSourceTitle, "email", textToCheck);
+    const checked = await submitAcceptedText({
+      sourceTitle: checkSourceTitle,
+      sourceType: "email",
+      acceptedText: textToCheck,
+      userQuestion,
+      onCheck,
+    });
 
     if (!checked) {
       setAiExtraction(undefined);
@@ -1036,75 +1037,61 @@ export function HomeView({
     };
   };
 
-  const handleImageUpload = async (file?: File) => {
+  const resetPhotoOcrReview = () => {
     if (imagePreviewUrl) {
       URL.revokeObjectURL(imagePreviewUrl);
       setImagePreviewUrl("");
     }
 
-    setUploadedFileName(file?.name ?? "");
+    setUploadedFileName("");
     setInputMessage("");
     setAiExtraction(undefined);
     setPhotoMetadata(undefined);
     setOcrStatus("idle");
     setOcrText("");
+    setOcrOriginalText("");
     setOcrProgress(0);
     setOcrError("");
     setOcrConfidence(undefined);
     setOcrWarnings([]);
     setOcrSectionWarnings([]);
     setOcrSourceMode("single");
-
-    if (!file) {
-      setUploadNote("");
-      return;
-    }
-
-    if (!isFileWithinSizeLimit(file)) {
-      const message = getFileTooLargeMessage(file);
-      setUploadNote(message);
-      setOcrStatus("error");
-      setOcrError(message);
-      return;
-    }
-
-    if (!isSupportedPhotoFile(file)) {
-      setUploadNote(
-        "This image type may not be readable here. Try JPG, PNG, WEBP, or paste the text manually.",
-      );
-      setOcrStatus("error");
-      setOcrError("AdminAvenger could not read this photo type in the browser.");
-      return;
-    }
-
-    setImagePreviewUrl(URL.createObjectURL(file));
-    setUploadNote(
-      "Photo stays in this browser in this version. The full photo is not stored in this prototype - keep the original photo somewhere safe.",
-    );
-
-    setOcrStatus("reading");
-    setOcrWarnings([]);
-
-    try {
-      const result = await readPhotoForOcr({ file }, 0, 1);
-
-      setOcrConfidence(result.confidence);
-      setPhotoMetadata(result.metadata);
-      setOcrWarnings(result.warnings);
-      setOcrProgress(1);
-      setOcrText(result.text);
-      setOcrOriginalText(result.text);
-      setOcrStatus("success");
-      setInputMessage("");
-    } catch (error) {
-      setOcrStatus("error");
-      setOcrError(error instanceof OcrReadError ? error.message : OCR_FAILED_MESSAGE);
-    }
+    setUploadNote("");
   };
 
   const getLowestOcrConfidence = (values: Array<number | undefined>) => {
     const numericValues = values.filter((value): value is number => typeof value === "number");
     return numericValues.length > 0 ? Math.min(...numericValues) : undefined;
+  };
+
+  const finishAttachmentImageReview = (attachmentId: string) => {
+    setPendingAttachmentImageIds((current) =>
+      current.filter((queuedAttachmentId) => queuedAttachmentId !== attachmentId),
+    );
+    setActiveAttachmentImageId(undefined);
+    setPendingPhotoFile(undefined);
+    setShowPhotoCapturePanel(false);
+    setPhotoCaptureIntent("replace");
+  };
+
+  const handleRejectAttachmentImageReview = () => {
+    const attachmentId = activeAttachmentImageId;
+
+    if (!attachmentId) {
+      setShowPhotoCapturePanel(false);
+      setPendingPhotoFile(undefined);
+      setPhotoCaptureIntent("replace");
+      return;
+    }
+
+    finishAttachmentImageReview(attachmentId);
+  };
+
+  const handleCancelAttachmentImageReviewQueue = () => {
+    setPendingAttachmentImageIds([]);
+    setActiveAttachmentImageId(undefined);
+    setPendingPhotoFile(undefined);
+    setPhotoCaptureIntent("replace");
   };
 
   const handleCapturedPhotos = async (photos: CapturedPhotoForOcr[]) => {
@@ -1229,18 +1216,76 @@ export function HomeView({
     }
   };
 
+  const handleConfirmedAttachmentPhotos = async (photos: CapturedPhotoForOcr[]) => {
+    const attachmentId = activeAttachmentImageId;
+    const reviewedPhoto = photos[0];
+
+    if (!attachmentId) {
+      return;
+    }
+
+    if (!reviewedPhoto?.isDocumentScan) {
+      setAttachedFiles((current) =>
+        current.map((item) =>
+          item.id === attachmentId
+            ? { ...item, status: "failed", errorMessage: ATTACHMENT_READ_FAILED_MESSAGE }
+            : item,
+        ),
+      );
+      finishAttachmentImageReview(attachmentId);
+      return;
+    }
+
+    setAttachedFiles((current) =>
+      current.map((item) =>
+        item.id === attachmentId
+          ? { ...item, status: "reading", errorMessage: undefined, warnings: [] }
+          : item,
+      ),
+    );
+
+    try {
+      const result = await readPhotoForOcr(reviewedPhoto, 0, 1);
+
+      setAttachedFiles((current) =>
+        current.map((item) =>
+          item.id === attachmentId
+            ? {
+                ...item,
+                status: "read",
+                extractedText: result.text,
+                confidence: result.confidence,
+                warnings: result.warnings,
+              }
+            : item,
+        ),
+      );
+    } catch {
+      setAttachedFiles((current) =>
+        current.map((item) =>
+          item.id === attachmentId
+            ? { ...item, status: "failed", errorMessage: ATTACHMENT_READ_FAILED_MESSAGE }
+            : item,
+        ),
+      );
+    } finally {
+      finishAttachmentImageReview(attachmentId);
+    }
+  };
+
   // "Check this text" - uses the reviewed/edited OCR text (never the raw
   // untouched OCR output) and feeds it straight into the same Check a
   // message flow every other input path uses. Never auto-saves or uploads
   // the photo, and never contacts anyone or counts money automatically -
   // it only runs the existing local decision-engine check.
-  const handleCheckOcrText = async () => {
-    const cleanedText = ocrText.trim();
+  const handleCheckOcrText = async (reviewedText = ocrText) => {
+    const cleanedText = reviewedText.trim();
 
     if (!cleanedText || isChecking || isAiReading || isReadingPhoto) {
       return;
     }
 
+    setOcrText(cleanedText);
     setRawText(cleanedText);
     setSelectedInput("paste");
     setAiExtraction(undefined);
@@ -1256,7 +1301,13 @@ export function HomeView({
       return;
     }
 
-    const checked = await onCheck("Photo text (reviewed before checking)", "email", cleanedText);
+    const checked = await submitAcceptedText({
+      sourceTitle: "Photo text (reviewed before checking)",
+      sourceType: "email",
+      acceptedText: cleanedText,
+      userQuestion,
+      onCheck,
+    });
 
     if (!checked) {
       setAiExtraction(undefined);
@@ -1267,7 +1318,7 @@ export function HomeView({
   // same "Take or upload a photo" panel used to get here, rather than
   // introducing a second way to pick a photo.
   const handleRetakePhoto = () => {
-    void handleImageUpload(undefined);
+    resetPhotoOcrReview();
     setPendingPhotoFile(undefined);
     setPhotoCaptureIntent("replace");
     setShowPhotoCapturePanel(true);
@@ -1282,10 +1333,28 @@ export function HomeView({
     setShowPhotoCapturePanel(true);
   };
 
+  const handleUploadClearerPhoto = (file: File) => {
+    resetPhotoOcrReview();
+    setPendingPhotoFile(file);
+    setPhotoCaptureIntent("replace");
+    setShowPhotoCapturePanel(true);
+  };
+
   // "Cancel" - backs out of the photo/OCR review without picking a new
   // photo. Reuses the same reset path as clearing/removing a photo.
   const handleCancelOcrReview = () => {
-    void handleImageUpload(undefined);
+    resetPhotoOcrReview();
+  };
+
+  const handlePhotoEditManually = () => {
+    if (photoCaptureIntent === "attachment") {
+      handleCancelAttachmentImageReviewQueue();
+    }
+
+    setShowPhotoCapturePanel(false);
+    setPendingPhotoFile(undefined);
+    setPhotoCaptureIntent("replace");
+    setSelectedInput("paste");
   };
 
   const handleFileUpload = async (file?: File) => {
@@ -1347,7 +1416,7 @@ export function HomeView({
   // Routes any file chosen from an upload control (the "Upload a file" area
   // and the compact "+" upload menu) to the right place. An image goes
   // through the same photo OCR flow as "Take or upload a photo", opening the
-  // panel on the "Adjust document area" step - so an image is never shown an
+  // panel on the automatic scan review step - so an image is never shown an
   // unsupported or "not active in this mode" message. Text files use the
   // existing text reader; anything else falls through to the "not supported
   // yet" message inside handleFileUpload.
@@ -1398,8 +1467,9 @@ export function HomeView({
 
   // Document Attachment Intake v1 (+ Document File Support v1) - adds newly
   // chosen/dropped files to the attachment list, then reads each one in the
-  // order they were attached: images through the same on-device OCR as every
-  // other photo path, text files through the browser's own File.text(), and
+  // order they were attached: images are queued through the same browser-local
+  // PhotoCapturePanel scan confirmation path as every other photo, text files
+  // through the browser's own File.text(), and
   // DOCX/PDF files through the local extractors in
   // src/lib/documentFileText.ts. A read failure on one file only marks that
   // file as failed - it never stops the other files from being read, and
@@ -1412,9 +1482,16 @@ export function HomeView({
 
     const newEntries = newFiles.map((file) => createAttachedFile(file));
     setAttachedFiles((current) => [...current, ...newEntries]);
+    const queuedImageIds = newEntries
+      .filter((entry) => entry.kind === "image" && entry.status === "waiting")
+      .map((entry) => entry.id);
+
+    if (queuedImageIds.length > 0) {
+      setPendingAttachmentImageIds((current) => [...current, ...queuedImageIds]);
+    }
 
     for (const entry of newEntries) {
-      if (entry.status === "failed") {
+      if (entry.status === "failed" || entry.kind === "image") {
         continue;
       }
 
@@ -1423,25 +1500,7 @@ export function HomeView({
       );
 
       try {
-        if (entry.kind === "image") {
-          // Sequential, in attachment order - see buildAttachedFilesCombinedText.
-          // eslint-disable-next-line no-await-in-loop
-          const result = await readTextFromImage(entry.file);
-
-          setAttachedFiles((current) =>
-            current.map((item) =>
-              item.id === entry.id
-                ? {
-                    ...item,
-                    status: "read",
-                    extractedText: result.text,
-                    confidence: result.confidence,
-                    warnings: result.warnings,
-                  }
-                : item,
-            ),
-          );
-        } else if (entry.kind === "docx" || entry.kind === "pdf") {
+        if (entry.kind === "docx" || entry.kind === "pdf") {
           // Document File Support v1 - DOCX/PDF are read locally with
           // mammoth/pdfjs-dist (see src/lib/documentFileText.ts), never
           // uploaded anywhere. A "no selectable text" result (a scanned PDF,
@@ -1497,6 +1556,15 @@ export function HomeView({
   };
 
   const handleRemoveAttachedFile = (id: string) => {
+    setPendingAttachmentImageIds((current) =>
+      current.filter((attachmentId) => attachmentId !== id),
+    );
+    if (activeAttachmentImageId === id) {
+      setActiveAttachmentImageId(undefined);
+      setPendingPhotoFile(undefined);
+      setShowPhotoCapturePanel(false);
+      setPhotoCaptureIntent("replace");
+    }
     setAttachedFiles((current) => current.filter((item) => item.id !== id));
   };
 
@@ -1536,7 +1604,7 @@ export function HomeView({
           AI remembers. AI explains. Humans decide.
         </p>
         <h2 className="text-2xl font-bold tracking-tight text-white sm:text-5xl">
-          Paste a bill, email, letter, CV, job advert, or message.
+          Paste a bill, email, letter, or message.
         </h2>
         <p className="max-w-xl text-base leading-7 text-slate-300 sm:text-lg sm:leading-8">
           AdminAvenger explains it in plain English, tells you what to have ready, and prepares the
@@ -1840,7 +1908,11 @@ export function HomeView({
                         <input
                           type="file"
                           accept={quickUploadAcceptAttribute}
-                          onChange={(event) => void handleUploadedFileSelection(event.target.files?.[0])}
+                          onChange={(event) => {
+                            const file = event.target.files?.[0];
+                            event.target.value = "";
+                            void handleUploadedFileSelection(file);
+                          }}
                           className="sr-only"
                         />
                       </label>
@@ -1868,7 +1940,7 @@ export function HomeView({
                   }
                 }}
                 rows={9}
-                placeholder="Paste the email, bill, letter, CV, job advert, or message here..."
+                placeholder="Paste the email, bill, letter, or message here..."
                 className="mt-3 w-full resize-y rounded-lg border border-white/10 bg-slate-950 px-4 py-4 text-base leading-7 text-white outline-none transition placeholder:text-slate-600 focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20"
               />
               </div>
@@ -1892,12 +1964,12 @@ export function HomeView({
             </div>
           ) : (
             <div className="rounded-lg border border-dashed border-white/15 bg-slate-950/60 p-5">
-              <label className="block text-base font-bold text-white">
+              <div className="block text-base font-bold text-white">
                 {selectedInput === "image" ? "Take or upload a photo" : "Choose or drop a file"}
                 {selectedInput === "image" ? (
                   <span className="mt-2 block text-sm font-normal leading-6 text-slate-400">
-                    Take a photo of a letter, bill, receipt, or email. AdminAvenger will try to
-                    read the text on this device.
+                    Take or choose one photo of a letter, bill, receipt, or email. AdminAvenger
+                    will find the document area locally and ask you to review it before OCR.
                   </span>
                 ) : (
                   <span className="mt-2 block text-sm font-normal leading-6 text-slate-400">
@@ -1905,22 +1977,47 @@ export function HomeView({
                     into the attachment area below.
                   </span>
                 )}
-                <input
-                  key={`${selectedInput}-${inputResetKey}`}
-                  type="file"
-                  accept={selectedInput === "image" ? photoAcceptAttribute : quickUploadAcceptAttribute}
-                  capture={selectedInput === "image" ? "environment" : undefined}
-                  onChange={(event) =>
-                    selectedInput === "image"
-                      ? void handleImageUpload(event.target.files?.[0])
-                      : void handleUploadedFileSelection(event.target.files?.[0])
-                  }
-                  className="mt-4 block w-full rounded-lg border border-white/10 bg-slate-950 px-4 py-3 text-sm text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-emerald-400 file:px-3 file:py-2 file:text-sm file:font-bold file:text-slate-950"
-                />
+                {selectedInput === "image" ? (
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      onClick={handleOpenPhotoCapturePanel}
+                      className="min-h-11 rounded-lg bg-emerald-400 px-4 py-3 text-sm font-bold text-slate-950 shadow-lg shadow-emerald-950/30 transition hover:bg-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-200"
+                    >
+                      Take photo
+                    </button>
+                    <label className="flex min-h-11 cursor-pointer items-center justify-center rounded-lg border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-slate-200 transition hover:border-white/20 hover:text-white focus-within:ring-2 focus-within:ring-emerald-300/40">
+                      Upload existing photo
+                      <input
+                        key={`${selectedInput}-${inputResetKey}`}
+                        type="file"
+                        accept={photoCaptureAcceptAttribute}
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          event.target.value = "";
+                          void handleUploadedFileSelection(file);
+                        }}
+                        className="sr-only"
+                      />
+                    </label>
+                  </div>
+                ) : (
+                  <input
+                    key={`${selectedInput}-${inputResetKey}`}
+                    type="file"
+                    accept={quickUploadAcceptAttribute}
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      event.target.value = "";
+                      void handleUploadedFileSelection(file);
+                    }}
+                    className="mt-4 block w-full rounded-lg border border-white/10 bg-slate-950 px-4 py-3 text-sm text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-emerald-400 file:px-3 file:py-2 file:text-sm file:font-bold file:text-slate-950"
+                  />
+                )}
                 <span className="mt-2 block text-xs font-semibold leading-5 text-slate-500">
                   {FILE_SIZE_LIMIT_HELPER}
                 </span>
-              </label>
+              </div>
               {uploadedFileName ? (
                 <p className="mt-3 text-sm font-semibold text-slate-200">{uploadedFileName}</p>
               ) : null}
@@ -1970,28 +2067,25 @@ export function HomeView({
                   </div>
                 </div>
               ) : null}
-              {selectedInput === "image" && ocrStatus === "success" ? (
+              {selectedInput === "image" && ocrStatus === "success" && isOcrReviewUnreliable ? (
+                <LowConfidenceOcrReviewPanel
+                  previewUrl={imagePreviewUrl}
+                  extractedText={ocrText}
+                  onRetake={handleRetakePhoto}
+                  onAddCloseUp={handleAddCloseUpPhoto}
+                  onUploadClearer={handleUploadClearerPhoto}
+                  onCheckCorrectedText={(text) => void handleCheckOcrText(text)}
+                  onCancel={handleCancelOcrReview}
+                  disabled={isChecking || isAiReading || isReadingPhoto}
+                />
+              ) : null}
+              {selectedInput === "image" && ocrStatus === "success" && !isOcrReviewUnreliable ? (
                 <div className="mt-4 rounded-lg border border-emerald-300/20 bg-emerald-300/[0.07] p-4">
                   <p role="status" aria-live="polite" aria-atomic="true" className="text-sm font-bold text-emerald-50">
                     {ocrSourceMode === "multi" ? OCR_COMBINED_PHOTOS_ON_DEVICE_MESSAGE : OCR_ON_DEVICE_MESSAGE}
                   </p>
                   <p className="mt-2 text-sm leading-6 text-emerald-50/80">{OCR_MISTAKES_MESSAGE}</p>
-                  {isOcrReviewUnreliable ? (
-                    <div className="mt-3 rounded-lg border border-amber-300/40 bg-amber-300/15 px-4 py-3">
-                      <p className="text-sm font-bold text-amber-50">Retake recommended</p>
-                      <p className="mt-1 text-sm font-bold text-amber-50">{OCR_UNRELIABLE_MESSAGE}</p>
-                      <p className="mt-1 text-sm leading-6 text-amber-100/90">
-                        {OCR_ADD_CLOSE_UP_SUGGESTION}
-                      </p>
-                      <p className="mt-1 text-sm leading-6 text-amber-100/90">
-                        {OCR_UNRELIABLE_RETAKE_MESSAGE}
-                      </p>
-                      <p className="mt-1 text-sm leading-6 text-amber-100/90">
-                        {OCR_UNRELIABLE_EDIT_MESSAGE}
-                      </p>
-                    </div>
-                  ) : null}
-                  {shouldHideOcrKeyDetails && !isOcrReviewUnreliable ? (
+                  {shouldHideOcrKeyDetails ? (
                     <div className="mt-3 rounded-lg border border-amber-300/35 bg-amber-300/10 px-4 py-3">
                       <p className="text-sm font-bold text-amber-50">
                         {OCR_KEY_DETAILS_NOT_RELIABLE_MESSAGE}
@@ -2058,9 +2152,9 @@ export function HomeView({
                   ) : null}
                   <label className="mt-3 block text-sm font-bold text-emerald-50">
                     Edit the text if needed
-                  <textarea
-                    value={ocrText}
-                    onChange={(event) => setOcrText(event.target.value)}
+                    <textarea
+                      value={ocrText}
+                      onChange={(event) => setOcrText(event.target.value)}
                       rows={9}
                       className="mt-2 w-full resize-y rounded-lg border border-white/10 bg-slate-950 px-4 py-4 text-base leading-7 text-white outline-none transition placeholder:text-slate-600 focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20"
                     />
@@ -2069,11 +2163,6 @@ export function HomeView({
                     {OCR_REVIEW_BEFORE_CHECKING_MESSAGE} {OCR_RUNS_ON_DEVICE_MESSAGE}
                     {ocrConfidence === undefined ? "" : ` OCR confidence: ${Math.round(ocrConfidence)}%.`}
                   </p>
-                  {isOcrReviewUnreliable && !hasEditedOcrText ? (
-                    <p className="mt-2 rounded-lg border border-amber-300/25 bg-amber-300/10 px-3 py-2 text-xs font-semibold leading-5 text-amber-100">
-                      {OCR_CHECK_TEXT_UNRELIABLE_WARNING}
-                    </p>
-                  ) : null}
                   <div className="mt-4 grid gap-2 sm:grid-cols-4">
                     <button
                       type="button"
@@ -2094,11 +2183,7 @@ export function HomeView({
                     <button
                       type="button"
                       onClick={handleRetakePhoto}
-                      className={
-                        isOcrReviewUnreliable
-                          ? "min-h-11 rounded-lg bg-amber-300 px-4 py-3 text-sm font-bold text-slate-950 shadow-lg shadow-amber-950/30 transition hover:bg-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-100 focus:ring-offset-2 focus:ring-offset-slate-950"
-                          : "min-h-11 rounded-lg border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-slate-200 transition hover:border-white/20 hover:text-white"
-                      }
+                      className="min-h-11 rounded-lg border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-slate-200 transition hover:border-white/20 hover:text-white"
                     >
                       {PHOTO_RETAKE_PHOTO_LABEL}
                     </button>
@@ -2149,33 +2234,29 @@ export function HomeView({
               ) : null}
             </div>
           )}
-        </div>
 
-        {selectedInput !== "image" ? (
-          <div className="mt-5 rounded-lg border border-indigo-300/20 bg-indigo-300/[0.07] p-4">
-            <label className="flex cursor-pointer items-start gap-3">
-              <input
-                type="checkbox"
-                checked={workplaceBetaEnabled}
-                onChange={(event) => {
-                  setWorkplaceBetaEnabled(event.target.checked);
-
-                  if (!event.target.checked) {
-                    setWorkplaceBetaResult(undefined);
-                  }
-                }}
-                className="mt-1 h-5 w-5 rounded border-white/20 bg-slate-950 text-emerald-300 focus:ring-2 focus:ring-emerald-300/40"
-              />
-              <span>
-                <span className="block text-sm font-bold text-white">Workplace support beta</span>
-                <span className="mt-1 block text-sm leading-6 text-indigo-50/85">
-                  Use this for workplace letters or messages when you want a preparation
-                  checklist. This is not legal or employment advice.
-                </span>
-              </span>
+          <div className="mt-4">
+            <label
+              htmlFor="user-question"
+              className="block text-sm font-semibold text-slate-300"
+            >
+              What would you like help with?
             </label>
+            <p id="user-question-hint" className="mt-1 text-xs leading-5 text-slate-500">
+              Optional. Ask about a deadline, what something means, or whether you need to act.
+            </p>
+            <input
+              id="user-question"
+              type="text"
+              value={userQuestion}
+              onChange={(event) => setUserQuestion(event.target.value)}
+              placeholder="e.g. Is this correct? Do I need to reply?"
+              autoComplete="off"
+              aria-describedby="user-question-hint"
+              className="mt-2 w-full rounded-lg border border-white/10 bg-slate-950 px-4 py-2 text-sm leading-6 text-white outline-none transition placeholder:text-slate-600 focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20"
+            />
           </div>
-        ) : null}
+        </div>
 
         {selectedInput !== "image" ? (
           <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_auto]">
@@ -2244,57 +2325,17 @@ export function HomeView({
 
       {aiExtraction ? <AiExtractedFactsPanel extraction={aiExtraction} /> : null}
 
-      {workplaceSupportPack ? (
-        <section className="rounded-xl border border-indigo-300/25 bg-indigo-300/[0.08] p-4 shadow-xl shadow-slate-950/20 sm:p-5">
-          <p className="text-sm font-bold uppercase tracking-widest text-indigo-200">
-            Workplace support beta
-          </p>
-          <div className="mt-3 grid gap-3 text-sm leading-6 text-indigo-50/90">
-            <p>This is preparation only, not legal or employment advice.</p>
-            <p>AdminAvenger helps prepare. You stay in control.</p>
-            <p>
-              Ask ACAS, a union rep, HR, Citizens Advice, an adviser, solicitor
-              where appropriate, or someone trusted if you are unsure.
-            </p>
-            {isSettlementWorkplaceResult ? (
-              <p className="rounded-lg border border-amber-300/30 bg-amber-300/10 px-4 py-3 text-amber-50">
-                Settlement agreements can have serious consequences. Do not rely on
-                AdminAvenger to decide what to do with a settlement agreement. Ask
-                ACAS, a union rep, solicitor, Citizens Advice, or another qualified
-                adviser before relying on any next step.
-              </p>
-            ) : null}
-            {hasWorkplaceResignationRisk ? (
-              <p className="rounded-lg border border-amber-300/30 bg-amber-300/10 px-4 py-3 text-amber-50">
-                Get advice before making a resignation decision.
-              </p>
-            ) : null}
-          </div>
-        </section>
-      ) : null}
-
       {resultViewModel ? (
         <ResultCaseSheet
           model={resultViewModel}
-          decisionResult={isWorkplaceBetaResultActive ? undefined : primaryCase?.decisionResult}
-          benefitsActionPack={isWorkplaceBetaResultActive ? null : benefitsActionPack}
-          strategicNextStepPlan={isWorkplaceBetaResultActive ? undefined : strategicNextStepPlan}
+          decisionResult={primaryCase?.decisionResult}
+          benefitsActionPack={benefitsActionPack}
+          strategicNextStepPlan={strategicNextStepPlan}
           adviserExportPack={adviserExportPack}
-          workplaceSupportPack={workplaceSupportPack}
-          primaryAction={isWorkplaceBetaResultActive ? undefined : simplePrimaryAction}
-          secondaryActions={
-            isWorkplaceBetaResultActive
-              ? [
-                  {
-                    label: "Check another message",
-                    onClick: clearInput,
-                    emphasis: "quiet",
-                  },
-                ]
-              : simpleSecondaryActions
-          }
+          primaryAction={simplePrimaryAction}
+          secondaryActions={simpleSecondaryActions}
           guidedNextStepButton={
-            !isWorkplaceBetaResultActive && !isCareerSupportCase && guidedNextStep
+            !isCareerSupportCase && guidedNextStep
               ? {
                   label: guidedNextStep.primaryAction.label,
                   onClick: () => setShowGuidedNextStep(true),
@@ -2307,7 +2348,7 @@ export function HomeView({
         />
       ) : null}
 
-      {!isWorkplaceBetaResultActive && showDetailed && primaryOpportunity ? (
+      {showDetailed && primaryOpportunity ? (
         <section className="rounded-lg border border-white/10 bg-slate-950/55 p-4 sm:p-5">
           <p className="text-sm font-bold uppercase tracking-widest text-slate-400">
             Supporting detail
@@ -2320,7 +2361,7 @@ export function HomeView({
         </section>
       ) : null}
 
-      {!isWorkplaceBetaResultActive && showGuidedNextStep && guidedNextStep ? (
+      {showGuidedNextStep && guidedNextStep ? (
         <GuidedNextStepPanel
           guidedNextStep={guidedNextStep}
           onClose={() => setShowGuidedNextStep(false)}
@@ -2330,11 +2371,23 @@ export function HomeView({
 
       {showPhotoCapturePanel ? (
         <PhotoCapturePanel
-          onUsePhotos={(photos) => void handleCapturedPhotos(photos)}
+          key={`${photoCaptureIntent}-${activeAttachmentImageId ?? "main"}-${pendingPhotoFile?.name ?? "new"}-${pendingPhotoFile?.lastModified ?? 0}-${pendingPhotoFile?.size ?? 0}`}
+          onUsePhotos={(photos) =>
+            photoCaptureIntent === "attachment"
+              ? void handleConfirmedAttachmentPhotos(photos)
+              : void handleCapturedPhotos(photos)
+          }
           onClose={() => {
             setShowPhotoCapturePanel(false);
             setPendingPhotoFile(undefined);
           }}
+          onCancel={
+            photoCaptureIntent === "attachment" ? handleCancelAttachmentImageReviewQueue : undefined
+          }
+          onTryAgain={
+            photoCaptureIntent === "attachment" ? handleRejectAttachmentImageReview : undefined
+          }
+          onEditManually={handlePhotoEditManually}
           defaultSection={photoCaptureIntent === "append" ? "additional" : undefined}
           initialPhotoFile={pendingPhotoFile}
         />
@@ -2351,7 +2404,7 @@ export function HomeView({
         />
       ) : null}
 
-      {!isWorkplaceBetaResultActive && result && primaryCase && hasClearCase && showDetailed ? (
+      {result && primaryCase && hasClearCase && showDetailed ? (
         <section className="rounded-lg border border-emerald-300/25 bg-white/[0.055] p-5 shadow-xl shadow-slate-950/15 sm:p-6">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
@@ -2566,40 +2619,6 @@ export function HomeView({
         </section>
       ) : null}
 
-      {/*
-        Community Helper Home Gated v1 - a small, clearly secondary beta/demo
-        entry point, not the main "Check a message" route. Clicking it only
-        navigates to the existing Community Helper demo/support section on
-        the Demo/tour page (see DemoTourView.tsx); it never builds a
-        community helper pack from what is pasted above, and never touches
-        the decision-engine classifier or OCR/file intake. See
-        docs/product/community-helper-home-gated-v1.md.
-      */}
-      <section className="rounded-lg border border-violet-300/20 bg-violet-300/[0.05] p-4 sm:p-5">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-widest text-violet-300">
-              Controlled public beta
-            </p>
-            <p className="mt-1 text-sm font-bold text-white">Community support prep</p>
-            <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-400">
-              For carers, support workers, family helpers, or trusted people preparing
-              notes. Preparation only. AdminAvenger helps prepare. You stay in control.
-            </p>
-            <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500">
-              Opens a gated manual-text beta. It does not analyse the message above
-              or connect to file, photo, or OCR intake.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onOpenCommunityHelperDemo}
-            className="min-h-10 shrink-0 rounded-lg border border-violet-300/40 bg-violet-300/10 px-4 py-2 text-sm font-bold text-violet-100 transition hover:border-violet-300/70 hover:bg-violet-300/20 focus:outline-none focus:ring-2 focus:ring-violet-300/40"
-          >
-            Open controlled beta
-          </button>
-        </div>
-      </section>
     </div>
   );
 }

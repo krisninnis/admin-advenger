@@ -7,7 +7,6 @@ import {
   ATTACHMENT_LOCAL_ONLY_NOTE,
   ATTACHMENT_OCR_CAUTION_NOTE,
   ATTACHMENT_READ_FAILED_MESSAGE,
-  ATTACHMENT_TAKE_PHOTO_BUTTON_LABEL,
   buildAttachedFilesCombinedText,
   buildCheckSourceTitle,
   classifyAttachedFileKind,
@@ -366,7 +365,6 @@ describe("Document Attachment Intake v1 copy", () => {
   it("includes all of the required visible copy", () => {
     expect(ATTACHMENT_HEADING).toBe("Attach document photos");
     expect(ATTACHMENT_CHOOSE_BUTTON_LABEL).toBe("Choose photos or files");
-    expect(ATTACHMENT_TAKE_PHOTO_BUTTON_LABEL).toBe("Take photo");
     expect(ATTACHMENT_DRAG_DROP_LABEL).toBe("Drag document photos, text files, Word documents, or PDFs here");
     expect(ATTACHMENT_LOCAL_ONLY_NOTE).toContain("does not upload them");
     expect(ATTACHMENT_OCR_CAUTION_NOTE.toLowerCase()).toContain("check");
@@ -378,7 +376,6 @@ describe("Document Attachment Intake v1 copy", () => {
     const allCopy = [
       ATTACHMENT_HEADING,
       ATTACHMENT_CHOOSE_BUTTON_LABEL,
-      ATTACHMENT_TAKE_PHOTO_BUTTON_LABEL,
       ATTACHMENT_DRAG_DROP_LABEL,
       ATTACHMENT_LOCAL_ONLY_NOTE,
       ATTACHMENT_OCR_CAUTION_NOTE,

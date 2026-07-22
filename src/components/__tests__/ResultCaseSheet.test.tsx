@@ -341,6 +341,137 @@ Please see the attached update. We will write again if more information is neede
     expect(findForbiddenSafetyPhrases(html)).toEqual([]);
   });
 
+  it("renders directAnswer in the header when present", () => {
+    const taxNotice = `HMRC
+Tax Code Notice
+
+Page 1 of 2
+Tax year: 6 April 2026 to 5 April 2027
+This is to tell you your tax code.
+Your tax code has changed from C1263L to C1254L.
+Employer: Harbour View Opticians Ltd
+
+Personal Allowance             £12,570
+Flat-rate job expenses            £60
+Medical insurance                 £88
+Total tax-free amount          £12,542
+
+Page 2 of 2
+Your tax code for the tax year 2026 to 2027 is C1254L.`;
+
+    const decisionResult = analyseDecisionProblem(taxNotice, "What is this?");
+    const benefitsActionPack = buildBenefitsActionPack(decisionResult);
+    const strategicNextStepPlan = buildStrategicNextStepPlan({
+      decisionResult,
+      benefitsActionPack,
+    });
+    const resultViewModel = buildResultViewModel({
+      decisionResult,
+      benefitsActionPack,
+      strategicNextStepPlan,
+    });
+    const html = renderToStaticMarkup(
+      <ResultCaseSheet
+        model={resultViewModel}
+        decisionResult={decisionResult}
+        benefitsActionPack={benefitsActionPack}
+        strategicNextStepPlan={strategicNextStepPlan}
+        primaryAction={{ label: "Save this check", onClick: () => undefined, emphasis: "primary" }}
+        supportingDetailsOpen={false}
+        onToggleSupportingDetails={() => undefined}
+      />,
+    );
+
+    expect(resultViewModel.directAnswer).toBeDefined();
+    expect(resultViewModel.directAnswer).toContain("HMRC tax code notice");
+    expect(resultViewModel.directAnswer).toContain("not a tax bill");
+    expect(html).toContain("HMRC tax code notice");
+    expect(html).toContain("not a tax bill");
+    expect(html).toContain("What AdminAvenger found");
+  });
+
+  it("does not render directAnswer block when directAnswer is absent", () => {
+    const { html, decisionResult } = renderCaseSheet(`Universal Credit statement
+Payment date: 7 July 2026
+Your payment this month: GBP 843.45`);
+
+    expect(decisionResult.directAnswer).toBeUndefined();
+    expect(html).toContain("What AdminAvenger found");
+    expect(html).toContain("What AdminAvenger cannot know");
+  });
+
+  it("directAnswer appears before explanation sections in the DOM", () => {
+    const taxNotice = `HMRC
+Tax Code Notice
+
+Page 1 of 2
+Tax year: 6 April 2026 to 5 April 2027
+This is to tell you your tax code.
+Your tax code has changed from C1263L to C1254L.
+Employer: Harbour View Opticians Ltd
+
+Personal Allowance             £12,570
+Flat-rate job expenses            £60
+Medical insurance                 £88
+Total tax-free amount          £12,542
+
+Page 2 of 2
+Your tax code for the tax year 2026 to 2027 is C1254L.`;
+
+    const decisionResult = analyseDecisionProblem(taxNotice, "What is this?");
+    const benefitsActionPack = buildBenefitsActionPack(decisionResult);
+    const strategicNextStepPlan = buildStrategicNextStepPlan({
+      decisionResult,
+      benefitsActionPack,
+    });
+    const resultViewModel = buildResultViewModel({
+      decisionResult,
+      benefitsActionPack,
+      strategicNextStepPlan,
+    });
+    const html = renderToStaticMarkup(
+      <ResultCaseSheet
+        model={resultViewModel}
+        decisionResult={decisionResult}
+        benefitsActionPack={benefitsActionPack}
+        strategicNextStepPlan={strategicNextStepPlan}
+        primaryAction={{ label: "Save this check", onClick: () => undefined, emphasis: "primary" }}
+        supportingDetailsOpen={false}
+        onToggleSupportingDetails={() => undefined}
+      />,
+    );
+
+    const titlePos = html.indexOf(resultViewModel.title);
+    const directAnswerPos = html.indexOf(resultViewModel.directAnswer!);
+    const summaryPos = html.indexOf(resultViewModel.summary);
+    const bestNextMovePos = html.indexOf("Best next move");
+    const checkFirstPos = html.indexOf("What to check first");
+
+    expect(titlePos).toBeGreaterThan(0);
+    expect(directAnswerPos).toBeGreaterThan(titlePos);
+    expect(summaryPos).toBeGreaterThan(directAnswerPos);
+    expect(bestNextMovePos).toBeGreaterThan(summaryPos);
+    expect(checkFirstPos).toBeGreaterThan(summaryPos);
+  });
+
+  it("result without directAnswer retains title then summary then supporting sections", () => {
+    const { html, resultViewModel } = renderCaseSheet(`Universal Credit statement
+Payment date: 7 July 2026
+Your payment this month: GBP 843.45`);
+
+    expect(resultViewModel.directAnswer).toBeUndefined();
+
+    const titlePos = html.indexOf(resultViewModel.title);
+    const summaryPos = html.indexOf(resultViewModel.summary);
+    const bestNextMovePos = html.indexOf("Best next move");
+    const checkFirstPos = html.indexOf("What to check first");
+
+    expect(titlePos).toBeGreaterThan(0);
+    expect(summaryPos).toBeGreaterThan(titlePos);
+    expect(bestNextMovePos).toBeGreaterThan(summaryPos);
+    expect(checkFirstPos).toBeGreaterThan(summaryPos);
+  });
+
   it("never renders forbidden case-progress wording", () => {
     const fixtureIds = [
       "benefits-uc-sanction-001",

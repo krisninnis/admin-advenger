@@ -23,6 +23,7 @@ export type DecisionDocumentType =
   | "benefits_change_of_circumstances"
   | "council_tax_reduction"
   | "benefits_crisis_support"
+  | "hmrc_tax_code_notice"
   | "unknown_admin_dispute";
 
 export type DecisionCaseStrength =
@@ -80,6 +81,7 @@ export type DecisionResult = {
   nextSteps: string[];
   safetyNotes: string[];
   draftMessage?: string;
+  directAnswer?: string;
   amountMentioned?: string;
   amountTreatment: DecisionAmountTreatment;
   sourceFacts: DecisionSourceFact[];
@@ -92,6 +94,7 @@ export type DecisionResult = {
 export type DecisionModuleInput = {
   text: string;
   normalisedText: string;
+  userQuestion?: string;
 };
 
 export type DecisionModule = {

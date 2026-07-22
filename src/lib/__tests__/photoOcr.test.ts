@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import photoOcrSource from "../photoOcr.ts?raw";
+import localOcrServiceSource from "../../services/localOcrService.ts?raw";
 
 const recognizeMock = vi.fn();
 
@@ -10,6 +12,8 @@ import {
   OCR_FAILED_MESSAGE,
   OCR_ADD_CLOSE_UP_SUGGESTION,
   OCR_COMBINED_PHOTOS_ON_DEVICE_MESSAGE,
+  OCR_EXTRACTED_TEXT_DISCLOSURE_HELP,
+  OCR_EXTRACTED_TEXT_DISCLOSURE_LABEL,
   OCR_EXTRA_PHOTO_LABEL,
   OCR_MAIN_PHOTO_LABEL,
   OCR_GARBLED_TEXT_WARNING,
@@ -31,6 +35,7 @@ import {
   OCR_UNRELIABLE_EDIT_MESSAGE,
   OCR_UNRELIABLE_MESSAGE,
   OCR_UNRELIABLE_RETAKE_MESSAGE,
+  OCR_UNRELIABLE_REVIEW_MESSAGE,
   OcrReadError,
   appendExtraPhotoText,
   applyGrayscaleContrast,
@@ -52,6 +57,15 @@ const fakeImage = new Blob(["pretend jpeg bytes"], { type: "image/jpeg" });
 
 beforeEach(() => {
   recognizeMock.mockReset();
+});
+
+describe("OCR runtime loading", () => {
+  it("keeps heavy OCR runtime code out of the initial bundle by using dynamic imports", () => {
+    expect(photoOcrSource).not.toMatch(/import\s+.*\s+from\s+["']tesseract\.js["']/);
+    expect(localOcrServiceSource).not.toMatch(/import\s+.*\s+from\s+["']tesseract\.js["']/);
+    expect(photoOcrSource).toContain('import("tesseract.js")');
+    expect(localOcrServiceSource).toContain('import("tesseract.js")');
+  });
 });
 
 // ---- readTextFromImage: happy path ----
@@ -215,15 +229,18 @@ describe("isOcrResultUnreliable", () => {
   });
 
   it("provides the exact low-confidence OCR review copy", () => {
-    expect(OCR_UNRELIABLE_MESSAGE).toBe("We could not read this photo reliably.");
-    expect(OCR_UNRELIABLE_RETAKE_MESSAGE).toBe(
-      "Retake the photo closer, upload a clearer image, or paste the text manually.",
-    );
-    expect(OCR_UNRELIABLE_EDIT_MESSAGE).toBe(
-      "You can still edit the extracted text yourself before checking it.",
-    );
+    expect(OCR_UNRELIABLE_MESSAGE).toBe("We couldn't read this clearly enough");
+    expect(OCR_UNRELIABLE_RETAKE_MESSAGE).toBe("Retake photo");
+    expect(OCR_UNRELIABLE_EDIT_MESSAGE).toBe("Review or edit the text we could read");
     expect(OCR_CHECK_TEXT_UNRELIABLE_WARNING).toBe(
-      "Only continue if you have checked or corrected the text.",
+      "Check this against the original document before continuing.",
+    );
+    expect(OCR_UNRELIABLE_REVIEW_MESSAGE).toBe(
+      "We found some text, but parts may be wrong or missing. We've hidden important details rather than guessing; a clearer photo will usually work better.",
+    );
+    expect(OCR_EXTRACTED_TEXT_DISCLOSURE_LABEL).toBe("Review or edit the text we could read");
+    expect(OCR_EXTRACTED_TEXT_DISCLOSURE_HELP).toBe(
+      "This text may include mistakes or background text. Only use it if you can check it against the document.",
     );
   });
 });
@@ -241,10 +258,10 @@ describe("isOcrKeyDetailsReliable", () => {
 
   it("provides the exact moderate-confidence key-details copy", () => {
     expect(OCR_KEY_DETAILS_NOT_RELIABLE_MESSAGE).toBe(
-      "We could read some text, but not reliably enough to extract key details.",
+      "Key details are hidden because the photo was not clear enough.",
     );
     expect(OCR_KEY_DETAILS_REVIEW_OPTIONS_MESSAGE).toBe(
-      "Retake the photo closer, upload a clearer image, paste the text manually, or edit the text below.",
+      "Retake the photo, add a close-up, or review and correct the text before checking.",
     );
   });
 });
@@ -626,7 +643,7 @@ describe("shouldSuggestCloseUpPhoto", () => {
 
   it("states the exact suggestion copy in plain language", () => {
     expect(OCR_ADD_CLOSE_UP_SUGGESTION).toBe(
-      "Retake the photo or add a close-up of the hard-to-read section.",
+      "If some text is missing or blurry, add a close-up of that section.",
     );
   });
 });
@@ -649,6 +666,9 @@ describe("OCR copy never implies cloud upload, sending, storage, or a guaranteed
     OCR_UNRELIABLE_MESSAGE,
     OCR_UNRELIABLE_RETAKE_MESSAGE,
     OCR_UNRELIABLE_EDIT_MESSAGE,
+    OCR_UNRELIABLE_REVIEW_MESSAGE,
+    OCR_EXTRACTED_TEXT_DISCLOSURE_LABEL,
+    OCR_EXTRACTED_TEXT_DISCLOSURE_HELP,
     OCR_CHECK_TEXT_UNRELIABLE_WARNING,
     OCR_KEY_DETAILS_NOT_RELIABLE_MESSAGE,
     OCR_KEY_DETAILS_REVIEW_OPTIONS_MESSAGE,

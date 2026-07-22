@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>AdminAvenger Synthetic A4 Camera Calibration Sheet</title>
+    <style>
+      @page {
+        size: A4 portrait;
+        margin: 12mm;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: Arial, Helvetica, sans-serif;
+        color: #111827;
+        background: #ffffff;
+      }
+
+      main {
+        position: relative;
+        min-height: calc(297mm - 24mm);
+        border: 2px solid #111827;
+        padding: 18mm 14mm;
+      }
+
+      .marker {
+        position: absolute;
+        width: 16mm;
+        height: 16mm;
+        border: 4px solid #111827;
+      }
+
+      .top-left {
+        left: 5mm;
+        top: 5mm;
+        border-right: 0;
+        border-bottom: 0;
+      }
+
+      .top-right {
+        right: 5mm;
+        top: 5mm;
+        border-left: 0;
+        border-bottom: 0;
+      }
+
+      .bottom-left {
+        left: 5mm;
+        bottom: 5mm;
+        border-right: 0;
+        border-top: 0;
+      }
+
+      .bottom-right {
+        right: 5mm;
+        bottom: 5mm;
+        border-left: 0;
+        border-top: 0;
+      }
+
+      h1 {
+        margin: 0 0 8mm;
+        font-size: 28pt;
+      }
+
+      .large {
+        font-size: 18pt;
+        font-weight: 700;
+      }
+
+      .small {
+        max-width: 140mm;
+        font-size: 8pt;
+        line-height: 1.35;
+      }
+
+      table {
+        width: 100%;
+        margin: 10mm 0;
+        border-collapse: collapse;
+        font-size: 12pt;
+      }
+
+      th,
+      td {
+        border: 1px solid #111827;
+        padding: 4mm;
+        text-align: left;
+      }
+
+      .edge {
+        position: absolute;
+        font-size: 8pt;
+        letter-spacing: 0.08em;
+      }
+
+      .edge-top {
+        left: 32mm;
+        top: 4mm;
+      }
+
+      .edge-bottom {
+        right: 32mm;
+        bottom: 4mm;
+      }
+
+      .edge-left {
+        left: -25mm;
+        top: 120mm;
+        transform: rotate(-90deg);
+      }
+
+      .edge-right {
+        right: -25mm;
+        top: 120mm;
+        transform: rotate(90deg);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="marker top-left"></div>
+      <div class="marker top-right"></div>
+      <div class="marker bottom-left"></div>
+      <div class="marker bottom-right"></div>
+      <div class="edge edge-top">EDGE TEXT TOP - SYNTHETIC A4 CAMERA LAB</div>
+      <div class="edge edge-bottom">EDGE TEXT BOTTOM - NO PERSONAL DATA</div>
+      <div class="edge edge-left">LEFT EDGE SYNTHETIC</div>
+      <div class="edge edge-right">RIGHT EDGE SYNTHETIC</div>
+
+      <h1>AdminAvenger A4 Camera Lab</h1>
+      <p class="large">Synthetic reference: A4-LAB-2026-REF</p>
+      <p class="large">Synthetic amount mentioned: GBP 42.75</p>
+      <p class="large">Synthetic deadline date: 23 July 2026</p>
+
+      <table aria-label="Synthetic calibration table">
+        <thead>
+          <tr>
+            <th>Check</th>
+            <th>Expected text</th>
+            <th>Marker</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Large text</td>
+            <td>Visible from full-page capture</td>
+            <td>LAB-LARGE-01</td>
+          </tr>
+          <tr>
+            <td>Small text</td>
+            <td>Readable only on clear captures</td>
+            <td>LAB-SMALL-02</td>
+          </tr>
+          <tr>
+            <td>Edges</td>
+            <td>All edge text should remain inside the frame</td>
+            <td>LAB-EDGE-03</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p class="small">
+        This is a synthetic non-personal calibration sheet. It contains no real names,
+        addresses, account numbers, claim numbers, benefit details, bank details, or
+        private information. Use it to compare camera distance, glare, focus, skew,
+        canvas capture, ImageCapture.takePhoto, local scan preparation, and telemetry
+        export behavior on real devices.
+      </p>
+    </main>
+  </body>
+</html>

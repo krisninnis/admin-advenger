@@ -59,6 +59,13 @@ describe("extractOcrKeyDetails - amounts", () => {
     expect(amounts.map((detail) => detail.value)).toContain("£255");
   });
 
+  it("extracts a normal Unicode pound amount, not only mojibake OCR output", () => {
+    const result = extractOcrKeyDetails("Amount now due: \u00a3255.00");
+    const amounts = findByKind(result.details, "amount");
+
+    expect(amounts.map((detail) => detail.value)).toContain("\u00a3255.00");
+  });
+
   it("extracts a GBP-prefixed amount", () => {
     const result = extractOcrKeyDetails("The fee is GBP 42.50 in total.");
     const amounts = findByKind(result.details, "amount");
@@ -303,6 +310,15 @@ describe("extractOcrKeyDetails - sender/company hints", () => {
     const senders = findByKind(result.details, "sender").map((detail) => detail.value);
 
     expect(senders).toContain("ELMS Legal");
+  });
+
+  it("dedupes ELMS Legal variants without surfacing noisy OCR prefixes as senders", () => {
+    const result = extractOcrKeyDetails("Do WKS ELMS Legal Ltd\nELMS Legal\nReference: N1QZ564Y");
+    const senders = findByKind(result.details, "sender");
+
+    expect(senders.map((detail) => detail.value)).toEqual(["ELMS Legal Ltd"]);
+    expect(senders[0].caution ?? "").toContain("ELMS Legal");
+    expect(senders[0].caution ?? "").not.toContain("Do WKS");
   });
 
   it("detects DWP, Universal Credit, and HMRC as sender/organisation hints", () => {

@@ -98,25 +98,25 @@ const expectNoForbiddenWorkplaceWording = (text: string) => {
 };
 
 describe("HomeView gated workplace support beta", () => {
-  it("renders an explicit Workplace support beta option with preparation-only helper copy", () => {
-    expect(homeViewSource).toContain("Workplace support beta");
-    expect(homeViewSource).toContain(
+  it("does not promote the Workplace support beta from public Home", () => {
+    expect(homeViewSource).not.toContain("Workplace support beta");
+    expect(homeViewSource).not.toContain(
       "Use this for workplace letters or messages when you want a preparation",
     );
-    expect(homeViewSource).toContain("This is not legal or employment advice.");
+    expect(homeViewSource).not.toContain("workplaceBetaEnabled");
   });
 
-  it("keeps the default Check a message path on the existing normal onCheck flow", () => {
+  it("keeps the default Check a message path on the normal onCheck flow", () => {
     expect(homeViewSource).toContain("buildCheckSourceTitle(rawText, attachedFiles)");
-    expect(homeViewSource).toContain("onCheck(checkSourceTitle, \"email\", textToCheck)");
-    expect(homeViewSource).toContain("if (workplaceBetaEnabled)");
-    expect(homeViewSource).toContain("buildWorkplaceSupportPack({ text: textToCheck })");
+    expect(homeViewSource).toContain("submitAcceptedText({");
+    expect(homeViewSource).toContain("acceptedText: textToCheck");
+    expect(homeViewSource).not.toContain("buildWorkplaceSupportPack");
   });
 
-  it("builds workplace result, progress, and adviser export only when the beta gate is selected", () => {
-    expect(homeViewSource).toContain("workplaceBetaEnabled");
-    expect(homeViewSource).toContain("setWorkplaceBetaResult");
-    expect(homeViewSource).toContain("workplaceSupportPack={workplaceSupportPack}");
+
+  it("does not keep dormant workplace result wiring in Home", () => {
+    expect(homeViewSource).not.toContain("setWorkplaceBetaResult");
+    expect(homeViewSource).not.toContain("workplaceSupportPack={workplaceSupportPack}");
     expect(homeViewSource).toContain("onDownloadAdviserPack");
   });
 

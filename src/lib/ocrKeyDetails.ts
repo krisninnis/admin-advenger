@@ -97,6 +97,11 @@ const RISK_WORDING_CAUTION =
 // file has no relationship to at all).
 const AMOUNT_PATTERN = /£\s?\d{1,3}(?:,\d{3})*(?:\.\d{2})?|\bGBP\s?\d{1,3}(?:,\d{3})*(?:\.\d{2})?\b/gi;
 
+const NORMALISED_AMOUNT_PATTERN = new RegExp(
+  `${AMOUNT_PATTERN.source}|(?:\\u00a3|\\u00c2\\u00a3)\\s?\\d{1,3}(?:,\\d{3})*(?:\\.\\d{2})?`,
+  "gi",
+);
+
 // ---- Dates ----
 // 04/03/2026 and 6 Mar 2026 / 6 March 2026 - kept as plain found text, never
 // parsed into a Date or compared against "today" (that would risk implying a
@@ -305,17 +310,17 @@ const KNOWN_COMPANY_PHRASES = ["Vehicle Control Services"];
 // could coincidentally match OCR noise. Short official abbreviations like
 // "DWP" only belong here if they are added deliberately, not because a
 // generic pattern happened to match them.
-const KNOWN_SENDER_PHRASES = ["ELMS Legal", "DWP", "Universal Credit", "HMRC"];
+const KNOWN_SENDER_PHRASES = ["ELMS Legal Ltd", "ELMS Legal", "DWP", "Universal Credit", "HMRC"];
 // Title Case phrase ending in "Legal" (e.g. "ELMS Legal", "Acme Legal") -
 // generic fallback for legal-firm-shaped senders not in the known list above.
-const LEGAL_FIRM_PATTERN = /\b(?:[A-Z][a-zA-Z&]*\s){0,2}[A-Z][a-zA-Z&]*\sLegal\b/g;
+const LEGAL_FIRM_PATTERN = /\b(?:[A-Z][a-zA-Z&]*[ \t]+){0,2}[A-Z][a-zA-Z&]*[ \t]+Legal\b/g;
 // "<Place> Council" / "<Place> Borough Council" etc.
 const COUNCIL_PATTERN = /\b[A-Z][a-zA-Z]+(?:\s(?:City|Borough|District|County))?\sCouncil\b/g;
 // Generic "<Name> Ltd/Energy/Water/Bank" shaped company patterns, alongside
 // the dedicated "Legal" and "Council" patterns above - covers common company
 // suffixes the letter's sender or a related company might use.
 const COMPANY_SUFFIX_PATTERN =
-  /\b(?:[A-Z][a-zA-Z&]*\s){0,2}[A-Z][a-zA-Z&]*\s(?:Ltd|Energy|Water|Bank)(?:\sServices)?\b/g;
+  /\b(?:[A-Z][a-zA-Z&]*[ \t]+){0,2}[A-Z][a-zA-Z&]*[ \t]+(?:Ltd|Energy|Water|Bank)(?:[ \t]+Services)?\b/g;
 const ENERGY_SUPPLIER_PHRASES = [
   "British Gas",
   "EDF Energy",
@@ -345,6 +350,17 @@ const ENERGY_SUPPLIER_PHRASES = [
 // despite being short.
 const MIN_GENERIC_SENDER_LENGTH = 4;
 
+const normaliseOrganisationKey = (value: string): string =>
+  value
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\b(?:ltd|limited)\b/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const KNOWN_SENDER_KEYS = new Set(KNOWN_SENDER_PHRASES.map(normaliseOrganisationKey));
+
 const isSafeGenericSenderCandidate = (value: string): boolean => {
   const trimmed = value.trim();
 
@@ -359,7 +375,86 @@ const isSafeGenericSenderCandidate = (value: string): boolean => {
     return false;
   }
 
+  const candidateKey = normaliseOrganisationKey(trimmed);
+  const wrapsKnownSender = KNOWN_SENDER_PHRASES.some((phrase) => {
+    const phraseLower = phrase.toLowerCase();
+    return trimmed.toLowerCase().includes(phraseLower) && !KNOWN_SENDER_KEYS.has(candidateKey);
+  });
+
+  if (wrapsKnownSender || /^(?:do|wks|ltd|limited)\b/i.test(trimmed)) {
+    return false;
+  }
+
   return true;
+};
+
+const buildOrganisationVariantCaution = (
+  caution: string | undefined,
+  variants: string[],
+): string | undefined => {
+  if (variants.length === 0) {
+    return caution;
+  }
+
+  const baseCaution = caution ?? SENDER_CAUTION;
+  return `${baseCaution} Similar wording also appeared in the text and may be an OCR variant: ${variants.join(", ")}.`;
+};
+
+const organisationPreferenceScore = (detail: OcrKeyDetail): number => {
+  const exactKnownPhraseScore = KNOWN_SENDER_PHRASES.some(
+    (phrase) => detail.value.toLowerCase() === phrase.toLowerCase(),
+  )
+    ? 100
+    : 0;
+  const suffixScore = /\b(?:ltd|limited)\b/i.test(detail.value) ? 20 : 0;
+
+  return exactKnownPhraseScore + suffixScore + detail.value.length / 100;
+};
+
+const dedupeOrganisationVariants = (details: OcrKeyDetail[]): OcrKeyDetail[] => {
+  const groups = new Map<string, OcrKeyDetail[]>();
+  const orderedItems: Array<
+    | { type: "detail"; detail: OcrKeyDetail }
+    | { type: "organisation_group"; key: string }
+  > = [];
+
+  for (const detail of details) {
+    if (detail.kind !== "sender" && detail.kind !== "company") {
+      orderedItems.push({ type: "detail", detail });
+      continue;
+    }
+
+    const key = `${detail.kind}:${normaliseOrganisationKey(detail.value)}`;
+    if (!groups.has(key)) {
+      groups.set(key, []);
+      orderedItems.push({ type: "organisation_group", key });
+    }
+    groups.get(key)?.push(detail);
+  }
+
+  return orderedItems.map((item) => {
+    if (item.type === "detail") {
+      return item.detail;
+    }
+
+    const group = groups.get(item.key) ?? [];
+    const sorted = [...group].sort(
+      (a, b) => organisationPreferenceScore(b) - organisationPreferenceScore(a),
+    );
+    const preferred = sorted[0];
+    const variantValues = Array.from(
+      new Set(
+        group
+          .map((detail) => detail.value)
+          .filter((value) => value.toLowerCase() !== preferred.value.toLowerCase()),
+      ),
+    );
+
+    return {
+      ...preferred,
+      caution: buildOrganisationVariantCaution(preferred.caution, variantValues),
+    };
+  });
 };
 
 // ---- Debt collection / enforcement wording (kind: risk_wording) ----
@@ -424,7 +519,7 @@ export const extractOcrKeyDetails = (text: string): OcrKeyDetails => {
   };
 
   // Amounts
-  for (const match of findPatternOccurrences(text, AMOUNT_PATTERN)) {
+  for (const match of findPatternOccurrences(text, NORMALISED_AMOUNT_PATTERN)) {
     addDetail("Amount mentioned", match.replace(/\s+/g, " ").trim(), "amount", AMOUNT_CAUTION);
   }
 
@@ -561,7 +656,7 @@ export const extractOcrKeyDetails = (text: string): OcrKeyDetails => {
     }
   }
 
-  return { details, warnings };
+  return { details: dedupeOrganisationVariants(details), warnings };
 };
 
 // ---- Grouped card layout ----
@@ -617,6 +712,8 @@ export const getVisibleOcrKeyDetails = (
 // AI/model involved.
 const PROTECTED_LINE_PATTERN = new RegExp(
   [
+    "\\u00a3",
+    "\\u00c2\\u00a3",
     "£",
     "\\d{1,2}/\\d{1,2}/\\d{2,4}",
     `\\b\\d{1,2}\\s+(?:${MONTH_NAMES})\\s+\\d{4}\\b`,

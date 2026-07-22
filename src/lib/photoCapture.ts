@@ -2,23 +2,15 @@
 //
 // Nothing here uploads anything anywhere. getUserMedia only ever runs inside
 // this browser tab, and a captured frame stays in memory as a Blob/File that
-// is handed to the existing photo intake path (see handleImageUpload in
-// src/views/HomeView.tsx and src/lib/photoIntake.ts) - exactly like a file
-// chosen from disk. See src/components/PhotoCapturePanel.tsx for the UI that
-// drives the state machine defined at the bottom of this file.
+// is handed to the browser-local document scanner before OCR. See
+// src/components/PhotoCapturePanel.tsx for the UI that drives the state
+// machine defined at the bottom of this file.
 
 export type CameraErrorKind = "permission_denied" | "camera_unavailable" | "unknown";
 
 export type CameraStartResult =
   | { status: "success"; stream: MediaStream }
   | { status: "error"; kind: CameraErrorKind; message: string };
-
-export type CropRectRatio = {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-};
 
 // The default flow is deliberately one photo of the whole page. "additional"
 // exists only for the optional "Add close-up photo" follow-up offered after
@@ -30,28 +22,9 @@ export type CapturedPhotoForOcr = {
   section: PhotoCaptureSection;
   label: string;
   warnings?: string[];
+  isDocumentScan?: boolean;
+  sourceFileName?: string;
 };
-
-export type DOMRectLike = {
-  left: number;
-  top: number;
-  width: number;
-  height: number;
-};
-
-export type DisplayFrameMappingInput = {
-  mediaRect: DOMRectLike;
-  frameRect: DOMRectLike;
-  naturalWidth: number;
-  naturalHeight: number;
-  objectFit: "contain";
-};
-
-export const A4_PORTRAIT_RATIO = 1 / 1.414;
-export const MIN_SAFE_CROP_WIDTH_RATIO = 0.45;
-export const MIN_SAFE_CROP_HEIGHT_RATIO = 0.55;
-export const MIN_SAFE_A4_CROP_ASPECT_RATIO = 0.65;
-export const MAX_SAFE_A4_CROP_ASPECT_RATIO = 0.8;
 
 export const CAMERA_PERMISSION_DENIED_MESSAGE =
   "Camera access was blocked. You can upload a photo instead.";
@@ -62,27 +35,27 @@ export const CAMERA_UNAVAILABLE_MESSAGE = "No camera was found. You can upload a
 // left the browser.
 export const PHOTO_STAYS_LOCAL_MESSAGE = "Photo stays in this browser in this version.";
 
-// Honest about OCR limits - shown before AdminAvenger has even tried to read
-// the captured photo, so it never promises every image can be read.
-export const PHOTO_UNREADABLE_FALLBACK_MESSAGE =
-  "If the photo cannot be read clearly, upload a clearer image or paste the text manually.";
-
-export const PHOTO_ADJUST_TITLE = "Adjust document area";
-export const PHOTO_ADJUST_INSTRUCTION =
-  "Drag the box around the letter. Anything outside the box will be ignored.";
-export const PHOTO_ADJUST_AFTER_CAPTURE_MESSAGE =
-  "You can adjust the document area after taking the photo.";
-export const PHOTO_READ_SELECTED_AREA_LABEL = "Read this area";
-export const PHOTO_USE_FULL_PHOTO_LABEL = "Use full photo";
-export const PHOTO_FULL_PHOTO_WARNING =
-  "The full photo may include background. OCR may make more mistakes.";
-export const PHOTO_CROP_FALLBACK_WARNING =
-  "We could not crop this area safely, so AdminAvenger will read the full photo. You can still edit the text manually.";
+export const PHOTO_LOADING_MESSAGE = "Loading your photo...";
+export const PHOTO_DETECTING_MESSAGE = "Finding the document...";
+export const PHOTO_SCAN_REVIEW_QUESTION = "Does the whole document look clear?";
+export const PHOTO_NO_DOCUMENT_MESSAGE =
+  "We couldn\u2019t find a clear document in this photo.";
+export const PHOTO_USE_SCAN_LABEL = "Yes, use this";
+export const PHOTO_TRY_AGAIN_LABEL = "No, try again";
+export const PHOTO_UPLOAD_ANOTHER_LABEL = "Upload another photo";
+export const PHOTO_UPLOAD_CLEARER_LABEL = "Upload clearer image";
+export const PHOTO_USE_ORIGINAL_LABEL = "Use original photo anyway";
+export const PHOTO_EDIT_MANUALLY_LABEL = "Edit or paste manually";
+export const PHOTO_USE_ORIGINAL_WARNING =
+  "This may include background text or miss parts of the document. Only continue if you want AdminAvenger to try OCR on the original photo.";
+export const PHOTO_CAPTURE_LOW_QUALITY_GUIDANCE =
+  "For a better result: fill more of the screen with the document, hold the phone directly above it, use bright even light, and keep other printed material out of the background.";
 
 // One-photo default flow. No scan-mode choice, no numbered capture sequence -
 // the user takes a single photo and can optionally add a close-up afterwards.
 export const PHOTO_TAKE_NEW_PHOTO_LABEL = "Take a photo";
-export const PHOTO_TAKE_NEW_PHOTO_DESCRIPTION = "Take one photo of the whole letter or message.";
+export const PHOTO_TAKE_NEW_PHOTO_DESCRIPTION =
+  "Take one photo of the whole letter or message, then review the prepared scan before OCR.";
 
 // Optional follow-up offered after OCR review - never forced, never numbered.
 export const PHOTO_ADD_CLOSE_UP_LABEL = "Add close-up photo";
@@ -108,31 +81,22 @@ export const CAMERA_IDEAL_HEIGHT = 1080;
 // ---- Document Capture Coach: camera guidance copy ----
 //
 // Shown around the camera preview (see src/components/PhotoCapturePanel.tsx)
-// as simple photo guidance only. The user confirms the actual OCR area in
-// the post-capture adjust step.
-export const CAMERA_GUIDANCE_FIT_MESSAGE = "Take a clear photo of the letter.";
+// as simple photo guidance only. The user confirms the prepared scan after
+// AdminAvenger has found the document locally.
+export const CAMERA_GUIDANCE_FIT_MESSAGE = "Fit the whole page in the photo";
 export const CAMERA_GUIDANCE_CLOSE_UP_MESSAGE =
   "Take a clear close-up photo of the hard-to-read section.";
-
-export const CAMERA_GUIDANCE_TIPS = [
-  "Try to fill the photo with the page.",
-  "You can adjust the document area after taking the photo.",
-  "Use good light.",
-  "Keep the page flat.",
-  "Avoid shadows.",
-];
 
 export const CAMERA_PREVIEW_ACTIONS_CLASSNAME =
   "sticky bottom-0 z-10 mt-auto grid gap-2 rounded-xl border border-white/10 bg-slate-900/95 p-2 shadow-2xl shadow-slate-950/50 backdrop-blur sm:grid-cols-2";
 
 export const PHOTO_REVIEW_ACTIONS_CLASSNAME =
-  "sticky bottom-0 z-10 mt-auto grid gap-2 rounded-xl border border-white/10 bg-slate-900/95 p-2 shadow-2xl shadow-slate-950/50 backdrop-blur sm:grid-cols-4";
+  "sticky bottom-0 z-10 mt-auto grid gap-2 rounded-xl border border-white/10 bg-slate-900/95 p-2 shadow-2xl shadow-slate-950/50 backdrop-blur sm:grid-cols-2";
 
 export const PHOTO_REVIEW_CONTENT_CLASSNAME =
   "min-h-0 flex-1 space-y-3 overflow-y-auto pb-4 pr-1";
 
 export const PHOTO_TAKE_PHOTO_LABEL = "Take photo";
-export const PHOTO_RETAKE_LABEL = "Retake";
 export const PHOTO_CANCEL_LABEL = "Cancel";
 
 export const getPhotoCaptureSectionLabel = (section: PhotoCaptureSection): string =>
@@ -238,183 +202,6 @@ export const CAPTURED_PHOTO_JPEG_QUALITY = 0.95;
 // legible.
 const FALLBACK_CAPTURE_WIDTH = 1920;
 const FALLBACK_CAPTURE_HEIGHT = 1080;
-const GUIDE_FRAME_HEIGHT_RATIO = 0.82;
-const GUIDE_FRAME_MAX_WIDTH_RATIO = 0.92;
-export const DEFAULT_MANUAL_CROP_WIDTH_RATIO = 0.9;
-export const DEFAULT_MANUAL_CROP_HEIGHT_RATIO = 0.88;
-export const MIN_MANUAL_CROP_WIDTH_RATIO = 0.2;
-export const MIN_MANUAL_CROP_HEIGHT_RATIO = 0.2;
-export const MANUAL_CROP_MARGIN_RATIO = 0.02;
-
-const clampRatio = (value: number): number => Math.max(0, Math.min(1, value));
-
-export const getCropRectPixelAspectRatio = (
-  rect: CropRectRatio,
-  imageWidth: number,
-  imageHeight: number,
-): number => {
-  if (!(rect.width > 0) || !(rect.height > 0) || !(imageWidth > 0) || !(imageHeight > 0)) {
-    return 0;
-  }
-
-  return (rect.width * imageWidth) / (rect.height * imageHeight);
-};
-
-export const isCropRectSafe = (
-  rect: CropRectRatio,
-  imageWidth: number,
-  imageHeight: number,
-): boolean => {
-  if (!(imageWidth > 0) || !(imageHeight > 0)) {
-    return false;
-  }
-
-  if (rect.x < 0 || rect.y < 0 || rect.width <= 0 || rect.height <= 0) {
-    return false;
-  }
-
-  if (rect.x + rect.width > 1 || rect.y + rect.height > 1) {
-    return false;
-  }
-
-  if (rect.width < MIN_SAFE_CROP_WIDTH_RATIO || rect.height < MIN_SAFE_CROP_HEIGHT_RATIO) {
-    return false;
-  }
-
-  const aspectRatio = getCropRectPixelAspectRatio(rect, imageWidth, imageHeight);
-  return (
-    aspectRatio >= MIN_SAFE_A4_CROP_ASPECT_RATIO &&
-    aspectRatio <= MAX_SAFE_A4_CROP_ASPECT_RATIO
-  );
-};
-
-export const isManualCropRectSafe = (rect: CropRectRatio): boolean => {
-  if (rect.x < 0 || rect.y < 0 || rect.width <= 0 || rect.height <= 0) {
-    return false;
-  }
-
-  if (rect.x + rect.width > 1 || rect.y + rect.height > 1) {
-    return false;
-  }
-
-  if (rect.width < MIN_MANUAL_CROP_WIDTH_RATIO || rect.height < MIN_MANUAL_CROP_HEIGHT_RATIO) {
-    return false;
-  }
-
-  const aspectRatio = rect.width / rect.height;
-  return aspectRatio >= 0.25 && aspectRatio <= 4;
-};
-
-export const getCropRectWithMargin = (
-  rect: CropRectRatio,
-  marginRatio: number = MANUAL_CROP_MARGIN_RATIO,
-): CropRectRatio => {
-  const margin = Math.max(0, marginRatio);
-  const left = clampRatio(rect.x - margin);
-  const top = clampRatio(rect.y - margin);
-  const right = clampRatio(rect.x + rect.width + margin);
-  const bottom = clampRatio(rect.y + rect.height + margin);
-
-  return {
-    x: left,
-    y: top,
-    width: Math.max(0, right - left),
-    height: Math.max(0, bottom - top),
-  };
-};
-
-export const getDefaultManualCropRect = (suggestedRect?: CropRectRatio | null): CropRectRatio => {
-  if (suggestedRect && isManualCropRectSafe(suggestedRect)) {
-    return suggestedRect;
-  }
-
-  return {
-    x: (1 - DEFAULT_MANUAL_CROP_WIDTH_RATIO) / 2,
-    y: (1 - DEFAULT_MANUAL_CROP_HEIGHT_RATIO) / 2,
-    width: DEFAULT_MANUAL_CROP_WIDTH_RATIO,
-    height: DEFAULT_MANUAL_CROP_HEIGHT_RATIO,
-  };
-};
-
-export const mapDisplayedFrameToImageCrop = ({
-  mediaRect,
-  frameRect,
-  naturalWidth,
-  naturalHeight,
-}: DisplayFrameMappingInput): CropRectRatio | null => {
-  if (
-    !(mediaRect.width > 0) ||
-    !(mediaRect.height > 0) ||
-    !(frameRect.width > 0) ||
-    !(frameRect.height > 0) ||
-    !(naturalWidth > 0) ||
-    !(naturalHeight > 0)
-  ) {
-    return null;
-  }
-
-  const naturalAspectRatio = naturalWidth / naturalHeight;
-  const mediaAspectRatio = mediaRect.width / mediaRect.height;
-  const renderedWidth =
-    mediaAspectRatio > naturalAspectRatio ? mediaRect.height * naturalAspectRatio : mediaRect.width;
-  const renderedHeight =
-    mediaAspectRatio > naturalAspectRatio ? mediaRect.height : mediaRect.width / naturalAspectRatio;
-  const renderedLeft = mediaRect.left + (mediaRect.width - renderedWidth) / 2;
-  const renderedTop = mediaRect.top + (mediaRect.height - renderedHeight) / 2;
-
-  const rawRect = {
-    x: (frameRect.left - renderedLeft) / renderedWidth,
-    y: (frameRect.top - renderedTop) / renderedHeight,
-    width: frameRect.width / renderedWidth,
-    height: frameRect.height / renderedHeight,
-  };
-  const left = clampRatio(rawRect.x);
-  const top = clampRatio(rawRect.y);
-  const right = clampRatio(rawRect.x + rawRect.width);
-  const bottom = clampRatio(rawRect.y + rawRect.height);
-  const mappedRect = {
-    x: left,
-    y: top,
-    width: Math.max(0, right - left),
-    height: Math.max(0, bottom - top),
-  };
-
-  return isCropRectSafe(mappedRect, naturalWidth, naturalHeight) ? mappedRect : null;
-};
-
-export function getA4GuideCropRect(imageWidth: number, imageHeight: number): CropRectRatio {
-  if (!(imageWidth > 0) || !(imageHeight > 0)) {
-    return { x: 0, y: 0, width: 1, height: 1 };
-  }
-
-  let cropHeight = imageHeight * GUIDE_FRAME_HEIGHT_RATIO;
-  let cropWidth = cropHeight * A4_PORTRAIT_RATIO;
-  const maxCropWidth = imageWidth * GUIDE_FRAME_MAX_WIDTH_RATIO;
-
-  if (cropWidth > maxCropWidth) {
-    cropWidth = maxCropWidth;
-    cropHeight = cropWidth / A4_PORTRAIT_RATIO;
-  }
-
-  if (cropHeight > imageHeight) {
-    cropHeight = imageHeight;
-    cropWidth = cropHeight * A4_PORTRAIT_RATIO;
-  }
-
-  const width = clampRatio(cropWidth / imageWidth);
-  const height = clampRatio(cropHeight / imageHeight);
-
-  const rect = {
-    x: clampRatio((1 - width) / 2),
-    y: clampRatio((1 - height) / 2),
-    width,
-    height,
-  };
-
-  return isCropRectSafe(rect, imageWidth, imageHeight)
-    ? rect
-    : { x: 0, y: 0, width: 1, height: 1 };
-}
 
 // Pure Blob -> File conversion, kept separate from the canvas/video capture
 // step below so it can be unit tested without a DOM (this project's tests
@@ -423,98 +210,6 @@ export const createCapturedPhotoFile = (
   blob: Blob,
   fileName: string = CAPTURED_PHOTO_FILE_NAME,
 ): File => new File([blob], fileName, { type: blob.type || CAPTURED_PHOTO_MIME_TYPE });
-
-export const cropImageBlobToRect = (
-  image: Blob,
-  rect: CropRectRatio,
-  options: {
-    type?: string;
-    quality?: number;
-    safety?: "a4" | "manual";
-    marginRatio?: number;
-  } = {},
-): Promise<Blob> =>
-  new Promise((resolve, reject) => {
-    const objectUrl = URL.createObjectURL(image);
-    const element = new Image();
-    const cleanUp = () => URL.revokeObjectURL(objectUrl);
-
-    element.onload = () => {
-      try {
-        const cropRect = options.safety === "manual"
-          ? getCropRectWithMargin(rect, options.marginRatio)
-          : rect;
-        const isSafe =
-          options.safety === "manual"
-            ? isManualCropRectSafe(cropRect)
-            : isCropRectSafe(cropRect, element.naturalWidth, element.naturalHeight);
-
-        if (!isSafe) {
-          cleanUp();
-          reject(new Error("Could not crop this photo safely."));
-          return;
-        }
-
-        const sourceX = Math.round(clampRatio(cropRect.x) * element.naturalWidth);
-        const sourceY = Math.round(clampRatio(cropRect.y) * element.naturalHeight);
-        const requestedWidth = Math.round(clampRatio(cropRect.width) * element.naturalWidth);
-        const requestedHeight = Math.round(clampRatio(cropRect.height) * element.naturalHeight);
-        const sourceWidth = Math.max(
-          1,
-          Math.min(requestedWidth, element.naturalWidth - sourceX),
-        );
-        const sourceHeight = Math.max(
-          1,
-          Math.min(requestedHeight, element.naturalHeight - sourceY),
-        );
-        const canvas = document.createElement("canvas");
-        canvas.width = sourceWidth;
-        canvas.height = sourceHeight;
-        const context = canvas.getContext("2d");
-
-        if (!context) {
-          cleanUp();
-          reject(new Error("Could not crop this photo."));
-          return;
-        }
-
-        context.drawImage(
-          element,
-          sourceX,
-          sourceY,
-          sourceWidth,
-          sourceHeight,
-          0,
-          0,
-          sourceWidth,
-          sourceHeight,
-        );
-
-        canvas.toBlob(
-          (blob) => {
-            cleanUp();
-            if (!blob) {
-              reject(new Error("Could not crop this photo."));
-              return;
-            }
-            resolve(blob);
-          },
-          options.type ?? image.type ?? CAPTURED_PHOTO_MIME_TYPE,
-          options.quality ?? CAPTURED_PHOTO_JPEG_QUALITY,
-        );
-      } catch (error) {
-        cleanUp();
-        reject(error instanceof Error ? error : new Error("Could not crop this photo."));
-      }
-    };
-
-    element.onerror = () => {
-      cleanUp();
-      reject(new Error("Could not crop this photo."));
-    };
-
-    element.src = objectUrl;
-  });
 
 // Draws the current video frame to a canvas and resolves a File. This
 // touches the DOM (canvas/video elements), so it is exercised manually in the
@@ -566,6 +261,10 @@ export type PhotoCaptureStage =
   | "choice"
   | "requesting_camera"
   | "camera_preview"
+  | "loading_photo"
+  | "detecting_document"
+  | "scan_ready"
+  | "no_document"
   | "captured"
   | "permission_denied"
   | "camera_unavailable"
@@ -576,16 +275,21 @@ export type PhotoCaptureAction =
   | { type: "choose_take_photo" }
   | { type: "camera_ready" }
   | { type: "camera_error"; kind: CameraErrorKind }
+  | { type: "photo_loading" }
   | { type: "photo_captured" }
+  | { type: "scan_ready" }
+  | { type: "scan_failed" }
   | { type: "retake" }
   | { type: "cancel" }
   | { type: "use_photo" };
 
 // Drives the panel through: choice -> (requesting camera) -> camera_preview
-// -> captured/adjust -> closed (or back to requesting_camera on retake).
+// -> document detection -> scan review -> closed (or back to requesting
+// camera / choice when the user wants another photo).
 //
-// "Upload existing photo" enters the same captured/adjust stage, so uploaded
-// photos and camera photos share the same crop-confirm-before-OCR path.
+// "Upload existing photo" enters the same loading/detection/review path, so
+// uploaded photos and camera photos share the same scan-confirm-before-OCR
+// path.
 export const photoCaptureReducer = (
   stage: PhotoCaptureStage,
   action: PhotoCaptureAction,
@@ -599,13 +303,26 @@ export const photoCaptureReducer = (
       return stage === "requesting_camera" ? "camera_preview" : stage;
     case "camera_error":
       return action.kind === "permission_denied" ? "permission_denied" : "camera_unavailable";
+    case "photo_loading":
+      return stage === "camera_preview" ||
+        stage === "choice" ||
+        stage === "permission_denied" ||
+        stage === "camera_unavailable" ||
+        stage === "no_document"
+        ? "loading_photo"
+        : stage;
     case "photo_captured":
       return stage === "camera_preview" ||
         stage === "choice" ||
         stage === "permission_denied" ||
-        stage === "camera_unavailable"
-        ? "captured"
+        stage === "camera_unavailable" ||
+        stage === "loading_photo"
+        ? "detecting_document"
         : stage;
+    case "scan_ready":
+      return stage === "loading_photo" || stage === "detecting_document" ? "scan_ready" : stage;
+    case "scan_failed":
+      return stage === "loading_photo" || stage === "detecting_document" ? "no_document" : stage;
     case "retake":
       return "requesting_camera";
     case "cancel":
@@ -625,4 +342,7 @@ export const stageHasActiveCameraStream = (stage: PhotoCaptureStage): boolean =>
 // Stages where the "Upload existing photo" fallback must still be offered
 // (both required error states, per the UX spec).
 export const stageShowsUploadFallback = (stage: PhotoCaptureStage): boolean =>
-  stage === "choice" || stage === "permission_denied" || stage === "camera_unavailable";
+  stage === "choice" ||
+  stage === "permission_denied" ||
+  stage === "camera_unavailable" ||
+  stage === "no_document";

@@ -3,6 +3,34 @@ import type { DecisionDocumentType } from "./types";
 const hasAny = (text: string, patterns: RegExp[]) =>
   patterns.some((pattern) => pattern.test(text));
 
+export const normaliseDecisionText = (text: string) =>
+  text.trim().replace(/\s+/g, " ");
+
+const essentialHardshipPatterns = [
+  /\b(?:cannot|can't|can not|unable to|cannot afford to|can't afford to|can not afford to|cannot pay for|can't pay for|no money for)\s+(?:buy\s+|pay\s+for\s+)?food\b/i,
+  /\bno money for food\b/i,
+  /\bno food (?:in|at) (?:the )?(?:house|home)\b/i,
+  /\bthere is no food\b/i,
+  /\b(?:cannot|can't|can not|unable to|cannot afford to|can't afford to|can not afford to)\s+(?:put|turn)\s+(?:the\s+)?heating\s+on\b/i,
+  /\b(?:cannot|can't|can not|unable to)\s+(?:heat|keep warm)\s+(?:the\s+)?(?:home|house|children)\b/i,
+  /\b(?:no|without)\s+heating\b.{0,80}\b(?:cannot|can't|can not|unable to)\s+(?:keep|stay).{0,30}\bwarm\b/i,
+  /\b(?:benefits?|universal credit|\buc\b)\b.{0,80}\b(?:stopped|stops?|ended|suspended|sanctioned|reduced|deducted)\b.{0,120}\b(?:food|heating|electricity|essentials)\b/i,
+  /\b(?:homeless|evicted|eviction)\b.{0,80}\b(?:nowhere to (?:stay|sleep)|tonight|no home)\b/i,
+  /\benforcement agent\b.{0,120}\b(?:no money for essentials|cannot afford essentials|can't afford essentials)\b/i,
+
+  // Compound essential-hardship phrases — utility disconnected and heating
+  // affected, or essential spending exhausted.  Each pattern requires multiple
+  // signals so isolated words like gas, food, bill, or warm do not trigger.
+  /\b(?:gas|electricity|power)\b.{0,40}(?:disconnected|cut off|shut off).{0,60}(?:cannot|can't|can not|unable to|no way to).{0,30}(?:keep|stay|heat).{0,20}(?:warm|the house|the home)\b/i,
+  /\bnothing (?:left )?for (?:the )?food\b/i,
+  /\bnothing left to buy food\b/i,
+  /\bno money left for food\b/i,
+  /\b(?:spent|used up) everything\b.{0,60}(?:cannot|can't|can not|unable to)\s+(?:afford\s+)?(?:the\s+)?(?:essentials|food)\b/i,
+];
+
+export const hasEssentialHardshipContext = (text: string): boolean =>
+  hasAny(normaliseDecisionText(text), essentialHardshipPatterns);
+
 // Broad "is this benefits-related at all" detection. Kept last in the overall
 // classifier priority order (see classifyDecisionDocument below) so that a
 // message which is clearly a parking/bailiff/TV Licence/bank/consumer/council
@@ -77,6 +105,7 @@ const benefitsPatterns = [
   /evicted/i,
   /eviction/i,
   /nowhere to sleep/i,
+  ...essentialHardshipPatterns,
 ];
 
 // Stage sub-classification, used once we already know the message is benefits-related.
@@ -144,6 +173,7 @@ const benefitsCrisisSupportPatterns = [
   /evicted/i,
   /eviction/i,
   /nowhere to sleep/i,
+  ...essentialHardshipPatterns,
 ];
 
 const benefitsWcaLcwraPatterns = [
@@ -278,7 +308,12 @@ const bailiffPatterns = [
   /bailiff/i,
   /enforcement agent/i,
   /notice of enforcement/i,
-  /warrant/i,
+  /\bwarrant of control\b/i,
+  /\bcourt warrant\b/i,
+  /\bwarrant\b.{0,80}\benforcement\b/i,
+  /\benforcement\b.{0,80}\bwarrant\b/i,
+  /\b(?:has|have|had)\s+(?:a\s+)?warrant\b/i,
+  /\bwarrant\b.{0,40}\b(?:issued|granted)\b/i,
   /liability order/i,
   /\bccj\b/i,
   /high court enforcement/i,
@@ -290,11 +325,32 @@ const debtPatterns = [
   /collection agency/i,
   /arrears/i,
   /default notice/i,
-  /outstanding balance/i,
   /water rates/i,
   /council tax/i,
   /passed to collections/i,
 ];
+
+// Genuine outstanding balance means an amount is actually owed.  A negated or
+// zero outstanding balance (e.g. "no outstanding balance", "outstanding balance
+// is £0", "outstanding balance has been paid") is ordinary admin, not debt
+// enforcement.  The simple /outstanding balance/i regex was removed from
+// debtPatterns above and replaced by this negation-aware check so that
+// broadband price-rise notices with "no outstanding balance" continue through
+// the normal flow instead of being blocked as debt.
+const negatedOutstandingBalancePatterns = [
+  /\bno\s+outstanding\s+balance\b/i,
+  /\bnot\b.{0,15}(?:have|owe)\s+(?:an?|any)\s+outstanding\s+balance\b/i,
+  /\boutstanding\s+balance\s+(?:is\s+)?(?:zero|£0|\$0|GBP\s*0|0(?:\.00)?)\b/i,
+  /\b(?:zero|£0|\$0|GBP\s*0)\s+outstanding\s+balance\b/i,
+  /\boutstanding\s+(?:balance|amount)\s+(?:has\s+been\s+)?(?:paid|cleared|settled)\b/i,
+  /\bprevious\s+outstanding\s+balance\s+(?:has\s+been\s+)?paid\b/i,
+  /\bno\s+balance\s+(?:left\s+)?to\s+pay\b/i,
+  /\baccount\s+(?:is\s+)?fully\s+paid\b/i,
+];
+
+const hasGenuineOutstandingBalance = (text: string): boolean =>
+  /\boutstanding balance\b/i.test(text) &&
+  !negatedOutstandingBalancePatterns.some((pattern) => pattern.test(text));
 
 const tvLicencePatterns = [
   /tv licence/i,
@@ -329,6 +385,47 @@ const consumerPatterns = [
   /consumer rights/i,
 ];
 
+// HMRC tax code / PAYE coding notices. Checked after consumer and before
+// benefits so that a tax code letter containing generic "appeal" or "review"
+// wording still routes to the tax code engine, not the benefits family.
+//
+// Recognition requires combined evidence: the text must contain HMRC/sender
+// identification AND a tax-code-specific phrase.  A standalone tax-code-looking
+// string (e.g. "1257L" in a broadband bill) is not enough.
+//
+// P800, payslip, P45, P60, and self-assessment are NOT included here;
+// they route to their own safe results in the module.
+const hmrcSenderPattern = /\bhmrc\b|hm revenue/i;
+const hmrcTaxCodePhrasePatterns = [
+  /tax code notice/i,
+  /coding notice/i,
+  /tax code/i,
+  /paye coding/i,
+  /tell you (?:your )?tax code/i,
+  /how we (?:worked|work) out your tax code/i,
+  /tax code for (?:the )?tax year/i,
+  /personal allowance/i,
+  /tax-free amount/i,
+];
+
+const hmrcTaxCodePatterns = [
+  /tax code notice/i,
+  /coding notice/i,
+  /tell you (?:your )?tax code/i,
+  /how we (?:worked|work) out your tax code/i,
+];
+
+const hasHmrcTaxCodeCombined = (text: string): boolean => {
+  if (hasAny(text, hmrcTaxCodePatterns)) return true;
+  if (
+    hmrcSenderPattern.test(text) &&
+    hasAny(text, hmrcTaxCodePhrasePatterns)
+  ) {
+    return true;
+  }
+  return false;
+};
+
 // Council Tax Reduction/Support (CTR/CTS) is run by the local council under its
 // own local scheme, not DWP - a different engine to both the DWP benefits
 // family and to council tax arrears/debt collection. Checked before the debt
@@ -343,9 +440,6 @@ const councilTaxReductionPatterns = [
   /council tax support scheme/i,
   /local council tax (?:support|reduction) scheme/i,
 ];
-
-export const normaliseDecisionText = (text: string) =>
-  text.trim().replace(/\s+/g, " ");
 
 export const classifyDecisionDocument = (
   text: string,
@@ -376,12 +470,16 @@ export const classifyDecisionDocument = (
     return "council_tax_reduction";
   }
 
-  if (hasAny(normalisedText, debtPatterns)) {
+  if (hasAny(normalisedText, debtPatterns) || hasGenuineOutstandingBalance(normalisedText)) {
     return "debt_collection";
   }
 
   if (hasAny(normalisedText, consumerPatterns)) {
     return "consumer_dispute";
+  }
+
+  if (hasHmrcTaxCodeCombined(normalisedText)) {
+    return "hmrc_tax_code_notice";
   }
 
   if (hasAny(normalisedText, benefitsPatterns)) {

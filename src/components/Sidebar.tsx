@@ -23,8 +23,7 @@ const navItems: Array<{
   label: string;
   helper: string;
 }> = [
-  { view: "home", label: "Check a message", helper: "Paste a bill, email, letter, CV, job advert, or message" },
-  { view: "demo_tour", label: "Demo / tour", helper: "Try safe synthetic examples" },
+  { view: "home", label: "Check a message", helper: "Paste a bill, email, letter, or message" },
   { view: "cases", label: "Saved items", helper: "Come back to saved items" },
   { view: "savings", label: "Money tracker", helper: "Savings, refunds, and progress" },
 ];

@@ -1,63 +1,54 @@
 import { describe, expect, it, vi } from "vitest";
+import photoCaptureSource from "../photoCapture.ts?raw";
+import photoCapturePanelSource from "../../components/PhotoCapturePanel.tsx?raw";
+import homeViewSource from "../../views/HomeView.tsx?raw";
 import {
-  A4_PORTRAIT_RATIO,
-  CAMERA_GUIDANCE_FIT_MESSAGE,
   CAMERA_GUIDANCE_CLOSE_UP_MESSAGE,
-  CAMERA_GUIDANCE_TIPS,
-  CAMERA_PREVIEW_ACTIONS_CLASSNAME,
+  CAMERA_GUIDANCE_FIT_MESSAGE,
   CAMERA_IDEAL_HEIGHT,
   CAMERA_IDEAL_WIDTH,
   CAMERA_PERMISSION_DENIED_MESSAGE,
+  CAMERA_PREVIEW_ACTIONS_CLASSNAME,
   CAMERA_UNAVAILABLE_MESSAGE,
   CAPTURED_PHOTO_FILE_NAME,
   CAPTURED_PHOTO_JPEG_QUALITY,
   CAPTURED_PHOTO_MIME_TYPE,
-  DEFAULT_MANUAL_CROP_HEIGHT_RATIO,
-  DEFAULT_MANUAL_CROP_WIDTH_RATIO,
   EXTRA_PHOTO_FILE_NAME,
-  MANUAL_CROP_MARGIN_RATIO,
-  MIN_MANUAL_CROP_HEIGHT_RATIO,
-  MIN_MANUAL_CROP_WIDTH_RATIO,
-  PHOTO_ADJUST_AFTER_CAPTURE_MESSAGE,
-  PHOTO_ADJUST_INSTRUCTION,
-  PHOTO_ADJUST_TITLE,
   PHOTO_ADD_CLOSE_UP_DESCRIPTION,
   PHOTO_ADD_CLOSE_UP_LABEL,
-  PHOTO_CROP_FALLBACK_WARNING,
-  PHOTO_FULL_PHOTO_WARNING,
+  PHOTO_CANCEL_LABEL,
+  PHOTO_CAPTURE_LOW_QUALITY_GUIDANCE,
+  PHOTO_DETECTING_MESSAGE,
+  PHOTO_EDIT_MANUALLY_LABEL,
+  PHOTO_LOADING_MESSAGE,
+  PHOTO_NO_DOCUMENT_MESSAGE,
   PHOTO_RETAKE_PHOTO_LABEL,
-  PHOTO_READ_SELECTED_AREA_LABEL,
+  PHOTO_REVIEW_ACTIONS_CLASSNAME,
+  PHOTO_REVIEW_CONTENT_CLASSNAME,
+  PHOTO_SCAN_REVIEW_QUESTION,
   PHOTO_SECTION_ADDITIONAL_LABEL,
   PHOTO_SECTION_ADDITIONAL_TITLE,
   PHOTO_SECTION_FULL_PAGE_LABEL,
   PHOTO_SECTION_FULL_PAGE_TITLE,
-  PHOTO_CANCEL_LABEL,
-  PHOTO_RETAKE_LABEL,
-  PHOTO_USE_FULL_PHOTO_LABEL,
   PHOTO_STAYS_LOCAL_MESSAGE,
   PHOTO_TAKE_NEW_PHOTO_DESCRIPTION,
   PHOTO_TAKE_NEW_PHOTO_LABEL,
   PHOTO_TAKE_PHOTO_LABEL,
-  PHOTO_REVIEW_ACTIONS_CLASSNAME,
-  PHOTO_REVIEW_CONTENT_CLASSNAME,
-  PHOTO_UNREADABLE_FALLBACK_MESSAGE,
+  PHOTO_TRY_AGAIN_LABEL,
+  PHOTO_UPLOAD_ANOTHER_LABEL,
+  PHOTO_UPLOAD_CLEARER_LABEL,
+  PHOTO_USE_ORIGINAL_LABEL,
+  PHOTO_USE_ORIGINAL_WARNING,
+  PHOTO_USE_SCAN_LABEL,
   capturePhotoFromVideoElement,
-  cropImageBlobToRect,
   classifyCameraError,
   createCapturedPhotoFile,
-  getA4GuideCropRect,
+  getCameraErrorMessage,
   getCameraGuidanceFitMessage,
   getCapturedPhotoFileName,
-  getCropRectWithMargin,
-  getCropRectPixelAspectRatio,
-  getDefaultManualCropRect,
-  getCameraErrorMessage,
   getPhotoCaptureSectionLabel,
   getPhotoCaptureSectionTitle,
-  isCropRectSafe,
-  isManualCropRectSafe,
   isCameraCaptureSupported,
-  mapDisplayedFrameToImageCrop,
   photoCaptureReducer,
   requestEnvironmentCameraStream,
   stageHasActiveCameraStream,
@@ -71,18 +62,28 @@ import {
   resetTermsAcceptance,
 } from "../termsAcceptance";
 
+const sliceBetween = (source: string, startNeedle: string, endNeedle: string): string => {
+  const start = source.indexOf(startNeedle);
+  const end = source.indexOf(endNeedle, start + startNeedle.length);
+
+  expect(start).toBeGreaterThanOrEqual(0);
+  expect(end).toBeGreaterThan(start);
+
+  return source.slice(start, end);
+};
+
 // ---- Panel state model ----
 // PhotoCapturePanel always mounts starting from "choice" (it is only ever
 // rendered while HomeView's showPhotoCapturePanel is true), so "opening the
 // photo panel" is modelled as photoCaptureReducer(<any stage>, { type: "open" })
 // resolving to "choice", exactly like clicking the mode-card button does.
 describe("photo capture panel state model", () => {
-  it("opening the panel (clicking the photo option) resolves to the choice stage", () => {
+  it("opening the panel resolves to the choice stage", () => {
     expect(photoCaptureReducer("closed", { type: "open" })).toBe("choice");
     expect(photoCaptureReducer("captured", { type: "open" })).toBe("choice");
   });
 
-  it("choosing 'Take a new photo' moves to requesting the camera", () => {
+  it("choosing 'Take a photo' moves to requesting the camera", () => {
     expect(photoCaptureReducer("choice", { type: "choose_take_photo" })).toBe("requesting_camera");
   });
 
@@ -104,32 +105,46 @@ describe("photo capture panel state model", () => {
     ).toBe("camera_unavailable");
   });
 
-  it("taking the photo moves from camera_preview to captured", () => {
-    expect(photoCaptureReducer("camera_preview", { type: "photo_captured" })).toBe("captured");
+  it("taking or uploading a photo enters loading and document detection before review", () => {
+    expect(photoCaptureReducer("camera_preview", { type: "photo_loading" })).toBe("loading_photo");
+    expect(photoCaptureReducer("choice", { type: "photo_loading" })).toBe("loading_photo");
+    expect(photoCaptureReducer("loading_photo", { type: "photo_captured" })).toBe(
+      "detecting_document",
+    );
   });
 
-  it("uploading an existing photo can enter the same captured adjust step from choice", () => {
-    expect(photoCaptureReducer("choice", { type: "photo_captured" })).toBe("captured");
+  it("gallery replacement recovers from failed detection without starting OCR", () => {
+    expect(photoCaptureReducer("no_document", { type: "photo_loading" })).toBe("loading_photo");
   });
 
   it("uploading an existing photo recovers from camera permission and availability errors", () => {
-    expect(
-      photoCaptureReducer("permission_denied", { type: "photo_captured" }),
-    ).toBe("captured");
-    expect(
-      photoCaptureReducer("camera_unavailable", { type: "photo_captured" }),
-    ).toBe("captured");
+    expect(photoCaptureReducer("permission_denied", { type: "photo_loading" })).toBe(
+      "loading_photo",
+    );
+    expect(photoCaptureReducer("camera_unavailable", { type: "photo_loading" })).toBe(
+      "loading_photo",
+    );
   });
 
-  it("retaking from captured goes back to requesting_camera, allowing another capture", () => {
-    expect(photoCaptureReducer("captured", { type: "retake" })).toBe("requesting_camera");
+  it("a detected document moves to scan review and a failed scan moves to no_document", () => {
+    expect(photoCaptureReducer("detecting_document", { type: "scan_ready" })).toBe("scan_ready");
+    expect(photoCaptureReducer("detecting_document", { type: "scan_failed" })).toBe("no_document");
   });
 
-  it("cancelling from any stage closes the panel", () => {
+  it("retaking from review or failure goes back to requesting_camera", () => {
+    expect(photoCaptureReducer("scan_ready", { type: "retake" })).toBe("requesting_camera");
+    expect(photoCaptureReducer("no_document", { type: "retake" })).toBe("requesting_camera");
+  });
+
+  it("cancelling from any visible stage closes the panel", () => {
     const stages: PhotoCaptureStage[] = [
       "choice",
       "requesting_camera",
       "camera_preview",
+      "loading_photo",
+      "detecting_document",
+      "scan_ready",
+      "no_document",
       "captured",
       "permission_denied",
       "camera_unavailable",
@@ -140,23 +155,158 @@ describe("photo capture panel state model", () => {
     }
   });
 
-  it("using the captured photo closes the panel", () => {
-    expect(photoCaptureReducer("captured", { type: "use_photo" })).toBe("closed");
+  it("using the reviewed prepared scan closes the panel", () => {
+    expect(photoCaptureReducer("scan_ready", { type: "use_photo" })).toBe("closed");
   });
 
   it("only the camera_preview stage is considered to have an active camera stream", () => {
     expect(stageHasActiveCameraStream("camera_preview")).toBe(true);
     expect(stageHasActiveCameraStream("choice")).toBe(false);
     expect(stageHasActiveCameraStream("captured")).toBe(false);
+    expect(stageHasActiveCameraStream("scan_ready")).toBe(false);
     expect(stageHasActiveCameraStream("requesting_camera")).toBe(false);
   });
 
-  it("the upload-existing-photo fallback is available on choice and on both error stages", () => {
+  it("the upload-existing-photo fallback is available on choice, camera errors, and no-document", () => {
     expect(stageShowsUploadFallback("choice")).toBe(true);
     expect(stageShowsUploadFallback("permission_denied")).toBe(true);
     expect(stageShowsUploadFallback("camera_unavailable")).toBe(true);
+    expect(stageShowsUploadFallback("no_document")).toBe(true);
     expect(stageShowsUploadFallback("camera_preview")).toBe(false);
     expect(stageShowsUploadFallback("captured")).toBe(false);
+    expect(stageShowsUploadFallback("scan_ready")).toBe(false);
+  });
+});
+
+// ---- Simplified scanner review workflow ----
+describe("simplified photo scan review workflow", () => {
+  it("removes manual crop controls, manual-adjust actions, and full-photo fallback copy", () => {
+    const sources = [photoCaptureSource, photoCapturePanelSource, homeViewSource].join("\n");
+    const forbiddenSnippets = [
+      "manual_adjust",
+      "adjust_manually",
+      "Adjust manually",
+      "Use full photo",
+      "Read this area",
+      "PHOTO_ADJUST_MANUALLY_LABEL",
+      "PHOTO_READ_SELECTED_AREA_LABEL",
+      "PHOTO_USE_FULL_PHOTO_LABEL",
+      "PHOTO_FULL_PHOTO_WARNING",
+      "PHOTO_CROP_FALLBACK_WARNING",
+      "cropImageBlobToRect",
+      "getDefaultManualCropRect",
+      "isManualCropRectSafe",
+      "cropAreaRef",
+      "activeCropDragRef",
+      "onPointerDown",
+    ];
+
+    for (const snippet of forbiddenSnippets) {
+      expect(sources).not.toContain(snippet);
+    }
+  });
+
+  it("presents only the binary confirmation after an automatic scan succeeds", () => {
+    expect(PHOTO_SCAN_REVIEW_QUESTION).toBe("Does the whole document look clear?");
+    expect(PHOTO_USE_SCAN_LABEL).toBe("Yes, use this");
+    expect(PHOTO_TRY_AGAIN_LABEL).toBe("No, try again");
+    expect(PHOTO_REVIEW_ACTIONS_CLASSNAME).toContain("sm:grid-cols-2");
+    expect(PHOTO_REVIEW_CONTENT_CLASSNAME).toContain("overflow-y-auto");
+    expect(photoCapturePanelSource).toContain("Prepared document scan preview");
+    expect(photoCapturePanelSource).toContain("PHOTO_SCAN_REVIEW_QUESTION");
+    expect(photoCapturePanelSource).toContain("PHOTO_USE_SCAN_LABEL");
+    expect(photoCapturePanelSource).toContain("PHOTO_TRY_AGAIN_LABEL");
+  });
+
+  it("uses the required plain-language failure screen and choices", () => {
+    expect(PHOTO_NO_DOCUMENT_MESSAGE).toBe("We couldn\u2019t find a clear document in this photo.");
+    expect(PHOTO_RETAKE_PHOTO_LABEL).toBe("Retake photo");
+    expect(PHOTO_UPLOAD_CLEARER_LABEL).toBe("Upload clearer image");
+    expect(PHOTO_USE_ORIGINAL_LABEL).toBe("Use original photo anyway");
+    expect(PHOTO_EDIT_MANUALLY_LABEL).toBe("Edit or paste manually");
+    expect(PHOTO_USE_ORIGINAL_WARNING).toContain("background text");
+    expect(PHOTO_CAPTURE_LOW_QUALITY_GUIDANCE).toContain("other printed material");
+    expect(photoCapturePanelSource).toContain("PHOTO_NO_DOCUMENT_MESSAGE");
+    expect(photoCapturePanelSource).toContain("PHOTO_RETAKE_PHOTO_LABEL");
+    expect(photoCapturePanelSource).toContain("PHOTO_UPLOAD_CLEARER_LABEL");
+    expect(photoCapturePanelSource).toContain("PHOTO_USE_ORIGINAL_LABEL");
+    expect(photoCapturePanelSource).toContain("PHOTO_EDIT_MANUALLY_LABEL");
+  });
+
+  it("preserves loading and document-detection feedback before review", () => {
+    expect(PHOTO_LOADING_MESSAGE).toBe("Loading your photo...");
+    expect(PHOTO_DETECTING_MESSAGE).toBe("Finding the document...");
+    expect(photoCapturePanelSource).toContain("PHOTO_LOADING_MESSAGE");
+    expect(photoCapturePanelSource).toContain("PHOTO_DETECTING_MESSAGE");
+    expect(photoCapturePanelSource).toContain('aria-live="polite"');
+  });
+
+  it("the Yes action passes only the prepared scan to OCR", () => {
+    const readScanBlock = sliceBetween(
+      photoCapturePanelSource,
+      "const handleReadScan = () =>",
+      "const handleUseOriginalPhoto",
+    );
+
+    expect(readScanBlock).toContain("scannedFileRef.current");
+    expect(readScanBlock).toContain("sendPhotoToOcr(scannedFile, scanWarnings, true)");
+    expect(readScanBlock).not.toContain("sourceFileRef.current");
+    expect(photoCapturePanelSource).not.toContain("readTextFromImage");
+  });
+
+  it("the original photo fallback is explicit and warned, never part of automatic detection failure", () => {
+    const originalFallbackBlock = sliceBetween(
+      photoCapturePanelSource,
+      "const handleUseOriginalPhoto = () =>",
+      "const handleEditManually",
+    );
+
+    expect(originalFallbackBlock).toContain("sourceFileRef.current");
+    expect(originalFallbackBlock).toContain("PHOTO_USE_ORIGINAL_WARNING");
+    expect(originalFallbackBlock).toContain("sendPhotoToOcr(sourceFile, [PHOTO_USE_ORIGINAL_WARNING], false)");
+
+    const failureScreenBlock = sliceBetween(
+      photoCapturePanelSource,
+      'stage === "no_document"',
+      'stage === "permission_denied"',
+    );
+
+    expect(failureScreenBlock).toContain("PHOTO_USE_ORIGINAL_LABEL");
+    expect(failureScreenBlock).toContain("PHOTO_USE_ORIGINAL_WARNING");
+  });
+
+  it("the No action returns to choosing another photo and does not start OCR", () => {
+    const tryAgainBlock = sliceBetween(
+      photoCapturePanelSource,
+      "const handleTryAgain = () =>",
+      "const handleRetake = () =>",
+    );
+
+    expect(tryAgainBlock).toContain('dispatch({ type: "open" })');
+    expect(tryAgainBlock).not.toContain("sendPhotoToOcr");
+    expect(tryAgainBlock).not.toContain("onUsePhotos");
+  });
+
+  it("rejected automatic detection cannot enter OCR from the panel", () => {
+    const prepareBlock = sliceBetween(
+      photoCapturePanelSource,
+      "const preparePhotoForReview = async",
+      "const handleChooseTakePhoto",
+    );
+
+    expect(prepareBlock).toContain('dispatch({ type: "scan_failed" })');
+    expect(prepareBlock).not.toContain("sendPhotoToOcr");
+    expect(prepareBlock).not.toContain("onUsePhotos");
+    expect(prepareBlock).not.toContain("canUseFullPhoto");
+  });
+
+  it("camera capture, selected uploads, and initial image attachments share the same scanner path", () => {
+    expect(photoCapturePanelSource).toContain("await preparePhotoForReview(file)");
+    expect(photoCapturePanelSource).toContain("const handleUploadExisting = (file: File)");
+    expect(photoCapturePanelSource).toContain("initialPhotoFile");
+    expect(photoCapturePanelSource).toContain("void preparePhotoForReview(initialPhotoFile)");
+    expect(homeViewSource).toContain("setPendingPhotoFile(file)");
+    expect(homeViewSource).toContain("setShowPhotoCapturePanel(true)");
   });
 });
 
@@ -197,6 +347,8 @@ describe("camera error classification and fallback copy", () => {
     expect(CAMERA_PERMISSION_DENIED_MESSAGE).toBe(
       "Camera access was blocked. You can upload a photo instead.",
     );
+    expect(photoCapturePanelSource).toContain("stage === \"permission_denied\"");
+    expect(photoCapturePanelSource).toContain("<UploadExistingPhotoInput");
   });
 
   it("camera-unavailable state shows the exact required upload fallback copy", () => {
@@ -231,12 +383,6 @@ describe("requestEnvironmentCameraStream", () => {
     });
   });
 
-  // Intentional change from v1 (previously asserted `{ video: { facingMode:
-  // "environment" } }` with no resolution hint at all). Full-page letters
-  // were coming out too small/compressed to OCR reliably on mobile, so the
-  // stream request now also asks for an ideal 1920x1080 - these are "ideal"
-  // constraints, so a device that cannot do 1080p still gets a stream at its
-  // best available resolution rather than failing.
   it("asks for a high-resolution stream (ideal, not exact) so full-page letters stay legible", async () => {
     const getUserMedia = vi.fn().mockResolvedValue({ getTracks: () => [] } as unknown as MediaStream);
 
@@ -282,8 +428,8 @@ describe("requestEnvironmentCameraStream", () => {
 });
 
 // ---- MediaStream cleanup ----
-describe("stopMediaStreamTracks", () => {
-  it("cancelling stops every track on the stream", () => {
+describe("camera stream cleanup", () => {
+  it("stopMediaStreamTracks stops every track on the stream", () => {
     const trackA = { stop: vi.fn() };
     const trackB = { stop: vi.fn() };
     const fakeStream = { getTracks: () => [trackA, trackB] } as unknown as MediaStream;
@@ -297,6 +443,28 @@ describe("stopMediaStreamTracks", () => {
   it("does nothing (and does not throw) when there is no stream", () => {
     expect(() => stopMediaStreamTracks(undefined)).not.toThrow();
     expect(() => stopMediaStreamTracks(null)).not.toThrow();
+  });
+
+  it("PhotoCapturePanel stops camera tracks after capture, cancel, and unmount", () => {
+    const cancelBlock = sliceBetween(
+      photoCapturePanelSource,
+      "const handleCancel = () =>",
+      "useEffect(() =>",
+    );
+    const prepareBlock = sliceBetween(
+      photoCapturePanelSource,
+      "const preparePhotoForReview = async",
+      "const handleChooseTakePhoto",
+    );
+    const unmountBlock = sliceBetween(
+      photoCapturePanelSource,
+      "return () => {\n      scanRequestIdRef.current += 1;",
+      "  }, []);",
+    );
+
+    expect(cancelBlock).toContain("stopActiveStream()");
+    expect(prepareBlock).toContain("stopActiveStream()");
+    expect(unmountBlock).toContain("stopMediaStreamTracks(streamRef.current)");
   });
 });
 
@@ -321,346 +489,7 @@ describe("createCapturedPhotoFile", () => {
   });
 });
 
-// ---- Capture frame crop ----
-describe("A4 guide-frame crop", () => {
-  it("returns a centred portrait A4 crop rectangle", () => {
-    const rect = getA4GuideCropRect(1200, 2000);
-    const pixelRatio = (rect.width * 1200) / (rect.height * 2000);
-
-    expect(pixelRatio).toBeCloseTo(A4_PORTRAIT_RATIO, 3);
-    expect(rect.x + rect.width / 2).toBeCloseTo(0.5, 5);
-    expect(rect.y + rect.height / 2).toBeCloseTo(0.5, 5);
-  });
-
-  it("keeps the crop rectangle within image bounds", () => {
-    const testSizes = [
-      [1200, 2000],
-      [2000, 1200],
-      [500, 500],
-      [0, 0],
-    ];
-
-    for (const [width, height] of testSizes) {
-      const rect = getA4GuideCropRect(width, height);
-      expect(rect.x).toBeGreaterThanOrEqual(0);
-      expect(rect.y).toBeGreaterThanOrEqual(0);
-      expect(rect.width).toBeGreaterThan(0);
-      expect(rect.height).toBeGreaterThan(0);
-      expect(rect.x + rect.width).toBeLessThanOrEqual(1);
-      expect(rect.y + rect.height).toBeLessThanOrEqual(1);
-    }
-  });
-
-  it("rejects too-narrow strip crops", () => {
-    expect(isCropRectSafe({ x: 0.45, y: 0.1, width: 0.1, height: 0.8 }, 1200, 2000)).toBe(false);
-  });
-
-  it("rejects crops that remove too much of the source image", () => {
-    expect(isCropRectSafe({ x: 0.2, y: 0.3, width: 0.5, height: 0.4 }, 1200, 2000)).toBe(false);
-  });
-
-  it("accepts a safe A4-ish portrait crop", () => {
-    const rect = { x: 0.1, y: 0.08, width: 0.8, height: 0.84 };
-    expect(getCropRectPixelAspectRatio(rect, 1200, 1600)).toBeCloseTo(0.714, 3);
-    expect(isCropRectSafe(rect, 1200, 1600)).toBe(true);
-  });
-
-  it("maps a centred visible guide frame through object-fit contain", () => {
-    const rect = mapDisplayedFrameToImageCrop({
-      mediaRect: { left: 0, top: 0, width: 300, height: 500 },
-      frameRect: { left: 16, top: 60, width: 268, height: 380 },
-      naturalWidth: 1200,
-      naturalHeight: 2000,
-      objectFit: "contain",
-    });
-
-    expect(rect).not.toBeNull();
-    expect(rect?.x).toBeCloseTo(0.05, 2);
-    expect(rect?.y).toBeCloseTo(0.12, 2);
-    expect(rect?.width).toBeCloseTo(0.89, 2);
-    expect(rect?.height).toBeCloseTo(0.76, 2);
-  });
-
-  it("returns null for impossible or unsafe display-frame geometry", () => {
-    expect(
-      mapDisplayedFrameToImageCrop({
-        mediaRect: { left: 0, top: 0, width: 300, height: 500 },
-        frameRect: { left: 140, top: 50, width: 20, height: 420 },
-        naturalWidth: 1200,
-        naturalHeight: 2000,
-        objectFit: "contain",
-      }),
-    ).toBeNull();
-
-    expect(
-      mapDisplayedFrameToImageCrop({
-        mediaRect: { left: 0, top: 0, width: 0, height: 500 },
-        frameRect: { left: 0, top: 0, width: 100, height: 300 },
-        naturalWidth: 1200,
-        naturalHeight: 2000,
-        objectFit: "contain",
-      }),
-    ).toBeNull();
-  });
-
-  const withFakeImageCanvas = async (
-    run: (fakeCanvas: {
-      width: number;
-      height: number;
-      drawImage: ReturnType<typeof vi.fn>;
-      toBlobArgs: unknown[];
-    }) => Promise<void>,
-  ) => {
-    const drawImage = vi.fn();
-    let toBlobArgs: unknown[] = [];
-    const fakeCanvas = {
-      width: 0,
-      height: 0,
-      getContext: () => ({ drawImage }),
-      toBlob: (callback: (blob: Blob | null) => void, type: string, quality: number) => {
-        toBlobArgs = [type, quality];
-        callback(new Blob(["cropped"], { type }));
-      },
-    };
-
-    class FakeImage {
-      naturalWidth = 1200;
-      naturalHeight = 2000;
-      onload: (() => void) | null = null;
-      onerror: (() => void) | null = null;
-      set src(_value: string) {
-        this.onload?.();
-      }
-    }
-
-    vi.stubGlobal("document", {
-      createElement: () => fakeCanvas,
-    });
-    vi.stubGlobal("Image", FakeImage);
-    vi.stubGlobal("URL", {
-      createObjectURL: vi.fn(() => "blob:fake-photo"),
-      revokeObjectURL: vi.fn(),
-    });
-
-    try {
-      await run({
-        get width() {
-          return fakeCanvas.width;
-        },
-        get height() {
-          return fakeCanvas.height;
-        },
-        drawImage,
-        get toBlobArgs() {
-          return toBlobArgs;
-        },
-      });
-    } finally {
-      vi.unstubAllGlobals();
-    }
-  };
-
-  it("crops to a Blob and preserves the image MIME type where possible", async () => {
-    await withFakeImageCanvas(async (fakeCanvas) => {
-      const source = new Blob(["full photo"], { type: "image/jpeg" });
-      const blob = await cropImageBlobToRect(source, getA4GuideCropRect(1200, 2000));
-
-      expect(blob).toBeInstanceOf(Blob);
-      expect(blob.type).toBe("image/jpeg");
-      expect(fakeCanvas.toBlobArgs[0]).toBe("image/jpeg");
-    });
-  });
-
-  it("refuses to crop to an unsafe thin strip", async () => {
-    await withFakeImageCanvas(async () => {
-      const source = new Blob(["full photo"], { type: "image/jpeg" });
-
-      await expect(
-        cropImageBlobToRect(source, { x: 0.49, y: 0.05, width: 0.02, height: 0.9 }),
-      ).rejects.toThrow("safely");
-    });
-  });
-
-  it("draws only the centred guide-frame area to the crop canvas", async () => {
-    await withFakeImageCanvas(async (fakeCanvas) => {
-      const source = new Blob(["full photo"], { type: "image/jpeg" });
-      await cropImageBlobToRect(source, getA4GuideCropRect(1200, 2000));
-
-      expect(fakeCanvas.width).toBeGreaterThan(0);
-      expect(fakeCanvas.height).toBeGreaterThan(0);
-      expect(fakeCanvas.width / fakeCanvas.height).toBeCloseTo(A4_PORTRAIT_RATIO, 2);
-      expect(fakeCanvas.drawImage).toHaveBeenCalledOnce();
-      expect(fakeCanvas.drawImage.mock.calls[0][1]).toBeGreaterThan(0);
-      expect(fakeCanvas.drawImage.mock.calls[0][2]).toBeGreaterThan(0);
-    });
-  });
-});
-
-// ---- Manual adjust crop ----
-describe("manual adjust document area crop", () => {
-  const withFakeManualImageCanvas = async (
-    run: (fakeCanvas: {
-      width: number;
-      height: number;
-      drawImage: ReturnType<typeof vi.fn>;
-    }) => Promise<void>,
-  ) => {
-    const drawImage = vi.fn();
-    const fakeCanvas = {
-      width: 0,
-      height: 0,
-      getContext: () => ({ drawImage }),
-      toBlob: (callback: (blob: Blob | null) => void, type: string) => {
-        callback(new Blob(["cropped"], { type }));
-      },
-    };
-
-    class FakeImage {
-      naturalWidth = 1200;
-      naturalHeight = 2000;
-      onload: (() => void) | null = null;
-      onerror: (() => void) | null = null;
-      set src(_value: string) {
-        this.onload?.();
-      }
-    }
-
-    vi.stubGlobal("document", {
-      createElement: () => fakeCanvas,
-    });
-    vi.stubGlobal("Image", FakeImage);
-    vi.stubGlobal("URL", {
-      createObjectURL: vi.fn(() => "blob:fake-photo"),
-      revokeObjectURL: vi.fn(),
-    });
-
-    try {
-      await run({
-        get width() {
-          return fakeCanvas.width;
-        },
-        get height() {
-          return fakeCanvas.height;
-        },
-        drawImage,
-      });
-    } finally {
-      vi.unstubAllGlobals();
-    }
-  };
-
-  it("starts with a large centred crop box by default", () => {
-    const rect = getDefaultManualCropRect(null);
-
-    expect(rect.width).toBe(DEFAULT_MANUAL_CROP_WIDTH_RATIO);
-    expect(rect.height).toBe(DEFAULT_MANUAL_CROP_HEIGHT_RATIO);
-    expect(rect.x + rect.width / 2).toBeCloseTo(0.5, 5);
-    expect(rect.y + rect.height / 2).toBeCloseTo(0.5, 5);
-    expect(rect.width).toBeGreaterThan(0.8);
-    expect(rect.height).toBeGreaterThan(0.8);
-  });
-
-  it("can still use a safe suggested crop as the starting crop box", () => {
-    const suggested = { x: 0.1, y: 0.08, width: 0.8, height: 0.84 };
-
-    expect(getDefaultManualCropRect(suggested)).toEqual(suggested);
-  });
-
-  it("rejects tiny or out-of-bounds manual crop boxes", () => {
-    expect(isManualCropRectSafe({ x: 0.1, y: 0.1, width: 0.1, height: 0.8 })).toBe(false);
-    expect(isManualCropRectSafe({ x: 0.1, y: 0.1, width: 0.8, height: 0.1 })).toBe(false);
-    expect(isManualCropRectSafe({ x: -0.1, y: 0.1, width: 0.8, height: 0.8 })).toBe(false);
-    expect(isManualCropRectSafe({ x: 0.2, y: 0.2, width: 0.5, height: 0.5 })).toBe(true);
-    expect(MIN_MANUAL_CROP_WIDTH_RATIO).toBeGreaterThanOrEqual(0.2);
-    expect(MIN_MANUAL_CROP_HEIGHT_RATIO).toBeGreaterThanOrEqual(0.2);
-  });
-
-  it("adds only a small safe margin around the selected crop", () => {
-    const rect = getCropRectWithMargin({ x: 0.1, y: 0.2, width: 0.5, height: 0.4 });
-
-    expect(MANUAL_CROP_MARGIN_RATIO).toBe(0.02);
-    expect(rect.x).toBeCloseTo(0.08, 5);
-    expect(rect.y).toBeCloseTo(0.18, 5);
-    expect(rect.width).toBeCloseTo(0.54, 5);
-    expect(rect.height).toBeCloseTo(0.44, 5);
-  });
-
-  it("allows a free manual rectangle rather than forcing an A4 aspect ratio", async () => {
-    await withFakeManualImageCanvas(async (fakeCanvas) => {
-      const source = new Blob(["full photo"], { type: "image/jpeg" });
-      await cropImageBlobToRect(
-        source,
-        { x: 0.15, y: 0.2, width: 0.65, height: 0.35 },
-        { safety: "manual" },
-      );
-
-      expect(fakeCanvas.width / fakeCanvas.height).toBeGreaterThan(1);
-      expect(fakeCanvas.drawImage).toHaveBeenCalledOnce();
-    });
-  });
-
-  it("converts the selected manual crop ratios to original image pixels before OCR", async () => {
-    await withFakeManualImageCanvas(async (fakeCanvas) => {
-      const source = new Blob(["full photo"], { type: "image/jpeg" });
-      await cropImageBlobToRect(
-        source,
-        { x: 0.25, y: 0.1, width: 0.5, height: 0.6 },
-        { safety: "manual", marginRatio: 0 },
-      );
-
-      expect(fakeCanvas.width).toBe(600);
-      expect(fakeCanvas.height).toBe(1200);
-      expect(fakeCanvas.drawImage).toHaveBeenCalledWith(
-        expect.any(Object),
-        300,
-        200,
-        600,
-        1200,
-        0,
-        0,
-        600,
-        1200,
-      );
-    });
-  });
-
-  it("manual crop still rejects a thin strip before OCR", async () => {
-    await withFakeManualImageCanvas(async () => {
-      const source = new Blob(["full photo"], { type: "image/jpeg" });
-
-      await expect(
-        cropImageBlobToRect(
-          source,
-          { x: 0.45, y: 0.1, width: 0.08, height: 0.75 },
-          { safety: "manual" },
-        ),
-      ).rejects.toThrow("safely");
-    });
-  });
-
-  it("exposes the exact adjust-step copy and full-photo fallback warning", () => {
-    expect(PHOTO_ADJUST_TITLE).toBe("Adjust document area");
-    expect(PHOTO_ADJUST_INSTRUCTION).toBe(
-      "Drag the box around the letter. Anything outside the box will be ignored.",
-    );
-    expect(PHOTO_READ_SELECTED_AREA_LABEL).toBe("Read this area");
-    expect(PHOTO_USE_FULL_PHOTO_LABEL).toBe("Use full photo");
-    expect(PHOTO_FULL_PHOTO_WARNING).toBe(
-      "The full photo may include background. OCR may make more mistakes.",
-    );
-    expect(PHOTO_CROP_FALLBACK_WARNING).toBe(
-      "We could not crop this area safely, so AdminAvenger will read the full photo. You can still edit the text manually.",
-    );
-  });
-});
-
 // ---- Capture quality setting ----
-// capturePhotoFromVideoElement itself touches canvas/video (DOM-only, so it
-// is exercised manually per the comment in photoCapture.ts) - but the actual
-// quality number it passes to canvas.toBlob is exported as a plain constant
-// specifically so a regression back to a low/default JPEG quality (the root
-// cause of the too-compressed, hard-to-OCR captures reported on mobile) is
-// caught here without needing a DOM.
 describe("captured photo JPEG quality", () => {
   it("is high enough that a full-page letter is not destroyed by compression", () => {
     expect(CAPTURED_PHOTO_JPEG_QUALITY).toBeGreaterThanOrEqual(0.92);
@@ -670,13 +499,11 @@ describe("captured photo JPEG quality", () => {
 
 // ---- Document Capture Coach camera guidance ----
 describe("document capture coach camera guidance copy", () => {
-  // Live mobile testing showed one full-page photo is usually good enough
-  // (e.g. a ~78% read that found the amount, dates, reference, and issuer),
-  // and users disliked being forced through a set photo sequence - so the
-  // upfront scan-mode choice was removed entirely.
   it("defaults to a simple one-photo flow with no upfront scan-mode choice", () => {
     expect(PHOTO_TAKE_NEW_PHOTO_LABEL).toBe("Take a photo");
-    expect(PHOTO_TAKE_NEW_PHOTO_DESCRIPTION).toBe("Take one photo of the whole letter or message.");
+    expect(PHOTO_TAKE_NEW_PHOTO_DESCRIPTION).toBe(
+      "Take one photo of the whole letter or message, then review the prepared scan before OCR.",
+    );
   });
 
   it("keeps multi-photo only as an optional close-up follow-up, in plain language", () => {
@@ -688,13 +515,13 @@ describe("document capture coach camera guidance copy", () => {
   });
 
   it("shows the required simple camera guidance message", () => {
-    expect(CAMERA_GUIDANCE_FIT_MESSAGE).toBe("Take a clear photo of the letter.");
+    expect(CAMERA_GUIDANCE_FIT_MESSAGE).toBe("Fit the whole page in the photo");
   });
 
   it("keeps the default flow as a single full-page photo with a simple label", () => {
     expect(getPhotoCaptureSectionTitle("full_page")).toBe(PHOTO_SECTION_FULL_PAGE_TITLE);
     expect(PHOTO_SECTION_FULL_PAGE_TITLE).toBe("Full page photo");
-    expect(getCameraGuidanceFitMessage("full_page")).toBe("Take a clear photo of the letter.");
+    expect(getCameraGuidanceFitMessage("full_page")).toBe("Fit the whole page in the photo");
     expect(getPhotoCaptureSectionLabel("full_page")).toBe(PHOTO_SECTION_FULL_PAGE_LABEL);
     expect(PHOTO_SECTION_FULL_PAGE_LABEL).toBe("Main photo");
   });
@@ -717,11 +544,7 @@ describe("document capture coach camera guidance copy", () => {
     expect(EXTRA_PHOTO_FILE_NAME).toBe("extra-photo.jpg");
   });
 
-  // The forced two-photo UX was removed after live mobile testing. This pins
-  // the removal: no camera-flow copy may reintroduce numbered photo
-  // sequences, page-half naming, or an instruction to take a set number of
-  // photos.
-  it("never shows forced two-photo wording anywhere in the camera-flow copy", () => {
+  it("never shows forced two-photo or scan-mode wording anywhere in the camera-flow copy", () => {
     const allCopy = [
       PHOTO_TAKE_NEW_PHOTO_LABEL,
       PHOTO_TAKE_NEW_PHOTO_DESCRIPTION,
@@ -734,25 +557,27 @@ describe("document capture coach camera guidance copy", () => {
       PHOTO_SECTION_ADDITIONAL_TITLE,
       CAMERA_GUIDANCE_FIT_MESSAGE,
       CAMERA_GUIDANCE_CLOSE_UP_MESSAGE,
-      ...CAMERA_GUIDANCE_TIPS,
       PHOTO_TAKE_PHOTO_LABEL,
-      PHOTO_READ_SELECTED_AREA_LABEL,
-      PHOTO_USE_FULL_PHOTO_LABEL,
-      PHOTO_RETAKE_LABEL,
+      PHOTO_USE_SCAN_LABEL,
+      PHOTO_TRY_AGAIN_LABEL,
       PHOTO_CANCEL_LABEL,
-      PHOTO_ADJUST_TITLE,
-      PHOTO_ADJUST_INSTRUCTION,
+      PHOTO_SCAN_REVIEW_QUESTION,
+      PHOTO_NO_DOCUMENT_MESSAGE,
+      PHOTO_UPLOAD_ANOTHER_LABEL,
     ];
 
     const forbiddenPatterns = [
-      new RegExp("Photo \\d+ of \\d+", "i"),
-      new RegExp("Photo \\d+:", "i"),
-      new RegExp("\\btop\\s+half\\b", "i"),
-      new RegExp("\\bbottom\\s+half\\b", "i"),
+      /Photo \d+ of \d+/i,
+      /Photo \d+:/i,
+      /\btop\s+half\b/i,
+      /\bbottom\s+half\b/i,
       /\btake 2\b/i,
       /\btwo photos\b/i,
-      new RegExp(`\\bBest ${"accuracy"}\\b`, "i"),
-      new RegExp(`\\bQuick ${"scan"}\\b`, "i"),
+      /\bBest accuracy\b/i,
+      /\bQuick scan\b/i,
+      /\bscan mode\b/i,
+      /\bconfidence\b/i,
+      /\binside the guide\b/i,
     ];
 
     for (const message of allCopy) {
@@ -760,16 +585,6 @@ describe("document capture coach camera guidance copy", () => {
         expect(message).not.toMatch(pattern);
       }
     }
-  });
-
-  it("shows the required mobile capture tips", () => {
-    expect(CAMERA_GUIDANCE_TIPS).toEqual([
-      "Try to fill the photo with the page.",
-      "You can adjust the document area after taking the photo.",
-      "Use good light.",
-      "Keep the page flat.",
-      "Avoid shadows.",
-    ]);
   });
 
   it("uses short, safe guidance copy", () => {
@@ -786,7 +601,8 @@ describe("document capture coach camera guidance copy", () => {
     for (const message of [
       CAMERA_GUIDANCE_FIT_MESSAGE,
       CAMERA_GUIDANCE_CLOSE_UP_MESSAGE,
-      ...CAMERA_GUIDANCE_TIPS,
+      PHOTO_SCAN_REVIEW_QUESTION,
+      PHOTO_NO_DOCUMENT_MESSAGE,
     ]) {
       for (const pattern of forbiddenPatterns) {
         expect(message).not.toMatch(pattern);
@@ -794,49 +610,21 @@ describe("document capture coach camera guidance copy", () => {
     }
   });
 
-  it("does not require a fixed A4 guide frame in the live camera copy", () => {
-    const allCameraCopy = [
-      CAMERA_GUIDANCE_FIT_MESSAGE,
-      CAMERA_GUIDANCE_CLOSE_UP_MESSAGE,
-      ...CAMERA_GUIDANCE_TIPS,
-    ];
-
-    for (const message of allCameraCopy) {
-      expect(message).not.toMatch(/\binside the frame\b/i);
-      expect(message).not.toMatch(/\banything outside the frame\b/i);
-      expect(message).not.toMatch(/\bA4\b/i);
-    }
-  });
-
-  it("keeps capture and review actions represented as sticky mobile controls", () => {
+  it("keeps capture and review actions represented as large sticky mobile controls", () => {
     expect(CAMERA_PREVIEW_ACTIONS_CLASSNAME).toContain("sticky");
     expect(CAMERA_PREVIEW_ACTIONS_CLASSNAME).toContain("bottom-0");
     expect(PHOTO_REVIEW_ACTIONS_CLASSNAME).toContain("sticky");
     expect(PHOTO_REVIEW_ACTIONS_CLASSNAME).toContain("bottom-0");
+    expect(photoCapturePanelSource).toContain("min-h-12");
   });
 
-  it("keeps the adjust step actions represented as sticky mobile controls", () => {
-    expect(PHOTO_REVIEW_CONTENT_CLASSNAME).toContain("overflow-y-auto");
-    expect(PHOTO_REVIEW_CONTENT_CLASSNAME).not.toContain("sticky");
-    expect(PHOTO_REVIEW_ACTIONS_CLASSNAME).toContain("sticky");
-    expect(PHOTO_REVIEW_ACTIONS_CLASSNAME).toContain("sm:grid-cols-4");
-  });
-
-  it("states that the user can adjust the area after capture instead of relying on live certainty", () => {
-    expect(PHOTO_ADJUST_AFTER_CAPTURE_MESSAGE).toBe(
-      "You can adjust the document area after taking the photo.",
-    );
-  });
 });
 
 // ---- Capture resolution: intrinsic video size, not the CSS preview size ----
 // This project's tests run without jsdom, so capturePhotoFromVideoElement is
 // normally only exercised manually in the browser (it touches canvas/video).
-// For this one regression - "captures came out smaller than the real camera
-// frame" - a minimal fake `document`/canvas is stubbed in just for this test,
-// which is enough to prove the canvas is sized from the video's own
-// videoWidth/videoHeight (the real camera frame) and not some other,
-// potentially-smaller, CSS-driven size.
+// For this regression, a minimal fake `document`/canvas is enough to prove
+// the canvas is sized from the video's own videoWidth/videoHeight.
 describe("capturePhotoFromVideoElement uses the video's intrinsic resolution", () => {
   const withFakeDocument = async (
     run: (fakeCanvas: {
@@ -883,9 +671,6 @@ describe("capturePhotoFromVideoElement uses the video's intrinsic resolution", (
 
   it("sizes the capture from video.videoWidth/videoHeight, not a smaller CSS preview size", async () => {
     await withFakeDocument(async (fakeCanvas) => {
-      // A video whose real camera frame (videoWidth/videoHeight) is much
-      // larger than however small the <video> preview element happens to be
-      // rendered on screen - capture must follow the former, not the latter.
       const fakeVideo = {
         videoWidth: 3024,
         videoHeight: 4032,
@@ -927,11 +712,8 @@ describe("capturePhotoFromVideoElement uses the video's intrinsic resolution", (
 describe("camera flow copy never implies a cloud upload, send, or contact", () => {
   const allMessages = [
     PHOTO_STAYS_LOCAL_MESSAGE,
-    PHOTO_UNREADABLE_FALLBACK_MESSAGE,
-    PHOTO_ADJUST_INSTRUCTION,
-    PHOTO_ADJUST_AFTER_CAPTURE_MESSAGE,
-    PHOTO_FULL_PHOTO_WARNING,
-    PHOTO_CROP_FALLBACK_WARNING,
+    PHOTO_SCAN_REVIEW_QUESTION,
+    PHOTO_NO_DOCUMENT_MESSAGE,
     CAMERA_PERMISSION_DENIED_MESSAGE,
     CAMERA_UNAVAILABLE_MESSAGE,
   ];
@@ -957,23 +739,10 @@ describe("camera flow copy never implies a cloud upload, send, or contact", () =
   it("explicitly states the photo stays in this browser", () => {
     expect(PHOTO_STAYS_LOCAL_MESSAGE).toBe("Photo stays in this browser in this version.");
   });
-
-  it("is honest that photos may not always be readable, without promising OCR success", () => {
-    expect(PHOTO_UNREADABLE_FALLBACK_MESSAGE).toBe(
-      "If the photo cannot be read clearly, upload a clearer image or paste the text manually.",
-    );
-  });
 });
 
 // ---- Terms gate compatibility ----
 describe("the camera flow cannot be reached before the Terms & Safety gate is accepted", () => {
-  // PhotoCapturePanel only ever mounts inside HomeView, and HomeView is only
-  // rendered by App.tsx once hasAcceptedCurrentTerms() is true (see the
-  // `if (!hasAcceptedTerms) return <TermsSafetyGate mode="blocking" ... />`
-  // early return in App.tsx, above where <HomeView /> is rendered). So the
-  // camera flow is gated by construction, not by any check inside the photo
-  // capture code itself - this test pins down the underlying gate function
-  // that guarantees that, specifically for a first-time user.
   const originalWindow = globalThis.window;
 
   class FakeLocalStorage implements Storage {

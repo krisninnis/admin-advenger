@@ -6,8 +6,11 @@
 // text that the user must review before AdminAvenger uses it (see
 // OCR_ON_DEVICE_MESSAGE below), matching the same "human always decides" rule
 // as every other input path (paste, file upload, camera capture).
-import * as Tesseract from "tesseract.js";
 import { normalizeOcrText } from "./photoIntake";
+
+type TesseractModule = typeof import("tesseract.js");
+
+const loadTesseract = async (): Promise<TesseractModule> => import("tesseract.js");
 
 export type OcrProgress = {
   status: string;
@@ -128,17 +131,20 @@ const GARBLED_NOISE_RATIO_THRESHOLD = 0.3;
 export const OCR_GARBLED_TEXT_WARNING =
   "This text doesn't look right - the photo may be unclear. Try a clearer photo or edit the text manually.";
 
-export const OCR_UNRELIABLE_MESSAGE = "We could not read this photo reliably.";
-export const OCR_UNRELIABLE_RETAKE_MESSAGE =
-  "Retake the photo closer, upload a clearer image, or paste the text manually.";
-export const OCR_UNRELIABLE_EDIT_MESSAGE =
-  "You can still edit the extracted text yourself before checking it.";
+export const OCR_UNRELIABLE_MESSAGE = "We couldn't read this clearly enough";
+export const OCR_UNRELIABLE_RETAKE_MESSAGE = "Retake photo";
+export const OCR_UNRELIABLE_EDIT_MESSAGE = "Review or edit the text we could read";
+export const OCR_UNRELIABLE_REVIEW_MESSAGE =
+  "We found some text, but parts may be wrong or missing. We've hidden important details rather than guessing; a clearer photo will usually work better.";
+export const OCR_EXTRACTED_TEXT_DISCLOSURE_LABEL = "Review or edit the text we could read";
+export const OCR_EXTRACTED_TEXT_DISCLOSURE_HELP =
+  "This text may include mistakes or background text. Only use it if you can check it against the document.";
 export const OCR_CHECK_TEXT_UNRELIABLE_WARNING =
-  "Only continue if you have checked or corrected the text.";
+  "Check this against the original document before continuing.";
 export const OCR_KEY_DETAILS_NOT_RELIABLE_MESSAGE =
-  "We could read some text, but not reliably enough to extract key details.";
+  "Key details are hidden because the photo was not clear enough.";
 export const OCR_KEY_DETAILS_REVIEW_OPTIONS_MESSAGE =
-  "Retake the photo closer, upload a clearer image, paste the text manually, or edit the text below.";
+  "Retake the photo, add a close-up, or review and correct the text before checking.";
 export const OCR_COMBINED_PHOTOS_ON_DEVICE_MESSAGE =
   "We read your photos on your device. Please check the combined text before continuing.";
 
@@ -146,7 +152,7 @@ export const OCR_COMBINED_PHOTOS_ON_DEVICE_MESSAGE =
 // A good single photo never pushes the user towards more photos - the
 // close-up stays a quiet, secondary option.
 export const OCR_ADD_CLOSE_UP_SUGGESTION =
-  "Retake the photo or add a close-up of the hard-to-read section.";
+  "If some text is missing or blurry, add a close-up of that section.";
 
 // Pure - deliberately simple and conservative: mostly-non-letter text, or an
 // unusually high share of characters that would not appear in normal prose,
@@ -512,6 +518,7 @@ export const readTextFromImage = async (
   }
 
   try {
+    const Tesseract = await loadTesseract();
     const result = await Tesseract.recognize(sourceForOcr, "eng", {
       logger: (message) => {
         onProgress?.({

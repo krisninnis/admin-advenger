@@ -99,6 +99,7 @@ export type ResultViewModel = {
   resultKind: "standard" | "career_support";
   title: string;
   summary: string;
+  directAnswer?: string;
   primaryStatusLabel?: string;
   summaryView: ResultSummaryView;
   primaryAction?: ResultPrimaryActionView;
@@ -656,6 +657,10 @@ export const buildResultViewModel = ({
 }: BuildResultViewModelInput): ResultViewModel => {
   const isCareerSupportResult = Boolean(careerSupportPack);
   const isCareerMatchResult = careerSupportPack?.documentType === "cv_job_advert_match";
+  // HMRC tax code notices get a stricter, deduplicated evidence composition
+  // (see evidenceFound / evidenceToGather below). Scoped by document type so
+  // every other result type keeps its existing evidence behaviour unchanged.
+  const isHmrcTaxCodeResult = decisionResult?.documentType === "hmrc_tax_code_notice";
   const finalCareerRequirementEvidenceMap = buildFinalCareerRequirementEvidenceMap(careerSupportPack);
   const mappedCareerEvidenceKeys = isCareerMatchResult
     ? buildMappedCareerEvidenceKeysFromMap(finalCareerRequirementEvidenceMap)
@@ -789,17 +794,36 @@ export const buildResultViewModel = ({
       sourceQuote: item.sourceQuote,
     })) ?? []),
     ...(decisionResult?.sourceFacts.map(fromSourceFactEvidence) ?? []),
-    ...(adminCase?.evidence.map((_, index) => fromCaseEvidence(adminCase, index)) ?? []),
+    // decisionResult.sourceFacts already carries the genuine parsed facts for a
+    // decision-engine result. For HMRC tax code notices, adminCase.evidence
+    // re-derives those same facts and additionally bundles possible grounds,
+    // missing-evidence, deadlines, risks and safety notes - none of which are
+    // "evidence found". Pulling it in here is what inflated the HMRC evidence
+    // count, so it is skipped for that document type; all other types keep the
+    // existing behaviour.
+    ...(isHmrcTaxCodeResult
+      ? []
+      : (adminCase?.evidence.map((_, index) => fromCaseEvidence(adminCase, index)) ?? [])),
   ]);
-  const evidenceToGatherValues = cleanStringItems([
-    ...(benefitsActionPack?.evidenceMissing ?? []),
-    ...(workplaceSupportPack?.evidenceToGather ?? []),
-    ...(communityHelperPack?.evidenceToGather ?? []),
-    ...(careerSupportPack?.possibleGapsToCheck ?? []),
-    ...(strategicNextStepPlan?.missingInformation ?? []),
-    ...(decisionResult?.evidenceNeeded ?? []),
-    ...(opportunity?.missingInformation ?? []),
-  ]);
+  // For HMRC tax code notices, decisionResult.evidenceNeeded is the single
+  // authoritative "still to gather" list. The opportunity card's
+  // missingInformation (and the strategic plan derived from it) deliberately
+  // folds in uncertainty and cannot-know statements for its own panel; those
+  // must not leak into the evidence-to-gather count here. Every other document
+  // type keeps the existing combined behaviour.
+  const evidenceToGatherValues = cleanStringItems(
+    isHmrcTaxCodeResult
+      ? [...(decisionResult?.evidenceNeeded ?? [])]
+      : [
+          ...(benefitsActionPack?.evidenceMissing ?? []),
+          ...(workplaceSupportPack?.evidenceToGather ?? []),
+          ...(communityHelperPack?.evidenceToGather ?? []),
+          ...(careerSupportPack?.possibleGapsToCheck ?? []),
+          ...(strategicNextStepPlan?.missingInformation ?? []),
+          ...(decisionResult?.evidenceNeeded ?? []),
+          ...(opportunity?.missingInformation ?? []),
+        ],
+  );
   const evidenceToGather = dedupeEvidence(
     evidenceToGatherValues.map((value, index) =>
       fromMissingEvidence(
@@ -1299,6 +1323,7 @@ export const buildResultViewModel = ({
     resultKind: isCareerSupportResult ? "career_support" : "standard",
     title,
     summary,
+    directAnswer: decisionResult?.directAnswer,
     primaryStatusLabel,
     summaryView,
     primaryAction,
@@ -1326,6 +1351,7 @@ export const flattenResultViewModelText = (model: ResultViewModel) =>
   [
     model.title,
     model.summary,
+    model.directAnswer ?? "",
     model.primaryStatusLabel ?? "",
     model.primaryAction?.label ?? "",
     model.primaryAction?.description ?? "",

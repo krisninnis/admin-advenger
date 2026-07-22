@@ -175,12 +175,6 @@ export const UNSUPPORTED_FILE_MESSAGE =
 export const attachmentPickerAcceptAttribute =
   "image/*,.jpg,.jpeg,.png,.webp,.heic,.heif,.txt,.md,.csv,.json,.docx,.pdf";
 
-// Accept string for the attachment area's "Take photo" control. Kept as its
-// own named constant (identical value to photoAcceptAttribute today) so the
-// two controls can be tuned independently later without one silently
-// affecting the other.
-export const attachmentCameraAcceptAttribute = "image/*";
-
 // Older .doc files get their own specific, honest message rather than the
 // general unsupported-file message - it points the person at the one thing
 // that would actually work (re-saving/copying as .docx), not just a generic

@@ -17,6 +17,10 @@ const sampleTexts = {
   consumerDispute:
     "Refund refused. The item was faulty and the retailer will not repair, replace, or refund it. Order total £249.",
   unknownAdminDispute: "I got a strange letter yesterday and I'm not sure what it means.",
+  hmrcTaxCodeChange:
+    "HMRC tax code notice. Your tax code has changed from 1257L to 1257L W1. This is an emergency tax code. You are underpaid tax of £340 for the year.",
+  hmrcTaxCodeQuery:
+    "I received a letter from HMRC about my tax code. It says 1257L but I have a second job.",
 };
 
 const containsForbiddenPhrase = (text: string) => {
@@ -127,5 +131,30 @@ describe("Decision Engine v1", () => {
 
       expect(containsForbiddenPhrase(flattened)).toBe(false);
     }
+  });
+
+  it("classifies an HMRC tax code change notice as hmrc_tax_code_notice with parsed codes and calculation", () => {
+    const result = analyseDecisionProblem(sampleTexts.hmrcTaxCodeChange);
+
+    expect(result.documentType).toBe("hmrc_tax_code_notice");
+    expect(result.amountTreatment).toBe("no_money_counted");
+    expect(result.confidence.level).toBe("medium");
+    expect(result.sourceFacts).toContainEqual(
+      expect.objectContaining({ label: "Replacement tax code", value: "1257L" }),
+    );
+    expect(result.sourceFacts).toContainEqual(
+      expect.objectContaining({ label: "Previous tax code", value: "1257L" }),
+    );
+    expect(containsForbiddenPhrase(flattenDecisionResultText(result))).toBe(false);
+  });
+
+  it("classifies a vague HMRC tax code query as hmrc_tax_code_notice with low confidence", () => {
+    const result = analyseDecisionProblem(sampleTexts.hmrcTaxCodeQuery);
+
+    expect(result.documentType).toBe("hmrc_tax_code_notice");
+    expect(result.confidence.level).toBe("low");
+    expect(result.cannotKnow.length).toBeGreaterThan(0);
+    expect(result.uncertainty.length).toBeGreaterThan(0);
+    expect(containsForbiddenPhrase(flattenDecisionResultText(result))).toBe(false);
   });
 });

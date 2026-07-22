@@ -11,117 +11,161 @@ Source principles:
 - Research does not equal implementation.
 - Fixture ideas do not equal passing tests.
 - Possible money does not equal confirmed savings.
-- Stable engines should be frozen except for genuine defects.
-- No automatic sending, submission, cancellation, appeal, application or
-  provider contact.
+- Stable engines stay frozen except for confirmed defects.
+- Nothing is sent, submitted, cancelled, claimed, applied for, or communicated
+  automatically.
+
+## Current Milestone
+
+**Pilot readiness and closed real-user validation.**
+
+The immediate goal is not to add another specialist engine.
+
+The goal is to make the existing one-front-door journey clear, dependable, and
+ready for a closed pilot with approximately 5 to 10 ordinary users.
+
+The pilot journey is:
+
+1. Provide a message or document.
+2. Optionally ask a question about it.
+3. Understand what it appears to be.
+4. See important facts, dates, amounts, uncertainty, and missing evidence.
+5. Know the safest next move.
+6. Save or export when useful.
+7. Remain in control.
 
 ## Done
 
-- Built the React + TypeScript + Vite + Tailwind frontend.
-- Built the one-front-door Check a message experience.
-- Added paste-first checking with preview-first-save-later behaviour.
-- Added local file/photo intake:
-  - TXT, Markdown, CSV, JSON.
-  - DOCX via local Mammoth extraction.
-  - selectable-text PDF via local pdfjs extraction.
-  - JPG/PNG/WebP/HEIC-style image selection and camera capture.
-  - local Tesseract OCR with editable review and low-confidence guards.
-- Added visible drag/drop into the main input area and attachment area.
+- Built the React, TypeScript, Vite, and Tailwind frontend.
+- Built one public Check a message front door.
+- Added paste, drag/drop, file, photo, upload, and live-camera intake.
+- Added local extraction for TXT, Markdown, CSV, JSON, DOCX, and
+  selectable-text PDF files.
+- Added local image OCR with editable review, prepared-scan confirmation, and
+  low-confidence safety guards.
+- Added camera permission handling, upload fallback, high-resolution capture,
+  stream cleanup, and a development-only camera calibration lab.
 - Added Admin Items, Findings, Admin Cases, Evidence Locker, Battle Log,
-  drafts/checklists, chase dates, and case actions.
-- Added localStorage persistence, reset demo data, clear local data, and
-  storage safety handling.
-- Added Opportunity Cards, Result View Model, Simple Result Panel, Case Sheet,
-  Strategic Next Step panel, and Case Progress tracker.
-- Added no-action / checked records.
-- Added Savings / Impact Ledger with confirmed, pending, potential, rejected,
-  deadline, and no-action states kept separate.
-- Added user-confirmed outcome workflow with local proof notes/images metadata.
-- Added Trusted Guidance Cards.
-- Added Evidence Pack export and Adviser Export Pack Markdown download.
-- Added UK Train Delay / Delay Repay proof vertical.
-- Added broadband/mobile price-rise narrow assessment.
-- Added decision-engine modules for parking, debt/bailiff, TV Licence, bank
-  complaint, consumer dispute, benefits-family documents, Council Tax
-  Reduction, and unknown admin fallback.
-- Added Benefits Action Pack and benefits-focused Result View Model coverage.
-- Added high-risk suspicious email guard.
-- Added Workplace Support gated beta.
-- Added Community Helper controlled manual-text beta.
-- Added local-only Community Helper feedback panel.
-- Added Career Support Pack, CV result polish, CV/job advert matching, source
-  splitting, requirement-scoped evidence, claim hygiene, final output guard,
-  preparation wording, privacy wording, checklist association, and evidence
-  deduplication.
-- Career Match v1.6 is deployed and production Tests 7 and 8 pass.
-- Added golden letter corpus, safety wording regression coverage, pilot docs,
-  and product mission docs.
-- Completed Phase 1A research.
-- Completed Phase 1B1 research.
-- Completed Phase 1B2 research.
-- Completed the source register.
-- Completed the UK complaint research document.
-- Completed the golden fixture standard.
-- Completed documentation coverage consolidation.
-- Completed Career Match v1.6 stabilisation.
+  drafts, checklists, chase dates, actions, and user-confirmed outcomes.
+- Added local persistence, clear-data controls, storage safety, and local
+  exports.
+- Added the Result View Model, Simple Result Panel, Case Sheet, Strategic Next
+  Step panel, and Case Progress tracking.
+- Added the Savings and Impact Ledger with confirmed, pending, potential,
+  rejected, deadline, and no-action states kept separate.
+- Added Evidence Pack and Adviser Export Pack downloads.
+- Added safety wording regression coverage, synthetic golden fixtures, Terms
+  and Safety, Trust and Safety, and public-scope gating.
+- Added narrow HMRC Tax Code Notice preparation through the normal public front
+  door.
+- Added narrow broadband and mobile price-rise preparation.
+- Added the UK Train Delay and Delay Repay proof vertical.
+- Added Career Support, Workplace Support, Community Helper, benefits-family,
+  debt, enforcement, bank, consumer, parking, TV Licence, Council Tax
+  Reduction, and unknown-document preparation at their documented maturity
+  levels.
+- Archived completed low-confidence OCR and camera calibration specifications.
+- Verified the current merged application with the full repository validation
+  workflow.
 
 ## Now
 
-1. Review and approve `GOLDEN_FIXTURE_STANDARD.md`.
-2. Inventory existing decision-engine and classifier tests.
-3. Map existing tests to golden-fixture categories.
-4. Create machine-readable fixture records for one engine only.
-5. Select telecom as the first hardening candidate.
-6. Create telecom fixtures before changing behaviour.
-7. Run telecom and cross-domain regression tests.
-8. Fix only confirmed failures.
-9. Perform production live tests.
-10. Freeze telecom behaviour after passing.
+1. Complete the roadmap and documentation reset.
+2. Make the optional question field easier to notice and understand.
+3. Simplify the top of the result so it answers:
+   - What is this?
+   - Is anything urgent?
+   - What changed or matters?
+   - What should I do next?
+   - What should I have ready?
+4. Create one pilot acceptance matrix covering:
+   - pasted text;
+   - DOCX;
+   - selectable-text PDF;
+   - uploaded image;
+   - live camera capture.
+5. Prepare synthetic pilot examples for:
+   - HMRC Tax Code Notice;
+   - broadband or mobile price-rise notice;
+   - consumer refund, delivery, or faulty-goods message;
+   - ordinary bill or admin message;
+   - unknown official letter safe fallback.
+6. Run real-device camera checks on Android Chrome, iPhone Safari where
+   available, and desktop Chrome.
+7. Test permission denied, camera unavailable, poor lighting, glare, shadows,
+   folded letters, cropped pages, screenshots, and long documents.
+8. Confirm users understand low-confidence OCR recovery and that nothing has
+   been sent or saved automatically.
+9. Confirm save, export, clear-data, refresh, and local recovery behaviour.
+10. Recruit approximately 5 to 10 ordinary pilot users.
+11. Observe uncoached use and record hesitation, misunderstanding, failure,
+    abandonment, trust, and usefulness.
+12. Rank findings by frequency and user impact.
+13. Fix only the highest-impact confirmed pilot failures.
 
 ## Next
 
+After the first pilot cycle:
+
+1. Repeat the same acceptance journeys after fixes.
+2. Freeze the pilot release when the core journeys pass.
+3. Select telecom as the first formal post-pilot hardening vertical.
+4. Create telecom golden fixtures before changing behaviour.
+5. Run telecom and cross-domain regression tests.
+6. Fix only confirmed failures.
+7. Freeze telecom behaviour after passing.
+8. Review energy, banking, consumer, and benefits-family coverage one vertical
+   at a time.
+
+## Known Limitations
+
+- Legacy `.doc` files are not parsed.
+- Scanned or image-only PDFs are not currently OCRed as PDF documents.
+- OCR can misread blurred, shadowed, cropped, folded, low-contrast, or
+  low-resolution images.
+- The current application has no backend, authentication, cloud database,
+  hosted AI gateway, email integration, provider integration, or automatic
+  actions.
+- Real-device and real-person evidence is still needed before broader public
+  promotion.
+
+## Later
+
+- Scanned-PDF OCR through the existing local review and confidence pipeline.
 - Energy fixture design and engine evaluation.
 - Banking fixture design and fraud-boundary review.
 - Consumer fixture design and engine evaluation.
 - Benefits-family fixture audit.
-- Existing parking/debt/TVL/bank regression mapping.
-- Research-source review and stale-source monitoring.
-- Resolve sources marked `Needs review` or `Needs manual extraction`.
 - Wales-specific jurisdiction review.
-- One-engine-at-a-time hardening.
-
-## Later
-
-- Housing controlled research and fixtures.
-- Workplace controlled-beta fixtures.
-- Water Wave 2 fixtures.
-- Additional specialist verticals only after current engines are frozen.
-- Backend/auth/database only when required by validated product needs.
-- Hosted AI only through a defined privacy and consent model.
+- Housing and other controlled high-risk research.
+- Backend, authentication, database, and hosted AI only when validated product
+  needs require them.
 
 ## Guardrails
 
-- Keep the default product local-first and privacy-first.
 - Keep one user-facing input: Check a message.
-- Do not add a separate checker, category picker, or benefits page.
-- Do not add legal, financial, benefits, debt, care, medical, housing, or
-  employment advice.
-- Do not claim entitlement, eligibility, case strength, suitability, or likely
-  outcome.
+- Do not add category selection or separate public checker pages.
+- Do not add another specialist category during the first pilot cycle.
+- Do not present generic detection as complete specialist coverage.
+- Do not provide legal, financial, tax, benefits, debt, care, medical, housing,
+  safeguarding, or employment decisions.
+- Do not claim entitlement, eligibility, case strength, suitability, likely
+  outcome, or a correct tax code.
 - Do not count money automatically.
-- Do not count demanded, deducted, disputed, possible, or researched money as
-  saved or recovered.
-- Do not send, submit, cancel, apply, contact, or archive anything
-  automatically.
 - Do not hide uncertainty, missing evidence, OCR weakness, or cannot-know
-  fields.
-- Do not expand stable engines without tests and source review.
+  information.
+- Do not send, submit, cancel, apply, contact, claim, or archive anything
+  automatically.
+- Do not expand stable engines without fixtures, source review, and passing
+  regression tests.
+- Do not touch `docs/research/` or `opencode.jsonc` during normal roadmap work.
 
 ## Useful Commands
 
-```bash
+```powershell
 npm run dev
 npm run test
 npm run lint
 npm run build
+powershell -ExecutionPolicy Bypass -File .\scripts\verify.ps1
 ```

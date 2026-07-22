@@ -63,13 +63,19 @@ import {
 } from "../termsAcceptance";
 
 const sliceBetween = (source: string, startNeedle: string, endNeedle: string): string => {
-  const start = source.indexOf(startNeedle);
-  const end = source.indexOf(endNeedle, start + startNeedle.length);
+  const normalizedSource = source.replace(/\r\n?/g, "\n");
+  const normalizedStartNeedle = startNeedle.replace(/\r\n?/g, "\n");
+  const normalizedEndNeedle = endNeedle.replace(/\r\n?/g, "\n");
+  const start = normalizedSource.indexOf(normalizedStartNeedle);
+  const end = normalizedSource.indexOf(
+    normalizedEndNeedle,
+    start + normalizedStartNeedle.length,
+  );
 
   expect(start).toBeGreaterThanOrEqual(0);
   expect(end).toBeGreaterThan(start);
 
-  return source.slice(start, end);
+  return normalizedSource.slice(start, end);
 };
 
 // ---- Panel state model ----

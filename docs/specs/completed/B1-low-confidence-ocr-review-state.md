@@ -1,6 +1,6 @@
 # B1 Low-Confidence OCR Review State
 
-Status: Implementing
+Status: Completed
 
 ## Outcome
 
@@ -81,3 +81,9 @@ Full validation must pass before completion: focused tests, Journey 5 photo test
 ## Real-Person Test Still Required
 
 A five-minute uncoached mobile test should confirm that ordinary users notice what happened, understand that important details were withheld, choose a recovery action without reading noisy OCR first, and do not think anything has been sent or saved.
+
+## Completion Note
+
+- The implementation and automated validation are merged into main.
+- Real-person mobile comprehension and accessibility checks remain part of the closed pilot.
+- Those pilot checks are validation work, not unfinished production implementation.

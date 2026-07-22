@@ -1,12 +1,12 @@
 # Feature Spec: D8 A4 Camera Calibration Lab
 
-Status: Approved
+Status: Completed
 
 Owner: AdminAvenger
 
 Date: 2026-07-18
 
-Scope note: Research-backed requirements added on 2026-07-18 expand the initial D8 implementation slice. The completion evidence below records the first implemented slice only; the expanded capture-comparison, guidance, auto-capture stability, review-experiment, and lifecycle requirements must be implemented and verified before D8 is considered complete.
+Scope note: The expanded development-lab implementation is merged. Physical-device calibration remains pilot and research evidence; calibration thresholds are not production defaults.
 
 ## Outcome
 
@@ -316,3 +316,10 @@ git diff --check
 - 2026-07-18: Final scan preparation will call the existing `scanDocumentFile`; no new scanner or manual crop UI will be introduced.
 - 2026-07-18: Spec approved after inspecting `PhotoCapturePanel`, `photoCapture`, `documentScanner`, `documentImageQuality`, `App`, `Sidebar`, and existing Journey 5 tests.
 - 2026-07-18: Added research-backed requirements for comparing canvas, ImageCapture, system camera input, and gallery upload; highest-priority user guidance; safer auto-capture stability/cooldown; developer-only review variants; track lifecycle recording; and long-term native/web/gallery architecture.
+
+## Final Completion Note
+
+- Expanded capture comparison, guidance, stability and cooldown controls, review experiments, lifecycle evidence, and local telemetry are merged.
+- The lab remains development-only and is not exposed through normal production navigation.
+- Android, iOS, and desktop physical-device calibration remains part of pilot and research validation.
+- Calibration thresholds must not become production defaults without physical-device evidence.

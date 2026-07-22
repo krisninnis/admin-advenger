@@ -23,6 +23,7 @@ export type DecisionDocumentType =
   | "benefits_change_of_circumstances"
   | "council_tax_reduction"
   | "benefits_crisis_support"
+  | "hmrc_tax_code_notice"
   | "unknown_admin_dispute";
 
 export type DecisionCaseStrength =

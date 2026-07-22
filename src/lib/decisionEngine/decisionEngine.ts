@@ -7,6 +7,7 @@ import { analyseCouncilTaxReduction } from "./modules/councilTaxReduction";
 import { analyseCrisisSupport } from "./modules/crisisSupport";
 import { analyseDebtOrBailiff } from "./modules/debt";
 import { analyseConsumerDispute } from "./modules/consumer";
+import { analyseHmrcTaxCode } from "./modules/hmrcTaxCode";
 import { analyseMigrationNotice } from "./modules/migrationNotice";
 import { analyseParkingTicket } from "./modules/parking";
 import { analyseTvLicence } from "./modules/tvLicence";
@@ -65,6 +66,9 @@ export const analyseDecisionProblem = (text: string): DecisionResult => {
 
     case "consumer_dispute":
       return analyseConsumerDispute(input);
+
+    case "hmrc_tax_code_notice":
+      return analyseHmrcTaxCode(input);
 
     case "council_tax_reduction":
       return analyseCouncilTaxReduction(input);

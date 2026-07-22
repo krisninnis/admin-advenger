@@ -385,6 +385,47 @@ const consumerPatterns = [
   /consumer rights/i,
 ];
 
+// HMRC tax code / PAYE coding notices. Checked after consumer and before
+// benefits so that a tax code letter containing generic "appeal" or "review"
+// wording still routes to the tax code engine, not the benefits family.
+//
+// Recognition requires combined evidence: the text must contain HMRC/sender
+// identification AND a tax-code-specific phrase.  A standalone tax-code-looking
+// string (e.g. "1257L" in a broadband bill) is not enough.
+//
+// P800, payslip, P45, P60, and self-assessment are NOT included here;
+// they route to their own safe results in the module.
+const hmrcSenderPattern = /\bhmrc\b|hm revenue/i;
+const hmrcTaxCodePhrasePatterns = [
+  /tax code notice/i,
+  /coding notice/i,
+  /tax code/i,
+  /paye coding/i,
+  /tell you (?:your )?tax code/i,
+  /how we (?:worked|work) out your tax code/i,
+  /tax code for (?:the )?tax year/i,
+  /personal allowance/i,
+  /tax-free amount/i,
+];
+
+const hmrcTaxCodePatterns = [
+  /tax code notice/i,
+  /coding notice/i,
+  /tell you (?:your )?tax code/i,
+  /how we (?:worked|work) out your tax code/i,
+];
+
+const hasHmrcTaxCodeCombined = (text: string): boolean => {
+  if (hasAny(text, hmrcTaxCodePatterns)) return true;
+  if (
+    hmrcSenderPattern.test(text) &&
+    hasAny(text, hmrcTaxCodePhrasePatterns)
+  ) {
+    return true;
+  }
+  return false;
+};
+
 // Council Tax Reduction/Support (CTR/CTS) is run by the local council under its
 // own local scheme, not DWP - a different engine to both the DWP benefits
 // family and to council tax arrears/debt collection. Checked before the debt
@@ -435,6 +476,10 @@ export const classifyDecisionDocument = (
 
   if (hasAny(normalisedText, consumerPatterns)) {
     return "consumer_dispute";
+  }
+
+  if (hasHmrcTaxCodeCombined(normalisedText)) {
+    return "hmrc_tax_code_notice";
   }
 
   if (hasAny(normalisedText, benefitsPatterns)) {

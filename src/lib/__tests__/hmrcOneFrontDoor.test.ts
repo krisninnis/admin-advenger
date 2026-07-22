@@ -309,6 +309,27 @@ describe("HMRC Tax Code Notice - Paste integration (Section 6)", () => {
     const adminCase = createAdminCase(findings[0]!, item);
     expect(adminCase.decisionResult?.documentType).toBe("hmrc_tax_code_notice");
   });
+
+  it("parser input isolation: analysis receives item.rawText, not title-prefixed text (Defect 3 regression)", () => {
+    const rawText = FULL_TAX_CODE_NOTICE;
+    const itemWithDifferentTitle = makeItem("Important Letter From HMRC", rawText, "email");
+    const { adminCase } = firstCase(itemWithDifferentTitle);
+
+    expect(adminCase.decisionResult?.documentType).toBe("hmrc_tax_code_notice");
+    expect(adminCase.decisionResult?.confidence.level).toBe("high");
+
+    const allText = JSON.stringify(adminCase.decisionResult);
+    expect(allText).not.toContain("Important Letter From HMRC");
+  });
+
+  it("parser input isolation: title is never prepended to the decision engine input", () => {
+    const rawText = FULL_TAX_CODE_NOTICE;
+    const item = makeItem("Email from HMRC - Tax Code Update", rawText, "email");
+    const { adminCase } = firstCase(item);
+
+    const allText = JSON.stringify(adminCase.decisionResult);
+    expect(allText).not.toContain("Email from HMRC - Tax Code Update");
+  });
 });
 
 describe("HMRC Tax Code Notice - Photo/OCR integration (Section 7)", () => {
@@ -343,7 +364,7 @@ Tax year 2026 to 2027.`;
 
     expect(finding.category).toBe("admin_dispute");
     expect(adminCase.decisionResult?.documentType).toBe("hmrc_tax_code_notice");
-    expect(adminCase.decisionResult?.confidence.level).toBe("medium");
+    expect(adminCase.decisionResult?.confidence.level).toBe("high");
   });
 });
 
@@ -529,22 +550,6 @@ Total tax-free amount          £12,542`;
 
     expect(adminCase.decisionResult?.documentType).toBe("hmrc_tax_code_notice");
   });
-
-  it("retains unfamiliar calculation line items under check label", () => {
-    const unfamiliar = `HMRC tax code notice.
-Tax year 2026 to 2027.
-Your tax code has changed from 1257L to 1250L.
-
-Personal Allowance             £12,570
-Some unfamiliar deduction       £50
-Total tax-free amount          £12,520`;
-    const parsed = recogniseAndParse(unfamiliar);
-    const unknownLines = parsed.lines.filter((l) => l.type === "unknown");
-    const unfamiliarLine = unknownLines.find((l) => l.label.toLowerCase().includes("unfamiliar"));
-
-    expect(unfamiliarLine).toBeDefined();
-    expect(unfamiliarLine!.label).toContain("unfamiliar");
-  });
 });
 
 describe("HMRC Tax Code Notice - Safety and wording", () => {
@@ -587,6 +592,64 @@ describe("HMRC Tax Code Notice - Safety and wording", () => {
     const result = analyseDecisionProblem(FULL_TAX_CODE_NOTICE);
     expect(result.safetyNotes.some((n) => n.includes("not give legal advice"))).toBe(true);
     expect(result.safetyNotes.some((n) => n.includes("not a tax adviser"))).toBe(true);
+  });
+});
+
+describe("HMRC Tax Code Notice - Evidence deduplication (Defect 4 regression)", () => {
+  it("does not request employer details when employer is already parsed", () => {
+    const result = analyseDecisionProblem(FULL_TAX_CODE_NOTICE);
+    const evidenceRequested = result.evidenceNeeded ?? [];
+
+    expect(evidenceRequested.some((e) => e.includes("Details of any employers"))).toBe(false);
+    expect(evidenceRequested.some((e) => e.includes("employers or pension providers"))).toBe(false);
+  });
+
+  it("does not request tax codes when both previous and replacement are already parsed", () => {
+    const result = analyseDecisionProblem(FULL_TAX_CODE_NOTICE);
+    const evidenceRequested = result.evidenceNeeded ?? [];
+
+    expect(evidenceRequested.some((e) => e.includes("current and previous tax codes"))).toBe(false);
+  });
+
+  it("requests employer details when employer is missing from the notice", () => {
+    const noticeNoEmployer = `HMRC tax code notice.
+Tax year 2026 to 2027.
+This is to tell you your tax code.
+Your tax code has changed from 1257L to 1250L.
+Personal Allowance             £12,570
+Total tax-free amount          £12,570`;
+    const result = analyseDecisionProblem(noticeNoEmployer);
+    const evidenceRequested = result.evidenceNeeded ?? [];
+
+    expect(evidenceRequested.some((e) => e.includes("Details of any employers"))).toBe(true);
+  });
+
+  it("requests tax codes when they are missing from the notice", () => {
+    const noticeNoCodes = `HMRC tax code notice.
+Tax year 2026 to 2027.
+This is to tell you your tax code.
+Employer: Harbour View Opticians Ltd
+Personal Allowance             £12,570
+Total tax-free amount          £12,570`;
+    const result = analyseDecisionProblem(noticeNoCodes);
+    const evidenceRequested = result.evidenceNeeded ?? [];
+
+    expect(evidenceRequested.some((e) => e.includes("current and previous tax codes"))).toBe(true);
+  });
+
+  it("requests explicit notice date when no date is found", () => {
+    const result = analyseDecisionProblem(FULL_TAX_CODE_NOTICE);
+    const evidenceRequested = result.evidenceNeeded ?? [];
+
+    expect(evidenceRequested.some((e) => e.includes("explicit notice or issue date"))).toBe(true);
+  });
+
+  it("full notice always requests the full document and benefits in kind", () => {
+    const result = analyseDecisionProblem(FULL_TAX_CODE_NOTICE);
+    const evidenceRequested = result.evidenceNeeded ?? [];
+
+    expect(evidenceRequested.some((e) => e.includes("full HMRC tax code notice"))).toBe(true);
+    expect(evidenceRequested.some((e) => e.includes("benefits in kind"))).toBe(true);
   });
 });
 
@@ -795,5 +858,446 @@ Total tax-free amount          £12,542`;
     const result = analyseDecisionProblem(FULL_TAX_CODE_NOTICE, "Write me a reply");
     expect(result.draftMessage).not.toMatch(/adminavenger (will|has|is going to) (send|submit|email)/i);
     expect(result.draftMessage).not.toMatch(/we (will|are going to) (send|submit)/i);
+  });
+});
+
+describe("HMRC Tax Code Notice - Structural-line filtering (Defect 7 regression)", () => {
+  it("does not include employer header or tax code declarations in parsed line items", () => {
+    const parsed = recogniseAndParse(FULL_TAX_CODE_NOTICE);
+    const lineLabels = parsed.lines.map((l) => l.label.toLowerCase());
+
+    expect(lineLabels).not.toContain("employer");
+    expect(lineLabels).not.toContain("employer or pension provider");
+    expect(lineLabels).not.toContain("previous tax code");
+    expect(lineLabels).not.toContain("new code");
+    expect(lineLabels).not.toContain("new tax code");
+    expect(lineLabels).not.toContain("replacement tax code");
+  });
+
+  it("does not include page headers or HMRC boilerplate in parsed line items", () => {
+    const parsed = recogniseAndParse(FULL_TAX_CODE_NOTICE);
+    const lineLabels = parsed.lines.map((l) => l.label.toLowerCase());
+
+    expect(lineLabels).not.toContain("hmrc");
+    expect(lineLabels).not.toContain("hm revenue & customs");
+    expect(lineLabels).not.toContain("tax code notice");
+    expect(lineLabels).not.toContain("page 1 of 2");
+    expect(lineLabels).not.toContain("page 2 of 2");
+  });
+
+  it("still captures genuine allowance/deduction calculation lines", () => {
+    const parsed = recogniseAndParse(FULL_TAX_CODE_NOTICE);
+    const lineLabels = parsed.lines.map((l) => l.label);
+
+    expect(lineLabels).toContain("Personal Allowance");
+    expect(lineLabels).toContain("Flat-rate job expenses");
+    expect(lineLabels).toContain("Medical insurance");
+    expect(lineLabels).toContain("Total tax-free amount");
+  });
+
+  it("parsed.lines contains exactly four genuine calculation rows and nothing else", () => {
+    const parsed = recogniseAndParse(FULL_TAX_CODE_NOTICE);
+    expect(parsed.lines.length).toBe(4);
+    expect(parsed.lines.map((l) => l.label)).toEqual([
+      "Personal Allowance",
+      "Flat-rate job expenses",
+      "Medical insurance",
+      "Total tax-free amount",
+    ]);
+  });
+
+  it("no prose or structural line becomes an unknown item in warnings", () => {
+    const parsed = recogniseAndParse(FULL_TAX_CODE_NOTICE);
+    const structuralPhrases = [
+      "Your tax code has changed from C1263L to C1254L",
+      "HMRC",
+      "HM Revenue",
+      "Tax Code Notice",
+      "Page 1 of 2",
+      "Page 2 of 2",
+      "Tax year:",
+      "Employer:",
+      "Previous tax code:",
+      "New code:",
+      "This is to tell you",
+      "This means you can earn",
+      "If you think",
+      "How we worked out",
+      "Your tax code for the tax year",
+      "contact HMRC",
+    ];
+    const lineLabels = parsed.lines.map((l) => l.label);
+    for (const phrase of structuralPhrases) {
+      expect(lineLabels.some((label) => label.includes(phrase))).toBe(false);
+    }
+  });
+
+  it("structural-line filter does not remove genuine items from a minimal notice", () => {
+    const minimal = `HMRC tax code notice.
+Tax year 2026 to 2027.
+Your tax code has changed from 1257L to 1250L.
+
+Personal Allowance             £12,570
+Some deduction                  £50
+Total tax-free amount          £12,520`;
+    const parsed = recogniseAndParse(minimal);
+    const lineLabels = parsed.lines.map((l) => l.label);
+
+    expect(lineLabels).toContain("Personal Allowance");
+    expect(lineLabels).toContain("Some deduction");
+    expect(lineLabels).toContain("Total tax-free amount");
+  });
+
+  it("retains unfamiliar aligned calculation row with amount", () => {
+    const text = `HMRC tax code notice.
+Tax year 2026 to 2027.
+Your tax code has changed from 1257L to 1250L.
+
+Personal Allowance             £12,570
+Some unfamiliar deduction       £50
+Total tax-free amount          £12,520`;
+    const parsed = recogniseAndParse(text);
+    const unfamiliarLine = parsed.lines.find((l) => l.label.includes("unfamiliar"));
+
+    expect(unfamiliarLine).toBeDefined();
+    expect(unfamiliarLine!.amountPence).toBe(5000);
+  });
+
+  it("retains recognised calculation label with missing amount for manual checking", () => {
+    const text = `HMRC tax code notice.
+Personal Allowance             £12,570
+Flat-rate job expenses
+Medical insurance                 £88
+Total tax-free amount          £12,482`;
+    const parsed = recogniseAndParse(text);
+
+    const missingAmountLine = parsed.lines.find(
+      (l) => l.label.includes("Flat-rate") && l.amountPence === null,
+    );
+    expect(missingAmountLine).toBeDefined();
+    expect(parsed.warnings.some((w) => w.includes("Could not read the amount"))).toBe(true);
+  });
+});
+
+describe("HMRC Tax Code Notice - Question-aware result hierarchy (Defect 8 regression)", () => {
+  it("what_is_this has no draftMessage but has directAnswer", () => {
+    const result = analyseDecisionProblem(FULL_TAX_CODE_NOTICE, "What is this?");
+    expect(result.directAnswer).toBeDefined();
+    expect(result.directAnswer).toContain("HMRC tax code notice");
+    expect(result.directAnswer).toContain("not a tax bill");
+    expect(result.draftMessage).toBeUndefined();
+  });
+
+  it("what_is_this directAnswer does not overstep into legal or financial advice", () => {
+    const result = analyseDecisionProblem(FULL_TAX_CODE_NOTICE, "What is this?");
+    const answer = result.directAnswer!.toLowerCase();
+    expect(answer).not.toMatch(/you (are |will be )?(entitled|owed|eligible)/);
+    expect(answer).not.toMatch(/you (definitely |clearly )?owe/);
+    expect(answer).not.toMatch(/this (is |was )?(unlawful|illegal|wrong)/);
+  });
+
+  it("no_question result has no directAnswer and no draftMessage", () => {
+    const result = analyseDecisionProblem(FULL_TAX_CODE_NOTICE);
+    expect(result.directAnswer).toBeUndefined();
+    expect(result.draftMessage).toBeUndefined();
+  });
+
+  it("write_reply produces draftMessage, what_is_this does not", () => {
+    const replyResult = analyseDecisionProblem(FULL_TAX_CODE_NOTICE, "Write me a reply");
+    const whatResult = analyseDecisionProblem(FULL_TAX_CODE_NOTICE, "What is this?");
+
+    expect(replyResult.draftMessage).toBeDefined();
+    expect(whatResult.draftMessage).toBeUndefined();
+  });
+
+  it("each intent has at least one nextStep in the strategic plan", () => {
+    const intents = [
+      "What is this?",
+      "Why has my tax code changed?",
+      "How will this affect my pay?",
+      "Do I need to do anything?",
+      "Is this correct?",
+      "What should I check?",
+    ];
+    for (const intent of intents) {
+      const result = analyseDecisionProblem(FULL_TAX_CODE_NOTICE, intent);
+      const plan = buildStrategicNextStepPlan({ decisionResult: result });
+      expect(plan.safestMove).toBeDefined();
+      expect(plan.safestMove.label).toBeTruthy();
+    }
+  });
+
+  it("hmrc_tax_code_notice gets HMRC-specific strategic next step, not generic", () => {
+    const result = analyseDecisionProblem(FULL_TAX_CODE_NOTICE, "What is this?");
+    const plan = buildStrategicNextStepPlan({ decisionResult: result });
+
+    expect(plan.safestMove.label).toContain("employer");
+    expect(plan.safestMove.label).toContain("codes");
+    expect(plan.safestMove.label).not.toContain("Identify the sender");
+  });
+});
+
+describe("HMRC Tax Code Notice - Parser regressions", () => {
+  it("tax year '6 April 2026 to 5 April 2027' produces the exact full range", () => {
+    const parsed = recogniseAndParse(FULL_TAX_CODE_NOTICE);
+    expect(parsed.taxYearStart).toBe("6 April 2026");
+    expect(parsed.taxYearEnd).toBe("5 April 2027");
+  });
+
+  it("tax year '2026 to 2027' produces the exact full range with standard boundaries", () => {
+    const text = `HMRC tax code notice.
+Tax year 2026 to 2027.
+Your tax code has changed from 1257L to 1250L.`;
+    const parsed = recogniseAndParse(text);
+    expect(parsed.taxYearStart).toBe("6 April 2026");
+    expect(parsed.taxYearEnd).toBe("5 April 2027");
+  });
+
+  it("malformed or incomplete input never produces the word 'undefined'", () => {
+    const inputs = [
+      "",
+      "HMRC",
+      "Tax code notice.",
+      "Your tax code has changed.",
+      "Personal Allowance £12,570",
+      "random text with no structure",
+    ];
+    for (const input of inputs) {
+      const parsed = recogniseAndParse(input);
+      const result = analyseDecisionProblem(input);
+      const parsedStr = JSON.stringify(parsed);
+      const resultStr = JSON.stringify(result);
+      expect(parsedStr).not.toContain("undefined");
+      expect(resultStr).not.toContain("undefined");
+    }
+  });
+
+  it("the full fixture has no noticeDate", () => {
+    const parsed = recogniseAndParse(FULL_TAX_CODE_NOTICE);
+    expect(parsed.noticeDate).toBeNull();
+  });
+
+  it("no tax-year boundary becomes a response or action deadline", () => {
+    const result = analyseDecisionProblem(FULL_TAX_CODE_NOTICE);
+    const deadlineStrings = result.deadlines ?? [];
+    for (const d of deadlineStrings) {
+      expect(d).not.toContain("6 April 2026");
+      expect(d).not.toContain("5 April 2027");
+    }
+  });
+
+  it("notice date is extracted when explicit labelled line exists", () => {
+    const text = `HMRC tax code notice.
+Tax year 2026 to 2027.
+Notice date: 12 May 2026
+Your tax code has changed from 1257L to 1250L.`;
+    const parsed = recogniseAndParse(text);
+    expect(parsed.noticeDate).toBe("12 May 2026");
+  });
+
+  it("notice date is extracted from 'Issue date:' labelled line", () => {
+    const text = `HMRC tax code notice.
+Tax year 2026 to 2027.
+Issue date: 1 July 2026
+Your tax code has changed from 1257L to 1250L.`;
+    const parsed = recogniseAndParse(text);
+    expect(parsed.noticeDate).toBe("1 July 2026");
+  });
+
+  it("notice date is extracted from 'Dated:' labelled line", () => {
+    const text = `HMRC tax code notice.
+Tax year 2026 to 2027.
+Dated: 12 May 2026
+Your tax code has changed from 1257L to 1250L.`;
+    const parsed = recogniseAndParse(text);
+    expect(parsed.noticeDate).toBe("12 May 2026");
+  });
+
+  it("notice date is extracted from 'Sent on:' labelled line", () => {
+    const text = `HMRC tax code notice.
+Tax year 2026 to 2027.
+Sent on: 12 May 2026
+Your tax code has changed from 1257L to 1250L.`;
+    const parsed = recogniseAndParse(text);
+    expect(parsed.noticeDate).toBe("12 May 2026");
+  });
+
+  it("tax-year dates and unrelated prose containing 'date' do not become noticeDate", () => {
+    const parsed = recogniseAndParse(FULL_TAX_CODE_NOTICE);
+    expect(parsed.noticeDate).toBeNull();
+
+    const withDeadline = `HMRC tax code notice.
+Tax year 2026 to 2027.
+Your tax code has changed from 1257L to 1250L.
+Date leaving: 30 June 2026.`;
+    const parsed2 = recogniseAndParse(withDeadline);
+    expect(parsed2.noticeDate).toBeNull();
+  });
+});
+
+describe("HMRC Tax Code Notice - Evidence deduplication edge cases", () => {
+  it("requests previous tax code when only replacement is found", () => {
+    const text = `HMRC tax code notice.
+Tax year 2026 to 2027.
+New code: C1250L
+Employer: Harbour View Opticians Ltd
+Personal Allowance             £12,570
+Total tax-free amount          £12,570`;
+    const result = analyseDecisionProblem(text);
+    const evidence = result.evidenceNeeded ?? [];
+
+    expect(evidence.some((e) => e.includes("previous tax code"))).toBe(true);
+    expect(evidence.some((e) => e.includes("replacement tax code"))).toBe(false);
+  });
+
+  it("requests replacement tax code when only previous is found", () => {
+    const text = `HMRC tax code notice.
+Tax year 2026 to 2027.
+Previous tax code: C1263L
+Employer: Harbour View Opticians Ltd
+Personal Allowance             £12,570
+Total tax-free amount          £12,570`;
+    const result = analyseDecisionProblem(text);
+    const evidence = result.evidenceNeeded ?? [];
+
+    expect(evidence.some((e) => e.includes("replacement tax code"))).toBe(true);
+    expect(evidence.some((e) => e.includes("previous tax code"))).toBe(false);
+  });
+
+  it("requests no tax codes when both are found", () => {
+    const result = analyseDecisionProblem(FULL_TAX_CODE_NOTICE);
+    const evidence = result.evidenceNeeded ?? [];
+
+    expect(evidence.some((e) => e.includes("previous tax code"))).toBe(false);
+    expect(evidence.some((e) => e.includes("replacement tax code"))).toBe(false);
+    expect(evidence.some((e) => e.includes("current and previous tax codes"))).toBe(false);
+  });
+
+  it("requests generic tax code evidence when neither is found", () => {
+    const text = `HMRC tax code notice.
+Tax year 2026 to 2027.
+This is to tell you your tax code.
+Employer: Harbour View Opticians Ltd
+Personal Allowance             £12,570
+Total tax-free amount          £12,570`;
+    const result = analyseDecisionProblem(text);
+    const evidence = result.evidenceNeeded ?? [];
+
+    expect(evidence.some((e) => e.includes("current and previous tax codes"))).toBe(true);
+  });
+
+  it("no duplicate employer, tax-year, or tax-code requests in evidence", () => {
+    const result = analyseDecisionProblem(FULL_TAX_CODE_NOTICE);
+    const evidence = result.evidenceNeeded ?? [];
+    const employerRequests = evidence.filter((e) => e.toLowerCase().includes("employer"));
+    const taxCodeRequests = evidence.filter(
+      (e) => e.toLowerCase().includes("tax code") && !e.toLowerCase().includes("notice"),
+    );
+    const yearRequests = evidence.filter(
+      (e) => e.toLowerCase().includes("tax year"),
+    );
+
+    expect(employerRequests.length).toBeLessThanOrEqual(1);
+    expect(taxCodeRequests.length).toBeLessThanOrEqual(1);
+    expect(yearRequests.length).toBeLessThanOrEqual(1);
+  });
+});
+
+describe("HMRC Tax Code Notice - Result noise", () => {
+  it("full fixture DecisionResult contains no 'undefined' text", () => {
+    const result = analyseDecisionProblem(FULL_TAX_CODE_NOTICE, "What is this?");
+    const flattened = flattenDecisionResultText(result);
+    expect(flattened).not.toContain("undefined");
+  });
+
+  it("full fixture ResultViewModel contains no 'undefined' text", () => {
+    const item = makeItem("Tax Code Notice", FULL_TAX_CODE_NOTICE, "email");
+    const { finding, adminCase } = firstCase(item);
+    const opportunity = deriveOpportunityCard(adminCase, item, finding);
+    const benefitsActionPack = buildBenefitsActionPack(adminCase.decisionResult!);
+    const strategicNextStepPlan = buildStrategicNextStepPlan({
+      decisionResult: adminCase.decisionResult,
+      benefitsActionPack,
+    });
+    const vm = buildResultViewModel({
+      decisionResult: adminCase.decisionResult,
+      benefitsActionPack,
+      strategicNextStepPlan,
+      opportunity,
+      adminCase,
+    });
+
+    const vmStr = JSON.stringify(vm);
+    expect(vmStr).not.toContain("undefined");
+  });
+
+  it("full fixture has no unknown structural/prose lines in parsed.lines", () => {
+    const parsed = recogniseAndParse(FULL_TAX_CODE_NOTICE);
+    const unknownLines = parsed.lines.filter((l) => l.type === "unknown");
+    expect(unknownLines.length).toBe(0);
+  });
+
+  it("full fixture has no duplicate evidence in ResultViewModel", () => {
+    const item = makeItem("Tax Code Notice", FULL_TAX_CODE_NOTICE, "email");
+    const { finding, adminCase } = firstCase(item);
+    const opportunity = deriveOpportunityCard(adminCase, item, finding);
+    const benefitsActionPack = buildBenefitsActionPack(adminCase.decisionResult!);
+    const strategicNextStepPlan = buildStrategicNextStepPlan({
+      decisionResult: adminCase.decisionResult,
+      benefitsActionPack,
+    });
+    const vm = buildResultViewModel({
+      decisionResult: adminCase.decisionResult,
+      benefitsActionPack,
+      strategicNextStepPlan,
+      opportunity,
+      adminCase,
+    });
+
+    const foundKeys = vm.evidenceFound.map((e) => `${e.label}:${e.value}`);
+    const gatherKeys = vm.evidenceToGather.map((e) => `${e.label}:${e.value}`);
+    expect(new Set(foundKeys).size).toBe(foundKeys.length);
+    expect(new Set(gatherKeys).size).toBe(gatherKeys.length);
+  });
+
+  it("no inflated evidence or preparation counts caused by document structure", () => {
+    const result = analyseDecisionProblem(FULL_TAX_CODE_NOTICE);
+    const evidence = result.evidenceNeeded ?? [];
+    expect(evidence.length).toBeLessThanOrEqual(8);
+  });
+
+  it("no draftMessage for 'What is this?' intent", () => {
+    const result = analyseDecisionProblem(FULL_TAX_CODE_NOTICE, "What is this?");
+    expect(result.draftMessage).toBeUndefined();
+  });
+
+  it("no money-saved or exact-payslip claim in DecisionResult", () => {
+    const result = analyseDecisionProblem(FULL_TAX_CODE_NOTICE, "How will this affect my pay?");
+    const flattened = flattenDecisionResultText(result).toLowerCase();
+    neverCountsAsMoney(flattenDecisionResultText(result));
+    expect(flattened).not.toMatch(/your payslip will (be|show)/);
+  });
+
+  it("ResultViewModel safety check passes for the full fixture", () => {
+    const item = makeItem("Tax Code Notice", FULL_TAX_CODE_NOTICE, "email");
+    const { finding, adminCase } = firstCase(item);
+    const opportunity = deriveOpportunityCard(adminCase, item, finding);
+    const benefitsActionPack = buildBenefitsActionPack(adminCase.decisionResult!);
+    const strategicNextStepPlan = buildStrategicNextStepPlan({
+      decisionResult: adminCase.decisionResult,
+      benefitsActionPack,
+    });
+    const vm = buildResultViewModel({
+      decisionResult: adminCase.decisionResult,
+      benefitsActionPack,
+      strategicNextStepPlan,
+      opportunity,
+      adminCase,
+    });
+
+    const safetyReport = validateResultViewModelSafety(vm);
+    expect(safetyReport.safe).toBe(true);
+    expect(safetyReport.hasForbiddenWording).toBe(false);
+    expect(safetyReport.hasAdversarialLanguage).toBe(false);
   });
 });

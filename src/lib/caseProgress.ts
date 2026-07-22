@@ -3,7 +3,7 @@ import type { BenefitsActionPack } from "./benefitsActionPack";
 import type { CommunityHelperPack, CommunityHelperSituationType } from "./communityHelperPack";
 import { isBenefitsDocumentType } from "./benefitsActionPack";
 import type { DecisionDocumentType, DecisionResult } from "./decisionEngine/types";
-import type { ResultViewModel } from "./resultViewModel";
+import type { ResultDateView, ResultViewModel } from "./resultViewModel";
 import type { StrategicNextStepPlan } from "./strategicNextStep";
 import type { WorkplaceSupportDocumentType, WorkplaceSupportPack } from "./workplaceSupportPack";
 
@@ -161,19 +161,30 @@ const buildOriginalSourceItem = (label = "Original letter or message added"): Ca
     "system",
   );
 
+// A tax-year boundary (e.g. "6 April 2026 to 5 April 2027") is a source fact,
+// not an actionable key date, so it must not complete this step. Only a genuine
+// notice/issue date or a response/action deadline counts. Unrelated document
+// types never surface a tax-year boundary in keyDates, so their behaviour is
+// unchanged by this filter.
+const isTaxYearBoundaryDate = (date: ResultDateView): boolean =>
+  /\btax year\b/i.test(date.label) ||
+  /\b\d{1,2}\s+\w+\s+\d{4}\s+to\s+\d{1,2}\s+\w+\s+\d{4}\b/i.test(date.value);
+
 const buildKeyDateItem = (
   resultViewModel: ResultViewModel,
   label = "Key date checked",
 ): CaseProgressItem => {
-  const hasDates = hasItems(resultViewModel.keyDates);
+  const hasActionableDate = resultViewModel.keyDates.some(
+    (date) => !isTaxYearBoundaryDate(date),
+  );
 
   return buildItem(
     "key-date",
     label,
-    hasDates
+    hasActionableDate
       ? "A date was found in this result. Check it against the original letter before relying on it."
-      : "No date has been gathered yet. Look for a decision date, deadline, or reply-by date on the original letter.",
-    hasDates ? "complete" : "missing",
+      : "No actionable date has been gathered yet. Look for a decision date, deadline, or reply-by date on the original letter. A tax-year period on its own is not a deadline.",
+    hasActionableDate ? "complete" : "missing",
     "result",
     "Check this date against the original letter.",
   );

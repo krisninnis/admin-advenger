@@ -32,7 +32,7 @@ const PERSONAL_ALLOWANCE_PATTERNS = [
 
 const TAX_YEAR_PATTERNS = [
   /(\d{1,2})\s*(?:April|apr)\w*\s*(\d{4})\s*(?:to|-)\s*(\d{1,2})\s*(?:April|apr)\w*\s*(\d{4})/i,
-  /tax year\s*(\d{4})\s*[-–]\s*(\d{4})/i,
+  /tax year\s*(\d{4})\s*(?:to|[-–])\s*(\d{4})/i,
   /(\d{4})\s*[-–/]\s*(\d{4})\s*tax year/i,
 ];
 
@@ -73,6 +73,25 @@ const LINE_ITEM_PATTERNS = [
   /^(.+?)\s+(£[\d,]+(?:\.\d{1,2})?)\s*$/,
   /^(.+?)\s{2,}$/,
   /^(.+)$/,
+];
+
+const KNOWN_HEADER_LABELS = [
+  /^hmrc$/i,
+  /^hm revenue/i,
+  /^tax code notice$/i,
+  /^coding notice$/i,
+  /^page\s+\d+/i,
+  /^tax year[:\s]/i,
+  /^your tax code for/i,
+  /^how we worked out/i,
+  /^previous tax code/i,
+  /^new code/i,
+  /^new tax code/i,
+  /^this is to tell you/i,
+  /^this means you can earn/i,
+  /^if you think/i,
+  /^contact hmrc$/i,
+  /^your tax code has changed\b/i,
 ];
 
 const ALLOWANCE_KEYWORDS = [
@@ -149,9 +168,10 @@ function extractTaxYear(text: string): { start: string | null; end: string | nul
     const match = text.match(pattern);
     if (match) {
       if (match.length === 5) {
+        const [, day1, year1, day2, year2] = match;
         return {
-          start: `${match[1]} April ${match[3]}`,
-          end: `${match[3]} April ${match[5]}`,
+          start: `${day1} April ${year1}`,
+          end: `${day2} April ${year2}`,
         };
       }
       if (match.length === 3) {
@@ -163,13 +183,19 @@ function extractTaxYear(text: string): { start: string | null; end: string | nul
 }
 
 function extractNoticeDate(text: string): string | null {
-  const patterns = [
-    /(?:date|dated)[:\s]+(\d{1,2}[\s/-]\w+[\s/-]\d{2,4})/i,
-    /(\d{1,2}\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\w*\s+\d{4})/i,
-  ];
-  for (const pattern of patterns) {
-    const match = text.match(pattern);
-    if (match) return match[1] ?? match[0];
+  const lines = text.split("\n");
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const patterns = [
+      /^(?:notice date|issue date|sent on|issued on|sent|issued)[:\s]+(\d{1,2}[\s/-]\w+[\s/-]\d{2,4})/i,
+      /^(?:notice date|issue date|sent on|issued on|sent|issued)[:\s]+(\d{1,2}\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\w*\s+\d{4})/i,
+      /^dated[:\s]+(\d{1,2}[\s/-]\w+[\s/-]\d{2,4})/i,
+      /^dated[:\s]+(\d{1,2}\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\w*\s+\d{4})/i,
+    ];
+    for (const pattern of patterns) {
+      const match = trimmed.match(pattern);
+      if (match?.[1]) return match[1];
+    }
   }
   return null;
 }
@@ -182,19 +208,38 @@ function extractEmployer(text: string): string | null {
   return null;
 }
 
+const KNOWN_EMPLOYER_LINE = /^employer(?:\s+(?:or|&|and)\s+(?:pension\s+provider))?[:\s]+/i;
+const KNOWN_TAX_CODE_DECLARATION = /^((?:old|previous|new|replacement)\s+tax\s+code|new\s+code)[:\s]+/i;
+
+export function isKnownHmrcStructuralLine(label: string): boolean {
+  return hasAny(label, KNOWN_HEADER_LABELS) ||
+    KNOWN_EMPLOYER_LINE.test(label) ||
+    KNOWN_TAX_CODE_DECLARATION.test(label);
+}
+
+function looksLikeHmrcCalculationRow(label: string, amountPence: number | null): boolean {
+  if (amountPence !== null && label.length > 0) return true;
+  if (label.length > 0 && (hasAny(label, ALLOWANCE_KEYWORDS) || hasAny(label, DEDUCTION_KEYWORDS) || hasAny(label, TOTAL_KEYWORDS))) return true;
+  return false;
+}
+
 function extractLines(text: string): AllowanceDeductionLine[] {
   const lines: AllowanceDeductionLine[] = [];
-  const linePatterns = LINE_ITEM_PATTERNS;
 
   for (const rawLine of text.split("\n")) {
     const trimmed = rawLine.trim();
     if (!trimmed) continue;
 
-    for (const pattern of linePatterns) {
+    for (const pattern of LINE_ITEM_PATTERNS) {
       const match = trimmed.match(pattern);
       if (match?.[1]) {
         const label = match[1].trim();
         const amountPence = match?.[2] ? findAmount(match[2]) : null;
+
+        if (isKnownHmrcStructuralLine(label)) break;
+
+        if (!looksLikeHmrcCalculationRow(label, amountPence)) break;
+
         lines.push({
           raw: trimmed,
           label,
@@ -232,8 +277,8 @@ function extractPreviousAndReplacement(text: string): {
 } {
   const patterns = [
     /(?:from|changing from|was)\s+([A-Z0-9]{1,6})\s+(?:to|now|new code)\s+([A-Z0-9]{1,6})/i,
-    /(?:old|previous) code[:\s]+([A-Z0-9]{1,6})/i,
-    /(?:new|replacement) code[:\s]+([A-Z0-9]{1,6})/i,
+    /(?:old|previous)(?:\s+tax)?\s+code[:\s]+([A-Z0-9]{1,6})/i,
+    /(?:new|replacement)(?:\s+tax)?\s+code[:\s]+([A-Z0-9]{1,6})/i,
     /your tax code (?:has )?changed from\s+([A-Z0-9]{1,6})\s+to\s+([A-Z0-9]{1,6})/i,
   ];
 
@@ -251,8 +296,8 @@ function extractPreviousAndReplacement(text: string): {
     }
   }
 
-  const oldPattern = /(?:old|previous) code[:\s]+([A-Z0-9]{1,6})/i;
-  const newPattern = /(?:new|replacement) code[:\s]+([A-Z0-9]{1,6})/i;
+  const oldPattern = /(?:old|previous)(?:\s+tax)?\s+code[:\s]+([A-Z0-9]{1,6})/i;
+  const newPattern = /(?:new|replacement)(?:\s+tax)?\s+code[:\s]+([A-Z0-9]{1,6})/i;
   const oldMatch = text.match(oldPattern);
   const newMatch = text.match(newPattern);
 

@@ -564,18 +564,32 @@ describe("HMRC Tax Code Notice - Official Rules", () => {
 });
 
 describe("HMRC Tax Code Notice - Module integration", () => {
-  it("produces a full DecisionResult with source facts for a complete notice", () => {
+  it("produces a DecisionResult whose source facts are genuine parsed facts, not derived working", () => {
     const result = analyseDecisionProblem(FULL_TAX_CODE_NOTICE);
 
     expect(result.documentType).toBe("hmrc_tax_code_notice");
     expect(result.sourceFacts.length).toBeGreaterThan(0);
+    // Genuine facts parsed from the notice are surfaced...
     expect(result.sourceFacts.some((f) => f.label.includes("Employer"))).toBe(true);
     expect(result.sourceFacts.some((f) => f.label.includes("Tax year"))).toBe(true);
     expect(result.sourceFacts.some((f) => f.label.includes("Previous tax code"))).toBe(true);
     expect(result.sourceFacts.some((f) => f.label.includes("Replacement tax code"))).toBe(true);
-    expect(result.sourceFacts.some((f) => f.label.includes("Printed tax-free amount"))).toBe(true);
-    expect(result.sourceFacts.some((f) => f.label.includes("Approximate allowance change"))).toBe(true);
-    expect(result.sourceFacts.some((f) => f.label.includes("Estimated tax impact"))).toBe(true);
+    // ...including the printed calculation entries (the "Total" line is the
+    // printed tax-free amount).
+    expect(result.sourceFacts.some((f) => f.label.includes("Personal Allowance"))).toBe(true);
+    expect(result.sourceFacts.some((f) => f.label.includes("Total tax-free amount"))).toBe(true);
+    // Derived/computed working - the reconciled total, the code approximation,
+    // the previous/replacement comparison and the illustrative tax-impact
+    // estimate - is AdminAvenger's own calculation, not evidence found in the
+    // document. It must not be listed as a source fact: doing so is what
+    // inflated the public "evidence found" count (see
+    // hmrcPublicResultDefects.test.ts). It still informs the direct answer and
+    // impact wording directly.
+    expect(result.sourceFacts.some((f) => f.label.includes("Calculated tax-free amount"))).toBe(false);
+    expect(result.sourceFacts.some((f) => f.label.includes("Code approximate"))).toBe(false);
+    expect(result.sourceFacts.some((f) => f.label.includes("Approximate allowance change"))).toBe(false);
+    expect(result.sourceFacts.some((f) => f.label.includes("Estimated tax impact"))).toBe(false);
+    expect(result.sourceFacts.some((f) => f.label.includes("average estimate"))).toBe(false);
     expect(containsForbiddenPhrase(flattenDecisionResultText(result))).toBe(false);
     neverCountsAsMoney(flattenDecisionResultText(result));
   });

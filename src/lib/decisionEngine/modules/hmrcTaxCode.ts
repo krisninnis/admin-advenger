@@ -24,6 +24,11 @@ const INTENT_PATTERNS: Array<{ intent: HmrcIntent; patterns: RegExp[] }> = [
       /what(?:'s| is) going on/i,
       /explain (?:this|it|what)/i,
       /tell me about (?:this|it)/i,
+      // "What does this mean?" is the application's own suggested wording, so it
+      // and its close variants ("what does this letter mean", "what do these
+      // mean") must resolve to the same safe explanation intent as "What is
+      // this?".
+      /what (?:does|do) (?:this|it|these|that|the)\b[^?]*\bmean\b/i,
     ],
   },
   {
@@ -281,28 +286,22 @@ export const analyseHmrcTaxCode = ({
       sourceQuote: parsed.replacementTaxCode.raw,
     });
   }
-  if (parsed.printedTaxFreeAmountPence !== null) {
+  // Only genuine facts parsed from the notice belong in sourceFacts, because
+  // this list becomes the user-facing "evidence found" list. Derived/computed
+  // values - the reconciled total, the code approximation, the previous/
+  // replacement comparison, and the illustrative tax-impact estimate - are
+  // AdminAvenger's own working, not evidence found in the document. Listing
+  // them here is what inflated the evidence count with one figure repeated
+  // under several slightly different labels. They still inform the direct
+  // answer and impact wording via `comparison`/`impact` directly, so nothing
+  // user-visible is lost. The printed total is only added when it is not
+  // already present as a "Total" calculation line, to avoid the same figure
+  // appearing twice.
+  const hasPrintedTotalLine = parsed.lines.some((l) => l.type === "printed_total");
+  if (parsed.printedTaxFreeAmountPence !== null && !hasPrintedTotalLine) {
     sourceFacts.push({
       label: "Printed tax-free amount",
       value: `£${(parsed.printedTaxFreeAmountPence / 100).toFixed(2)}`,
-    });
-  }
-  if (parsed.calculatedTaxFreeAmountPence !== null) {
-    sourceFacts.push({
-      label: "Calculated tax-free amount",
-      value: `£${(parsed.calculatedTaxFreeAmountPence / 100).toFixed(2)}`,
-    });
-  }
-  if (parsed.calculationDifferencePence !== null && parsed.calculationDifferencePence !== 0) {
-    sourceFacts.push({
-      label: "Calculation difference",
-      value: `£${(Math.abs(parsed.calculationDifferencePence) / 100).toFixed(2)}`,
-    });
-  }
-  if (parsed.codeApproximateTaxFreePence !== null) {
-    sourceFacts.push({
-      label: "Code approximate tax-free amount",
-      value: `£${(parsed.codeApproximateTaxFreePence / 100).toFixed(2)}`,
     });
   }
   for (const line of parsed.lines) {
@@ -313,41 +312,6 @@ export const analyseHmrcTaxCode = ({
         sourceQuote: line.raw,
       });
     }
-  }
-  if (comparison) {
-    if (comparison.previousApproxTaxFreePence !== null) {
-      sourceFacts.push({
-        label: "Previous code approximate tax-free",
-        value: `£${(comparison.previousApproxTaxFreePence / 100).toFixed(2)} (approximate)`,
-      });
-    }
-    if (comparison.newExactTaxFreePence !== null) {
-      sourceFacts.push({
-        label: "New code tax-free amount",
-        value: `£${(comparison.newExactTaxFreePence / 100).toFixed(2)}${comparison.newLabelledApproximate ? " (approximate)" : ""}`,
-      });
-    }
-    if (comparison.differencePence !== null) {
-      const direction = comparison.isReduction ? "reduction" : "increase";
-      sourceFacts.push({
-        label: "Approximate allowance change",
-        value: `${direction} of £${(Math.abs(comparison.differencePence) / 100).toFixed(2)} per year`,
-      });
-    }
-  }
-  if (impact && impact.supported) {
-    sourceFacts.push({
-      label: "Estimated tax impact (20% rate)",
-      value: `£${(impact.annualTaxDifferencePence! / 100).toFixed(2)} per year`,
-    });
-    sourceFacts.push({
-      label: "Monthly average estimate",
-      value: `approximately £${(impact.monthlyAveragePence! / 100).toFixed(2)} per month`,
-    });
-    sourceFacts.push({
-      label: "Weekly average estimate",
-      value: `approximately £${(impact.weeklyAveragePence! / 100).toFixed(2)} per week`,
-    });
   }
 
   const firstCode = parsed.replacementTaxCode ?? parsed.previousTaxCode;
@@ -411,18 +375,36 @@ export const analyseHmrcTaxCode = ({
     ],
     evidenceNeeded: [
       "The full HMRC tax code notice including all pages.",
-      "Your current and previous tax codes if available.",
-      "Details of any employers or pension providers.",
+      ...(!parsed.previousTaxCode && !parsed.replacementTaxCode
+        ? ["Your current and previous tax codes if available."]
+        : []),
+      ...(!parsed.previousTaxCode && parsed.replacementTaxCode
+        ? ["Your previous tax code if available."]
+        : []),
+      ...(!parsed.replacementTaxCode && parsed.previousTaxCode
+        ? ["Your replacement tax code if available."]
+        : []),
+      ...(!parsed.employerOrPensionProvider
+        ? ["Details of any employers or pension providers."]
+        : []),
       "Any benefits in kind (company car, private medical insurance) if applicable.",
       "Your P60 or recent payslips showing tax deductions.",
+      ...(!parsed.noticeDate
+        ? ["An explicit notice or issue date from the original letter, if available."]
+        : []),
       ...(parsed.appearsIncomplete
         ? ["Any missing pages of the notice."]
         : []),
     ],
-    deadlines: [
-      "Check the notice for any response deadline or action required date.",
-      "If you believe the tax code is wrong, contact HMRC through the details on the letter or via your tax account.",
-    ],
+    // Only genuine extracted dates belong here, because this list renders as
+    // date/deadline cards. A tax-year boundary is a source fact, not an
+    // actionable deadline, and this notice type carries no explicit response
+    // or action deadline that the parser extracts - so this stays empty rather
+    // than turning guidance instructions into fake "date" cards (Defect 4).
+    // Any genuine issue date surfaces through sourceFacts -> key dates. The
+    // prompt to look for a deadline lives in nextSteps, and contacting HMRC
+    // lives in nextSteps/risks, so neither is duplicated into the dates panel.
+    deadlines: [],
     risks: [
       "Do not ignore an HMRC tax code notice without checking whether action is needed.",
       "If you disagree with the tax code, use the official HMRC route rather than ignoring the notice.",
@@ -430,6 +412,7 @@ export const analyseHmrcTaxCode = ({
     ],
     nextSteps: [
       "Check the tax code on the notice against your most recent payslip or P60.",
+      "Check the original notice itself for any response deadline or date you need to act by, as none was found automatically.",
       "If the code has changed, check whether HMRC has the correct information about your income, employer, or benefits.",
       "If you disagree, contact HMRC using the details on the letter or through your tax account.",
       "Keep a copy of the notice and any response you send.",

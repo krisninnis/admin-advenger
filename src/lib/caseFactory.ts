@@ -344,7 +344,7 @@ const evidenceForFinding = (
   }
 
   if (finding.category === "admin_dispute") {
-    const decision = analyseDecisionProblem(text);
+    const decision = analyseDecisionProblem(item.rawText);
 
     return [
       ...decision.sourceFacts.map((fact) => createEvidence(caseId, fact.label, fact.value, "detected")),
@@ -626,7 +626,7 @@ export const createAdminCase = (finding: AdminFinding, item: AdminItem): AdminCa
   const isCareerSupportCase = isCareerSupportFinding(finding, item);
   const isDecisionEngineCase = finding.category === "admin_dispute";
   const decisionResult = isDecisionEngineCase
-    ? analyseDecisionProblem(`${item.title}\n${item.rawText}`, item.userQuestion)
+    ? analyseDecisionProblem(item.rawText, item.userQuestion)
     : undefined;
   const travelRecovery = extractTravelRecoveryDetails(`${item.title}\n${item.rawText}`);
   const energyPriceChange = extractEnergyAnnualCosts(`${item.title}\n${item.rawText}`);

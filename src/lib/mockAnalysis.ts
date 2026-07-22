@@ -857,8 +857,8 @@ export const analyseAdminItem = (
     !appointmentTaskFinding &&
     !broadbandPriceRiseFinding &&
     !trainDelayFinding &&
-    isDecisionEngineDocument(`${item.title}\n${item.rawText}`)
-      ? createDecisionEngineFinding(item, `${item.title}\n${item.rawText}`)
+    isDecisionEngineDocument(item.rawText)
+      ? createDecisionEngineFinding(item, item.rawText)
       : undefined;
 
   const findings = categoryRules

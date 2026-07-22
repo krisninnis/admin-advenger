@@ -451,6 +451,34 @@ const getPlanForDocumentType = (
     };
   }
 
+  if (documentType === "hmrc_tax_code_notice") {
+    return {
+      userGoal: "Check the tax code notice is correct for your circumstances before assuming it is right or wrong.",
+      safestMove: move(
+        "Check employer, codes, and allowances on the notice",
+        "Compare the employer or pension provider name, the previous and replacement codes, Personal Allowance, expenses, and benefits entries against your own records and payslip.",
+        "It focuses on the details the notice actually lists rather than guessing what HMRC may have done.",
+      ),
+      otherSafeMoves: [
+        move(
+          "Check for an explicit issue date or reference number",
+          "Look for a dated, sent, or issued date and any reference number on the notice. If neither is present, note that the date is unknown.",
+          "An explicit date matters if you need to challenge or query the notice later.",
+        ),
+        ...getDefaultOtherSafeMoves(),
+      ],
+      movesToAvoid: [
+        "Do not assume the tax code is correct or incorrect without checking your own records.",
+        "Do not count any amount in the notice as money saved or recovered.",
+        ...genericMovesToAvoid,
+      ],
+      whenToGetAdvice: [
+        "Get advice if the code change is large and you are unsure why.",
+        "Get advice if your employer or pension provider details are wrong and the notice does not explain the change.",
+      ],
+    };
+  }
+
   return {
     userGoal: "Identify what the message is asking for before acting.",
     safestMove: move(

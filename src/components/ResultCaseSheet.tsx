@@ -419,6 +419,11 @@ export function ResultCaseSheet({
             <h2 className="text-2xl font-black tracking-tight text-white sm:text-3xl">
               {model.title}
             </h2>
+            {model.directAnswer ? (
+              <p className="mt-3 rounded-lg border border-cyan-300/20 bg-cyan-300/10 px-4 py-3 text-sm leading-6 text-cyan-50">
+                {model.directAnswer}
+              </p>
+            ) : null}
             <p className="mt-3 text-base leading-7 text-slate-200">{model.summary}</p>
           </div>
           {model.primaryStatusLabel ? (

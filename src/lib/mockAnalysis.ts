@@ -664,7 +664,7 @@ const decisionConfidenceMap: Record<
 };
 
 const createDecisionEngineFinding = (item: AdminItem, text: string): AdminFinding => {
-  const decision = analyseDecisionProblem(text);
+  const decision = analyseDecisionProblem(text, item.userQuestion);
 
   return {
     id: `finding-${crypto.randomUUID()}`,

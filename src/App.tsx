@@ -443,6 +443,7 @@ function App() {
     rawText: string,
     openCaseFile: boolean,
     setPreviewResult: (result: HomeAnalysisResult | undefined) => void = setHomeResult,
+    userQuestion?: string,
   ): Promise<HomeAnalysisResult | undefined> => {
     setPreviewResult(undefined);
     const now = new Date().toISOString();
@@ -453,6 +454,7 @@ function App() {
       rawText,
       createdAt: now,
       analysedAt: now,
+      userQuestion,
     };
     setAnalysisStatus("loading");
     setAnalysisError(undefined);
@@ -518,8 +520,9 @@ function App() {
     title: string,
     sourceType: SourceType,
     rawText: string,
+    userQuestion?: string,
   ): Promise<boolean> => {
-    const result = await runAnalysis(title, sourceType, rawText, false);
+    const result = await runAnalysis(title, sourceType, rawText, false, setHomeResult, userQuestion);
     return Boolean(result);
   };
 

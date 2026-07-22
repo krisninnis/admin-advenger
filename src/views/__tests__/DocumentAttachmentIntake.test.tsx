@@ -69,10 +69,11 @@ describe("Document Attachment Intake v1 - HomeView wiring", () => {
   it("combines typed text with attached document text through the normal check flow", () => {
     expect(homeViewSource).toContain("combineTypedTextWithAttachments");
     expect(homeViewSource).toContain("attachmentCombinedText");
-    // The combined text is handed to the same onCheck(...) call every other
+    // The combined text is handed to the same submitAcceptedText(...) call every other
     // input path uses - never a second/parallel analysis function.
     expect(homeViewSource).toContain("buildCheckSourceTitle(rawText, attachedFiles)");
-    expect(homeViewSource).toContain("onCheck(checkSourceTitle, \"email\", textToCheck)");
+    expect(homeViewSource).toContain("submitAcceptedText({");
+    expect(homeViewSource).toContain("acceptedText: textToCheck");
   });
 
   it("queues attached images into the shared scan confirmation workflow, never direct OCR", () => {
@@ -211,6 +212,17 @@ describe("Document Attachment Intake v1 - HomeView wiring", () => {
     expect(homeViewSource).toContain("handleAttachmentFilesSelected([file])");
   });
 
+  it("passes userQuestion through all three submission paths (paste, OCR, file)", () => {
+    // Paste/file path in handleCheck via submitAcceptedText
+    expect(homeViewSource).toContain("submitAcceptedText({");
+    expect(homeViewSource).toContain("acceptedText: textToCheck");
+    expect(homeViewSource).toContain("userQuestion,");
+    // OCR path in handleCheckOcrText via submitAcceptedText
+    expect(homeViewSource).toContain('sourceTitle: "Photo text (reviewed before checking)"');
+    // Ollama paths also pass userQuestion
+    expect(homeViewSource).toContain("userQuestion,");
+  });
+
   it("routes dropped files through the same local attachment pipeline, including DOCX", () => {
     expect(homeViewSource).toContain("getFilesFromDroppedDataTransfer(event.dataTransfer)");
     expect(homeViewSource).toContain("handleAttachmentFilesSelected(droppedFiles)");
@@ -230,7 +242,23 @@ describe("Document Attachment Intake v1 - HomeView wiring", () => {
     expect(homeViewSource).toContain("value={rawText}");
     expect(homeViewSource).toContain("onChange={(event) => setRawText(event.target.value)}");
     expect(homeViewSource).toContain('"Pasted admin text"');
-    expect(homeViewSource).toContain("onCheck(checkSourceTitle, \"email\", textToCheck)");
+    expect(homeViewSource).toContain("submitAcceptedText({");
+    expect(homeViewSource).toContain("acceptedText: textToCheck");
+  });
+
+  it("renders the question input in the universal area, not inside the paste-only block", () => {
+    const questionInput = 'id="user-question"';
+    expect(homeViewSource).toContain(questionInput);
+    // The question input must appear after the mode ternary closes (the paste
+    // and photo/file content branches), not inside the paste-only branch.
+    const endOfModeContent = 'selectedInput === "file" && rawText';
+    const questionPos = homeViewSource.indexOf(questionInput);
+    const endOfModePos = homeViewSource.indexOf(endOfModeContent);
+    expect(questionPos).toBeGreaterThan(endOfModePos);
+    // And it must appear before the check button
+    const checkButton = 'onClick={handleCheck}';
+    const checkButtonPos = homeViewSource.indexOf(checkButton);
+    expect(questionPos).toBeLessThan(checkButtonPos);
   });
 
   it("reveals the attachment area from file mode so dropped DOCX files show status", () => {

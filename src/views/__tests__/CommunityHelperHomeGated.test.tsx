@@ -40,7 +40,8 @@ describe("HomeView public community helper gating", () => {
 
   it("keeps the default Check a message path on the normal check flow", () => {
     expect(homeViewSource).toContain("buildCheckSourceTitle(rawText, attachedFiles)");
-    expect(homeViewSource).toContain("onCheck(checkSourceTitle, \"email\", textToCheck)");
+    expect(homeViewSource).toContain("submitAcceptedText({");
+    expect(homeViewSource).toContain("acceptedText: textToCheck");
     expect(homeViewSource).not.toContain("analyseDecisionProblem");
   });
 

@@ -81,6 +81,7 @@ export type DecisionResult = {
   nextSteps: string[];
   safetyNotes: string[];
   draftMessage?: string;
+  directAnswer?: string;
   amountMentioned?: string;
   amountTreatment: DecisionAmountTreatment;
   sourceFacts: DecisionSourceFact[];
@@ -93,6 +94,7 @@ export type DecisionResult = {
 export type DecisionModuleInput = {
   text: string;
   normalisedText: string;
+  userQuestion?: string;
 };
 
 export type DecisionModule = {

@@ -108,9 +108,11 @@ describe("HomeView gated workplace support beta", () => {
 
   it("keeps the default Check a message path on the normal onCheck flow", () => {
     expect(homeViewSource).toContain("buildCheckSourceTitle(rawText, attachedFiles)");
-    expect(homeViewSource).toContain("onCheck(checkSourceTitle, \"email\", textToCheck)");
+    expect(homeViewSource).toContain("submitAcceptedText({");
+    expect(homeViewSource).toContain("acceptedText: textToCheck");
     expect(homeViewSource).not.toContain("buildWorkplaceSupportPack");
   });
+
 
   it("does not keep dormant workplace result wiring in Home", () => {
     expect(homeViewSource).not.toContain("setWorkplaceBetaResult");

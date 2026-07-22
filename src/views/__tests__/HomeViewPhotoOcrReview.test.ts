@@ -80,4 +80,18 @@ describe("HomeView photo OCR review", () => {
     expect(uploadBlock).toContain('setPhotoCaptureIntent("replace")');
     expect(uploadBlock).toContain("setShowPhotoCapturePanel(true)");
   });
+
+  it("passes userQuestion through the OCR check path to submitAcceptedText", () => {
+    const ocrBlock = sliceBetween(
+      homeViewSource,
+      'const handleCheckOcrText = async',
+      '// "Retake photo"',
+    );
+
+    expect(ocrBlock).toContain('submitAcceptedText({');
+    expect(ocrBlock).toContain('sourceTitle: "Photo text (reviewed before checking)"');
+    expect(ocrBlock).toContain("acceptedText: cleanedText");
+    expect(ocrBlock).toContain("userQuestion,");
+    expect(ocrBlock).toContain("onCheck,");
+  });
 });

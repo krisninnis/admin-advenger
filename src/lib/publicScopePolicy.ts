@@ -191,7 +191,7 @@ export const assessPublicIntakeScope = (item: AdminItem): PublicScopeBoundary =>
     };
   }
 
-  if (workplacePattern.test(text)) {
+  if (workplacePattern.test(text) && decisionDocumentType !== "hmrc_tax_code_notice") {
     return {
       status: "blocked",
       availability: "controlled_beta",

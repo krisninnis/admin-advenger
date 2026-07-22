@@ -99,6 +99,7 @@ export type ResultViewModel = {
   resultKind: "standard" | "career_support";
   title: string;
   summary: string;
+  directAnswer?: string;
   primaryStatusLabel?: string;
   summaryView: ResultSummaryView;
   primaryAction?: ResultPrimaryActionView;
@@ -1299,6 +1300,7 @@ export const buildResultViewModel = ({
     resultKind: isCareerSupportResult ? "career_support" : "standard",
     title,
     summary,
+    directAnswer: decisionResult?.directAnswer,
     primaryStatusLabel,
     summaryView,
     primaryAction,
@@ -1326,6 +1328,7 @@ export const flattenResultViewModelText = (model: ResultViewModel) =>
   [
     model.title,
     model.summary,
+    model.directAnswer ?? "",
     model.primaryStatusLabel ?? "",
     model.primaryAction?.label ?? "",
     model.primaryAction?.description ?? "",

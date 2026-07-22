@@ -133,4 +133,44 @@ describe("LowConfidenceOcrReviewPanel", () => {
     expect(screen.queryByAltText("Prepared document preview used for text reading")).toBeNull();
     expect(screen.getByRole("heading", { level: 1, name: OCR_UNRELIABLE_MESSAGE })).toBeTruthy();
   });
+
+  it("low-confidence OCR boundary: review panel blocks auto-submit, only approved text proceeds", async () => {
+    const user = userEvent.setup();
+    const { container, props } = renderPanel();
+
+    expect(props.onCheckCorrectedText).not.toHaveBeenCalled();
+    expect(props.onRetake).not.toHaveBeenCalled();
+    expect(props.onAddCloseUp).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "Retake photo" }));
+    expect(props.onRetake).toHaveBeenCalledTimes(1);
+    expect(props.onCheckCorrectedText).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "Add a close-up" }));
+    expect(props.onAddCloseUp).toHaveBeenCalledTimes(1);
+    expect(props.onCheckCorrectedText).not.toHaveBeenCalled();
+
+    const clearerPhoto = new File(["clearer"], "clearer.jpg", { type: "image/jpeg" });
+    const fileInput = container.querySelector<HTMLInputElement>('input[type="file"]');
+    await user.upload(fileInput as HTMLInputElement, clearerPhoto);
+    await waitFor(() => {
+      expect(props.onUploadClearer).toHaveBeenCalledWith(clearerPhoto);
+    });
+    expect(props.onCheckCorrectedText).not.toHaveBeenCalled();
+
+    const disclosureButton = screen.getByRole("button", {
+      name: OCR_EXTRACTED_TEXT_DISCLOSURE_LABEL,
+    });
+    await user.click(disclosureButton);
+
+    const editor = screen.getByLabelText("Text to correct");
+    await user.clear(editor);
+    await user.type(editor, "HMRC notice. Code 1257L. This is correct.");
+    await user.click(screen.getByRole("button", { name: "Check corrected text" }));
+
+    expect(props.onCheckCorrectedText).toHaveBeenCalledTimes(1);
+    expect(props.onCheckCorrectedText).toHaveBeenCalledWith(
+      "HMRC notice. Code 1257L. This is correct.",
+    );
+  });
 });

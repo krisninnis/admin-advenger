@@ -39,16 +39,17 @@ export const flattenDecisionResultText = (result: DecisionResult): string =>
     ...result.risks,
     ...result.nextSteps,
     ...result.safetyNotes,
-    result.draftMessage ?? "",
-    result.amountMentioned ?? "",
+  result.draftMessage ?? "",
+  result.directAnswer ?? "",
+  result.amountMentioned ?? "",
     ...result.sourceFacts.map((fact) => `${fact.label} ${fact.value} ${fact.sourceQuote ?? ""}`),
     ...(result.questionsToAnswer ?? []),
   ].join(" \n ");
 
-export const analyseDecisionProblem = (text: string): DecisionResult => {
+export const analyseDecisionProblem = (text: string, userQuestion?: string): DecisionResult => {
   const normalisedText = normaliseDecisionText(text);
   const documentType = classifyDecisionDocument(normalisedText);
-  const input = { text, normalisedText };
+  const input = { text, normalisedText, userQuestion };
 
   switch (documentType) {
     case "parking_ticket":

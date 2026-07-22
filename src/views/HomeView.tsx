@@ -118,6 +118,7 @@ import type {
   SourceType,
 } from "../types";
 import type { GuidedDraftToSave } from "../lib/guidedDraftSave";
+import { submitAcceptedText } from "../lib/submissionHandoff";
 
 export type HomeAnalysisResult = {
   item: AdminItem;
@@ -129,7 +130,7 @@ type HomeViewProps = {
   result?: HomeAnalysisResult;
   analysisStatus: ServiceStatus;
   analysisError?: string;
-  onCheck: (title: string, sourceType: SourceType, rawText: string) => Promise<boolean>;
+  onCheck: (title: string, sourceType: SourceType, rawText: string, userQuestion?: string) => Promise<boolean>;
   onSaveCase: (caseId: string, draft?: GuidedDraftToSave) => void;
   onSaveRecord: (caseId: string) => void;
   onClearResult: () => void;
@@ -484,6 +485,7 @@ export function HomeView({
   const [uploadedFileName, setUploadedFileName] = useState("");
   const [uploadNote, setUploadNote] = useState("");
   const [inputMessage, setInputMessage] = useState("");
+  const [userQuestion, setUserQuestion] = useState("");
   const [imagePreviewUrl, setImagePreviewUrl] = useState("");
   const [photoMetadata, setPhotoMetadata] = useState<PhotoIntakeMetadata | undefined>();
   const [ocrStatus, setOcrStatus] = useState<OcrStatus>("idle");
@@ -886,13 +888,15 @@ export function HomeView({
       setShowDetailed(false);
       setShowEmailSafety(false);
 
-      const checked = await onCheck(
-        sourceTitle === "Pasted admin text"
+      const checked = await submitAcceptedText({
+        sourceTitle: sourceTitle === "Pasted admin text"
           ? "Local AI extracted admin facts"
           : `Local AI extracted admin facts from ${sourceTitle}`,
-        "email",
-        reconstructedText,
-      );
+        sourceType: "email",
+        acceptedText: reconstructedText,
+        userQuestion,
+        onCheck,
+      });
 
       if (!checked) {
         setAiExtraction(undefined);
@@ -914,7 +918,13 @@ export function HomeView({
       setShowDetailed(false);
       setShowEmailSafety(false);
 
-      await onCheck(sourceTitle, "email", textToExtract);
+      await submitAcceptedText({
+        sourceTitle,
+        sourceType: "email",
+        acceptedText: textToExtract,
+        userQuestion,
+        onCheck,
+      });
     }
   };
 
@@ -967,7 +977,13 @@ export function HomeView({
     setInputMessage("");
     setAiError("");
     setAiFallbackHint("");
-    const checked = await onCheck(checkSourceTitle, "email", textToCheck);
+    const checked = await submitAcceptedText({
+      sourceTitle: checkSourceTitle,
+      sourceType: "email",
+      acceptedText: textToCheck,
+      userQuestion,
+      onCheck,
+    });
 
     if (!checked) {
       setAiExtraction(undefined);
@@ -1285,7 +1301,13 @@ export function HomeView({
       return;
     }
 
-    const checked = await onCheck("Photo text (reviewed before checking)", "email", cleanedText);
+    const checked = await submitAcceptedText({
+      sourceTitle: "Photo text (reviewed before checking)",
+      sourceType: "email",
+      acceptedText: cleanedText,
+      userQuestion,
+      onCheck,
+    });
 
     if (!checked) {
       setAiExtraction(undefined);
@@ -2212,6 +2234,28 @@ export function HomeView({
               ) : null}
             </div>
           )}
+
+          <div className="mt-4">
+            <label
+              htmlFor="user-question"
+              className="block text-sm font-semibold text-slate-300"
+            >
+              What would you like help with?
+            </label>
+            <p id="user-question-hint" className="mt-1 text-xs leading-5 text-slate-500">
+              Optional. Ask about a deadline, what something means, or whether you need to act.
+            </p>
+            <input
+              id="user-question"
+              type="text"
+              value={userQuestion}
+              onChange={(event) => setUserQuestion(event.target.value)}
+              placeholder="e.g. Is this correct? Do I need to reply?"
+              autoComplete="off"
+              aria-describedby="user-question-hint"
+              className="mt-2 w-full rounded-lg border border-white/10 bg-slate-950 px-4 py-2 text-sm leading-6 text-white outline-none transition placeholder:text-slate-600 focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20"
+            />
+          </div>
         </div>
 
         {selectedInput !== "image" ? (

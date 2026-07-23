@@ -1,10 +1,17 @@
 # AdminAvenger Vision
 
-AdminAvenger is a human-in-the-loop AI life-admin advocate.
+AdminAvenger is a human-in-the-loop life-admin preparation product.
 
-It helps people turn messy emails, bills, receipts, letters, job messages, and documents into clear admin cases with evidence, actions, drafts, deadlines, chase steps, and outcomes.
+It helps people turn messy emails, bills, letters, receipts, screenshots,
+documents, job messages, and household paperwork into clear explanations,
+evidence, next steps, drafts, deadlines, chase actions, and outcomes.
 
-It exists because life admin quietly drains people. Most people do not need another chatbot. They need support: something calm, persistent, and trustworthy that helps them understand what matters, organise the evidence, prepare the next action, remember what happened, and keep chasing until the loop is closed.
+It exists because life admin quietly drains people.
+
+Most people do not need another chatbot. They need something calm, persistent,
+and trustworthy that helps them understand what matters, organise what they
+have, prepare the safest next action, remember what happened, and close the
+loop without taking control away from them.
 
 ## Tagline
 
@@ -12,168 +19,273 @@ Your AI fights the boring battles for you.
 
 ## Core Belief
 
-AI should not take control away from people.
-
-AI should:
-
-- Find the useful action.
-- Explain why it matters.
-- Organise the evidence.
-- Suggest the next move.
-- Draft the response.
-- Track what happened.
-- Remind the human to chase.
-- Keep the human in control.
+AI should reduce boring work without removing human judgement, consent, or
+control.
 
 The product rule is:
 
-AI remembers. AI explains. Humans decide.
+> AI remembers. AI explains. Humans decide.
 
-The AI should reduce the boring work. The human keeps judgement, context, consent, and final authority.
+The operating boundary is:
+
+> AI extracts facts. AdminAvenger code assesses. Human approves.
+
+AI may help:
+
+- identify useful facts;
+- explain what a document appears to be;
+- organise evidence;
+- show what is missing;
+- identify uncertainty;
+- suggest a next move;
+- prepare an editable draft or checklist;
+- remember progress;
+- prompt the user to chase;
+- record a user-confirmed outcome.
+
+The user keeps final authority.
 
 ## What AdminAvenger Is
 
-AdminAvenger is not just a chatbot. It is a personal admin war-room.
+AdminAvenger is not merely a chatbot, summariser, draft writer, document
+scanner, or productivity dashboard.
 
-It is not just a summariser, draft writer, or productivity dashboard. Its real value is follow-through, memory, evidence, trust, calm organisation, human approval, and long-term administrative continuity.
+It is a personal life-admin workspace built around:
 
-It helps with:
+- understanding;
+- evidence;
+- preparation;
+- follow-through;
+- memory;
+- calm organisation;
+- uncertainty;
+- human approval;
+- closed administrative loops.
 
-- Refunds
-- Complaints
-- Subscriptions
-- Bill increases
-- Warranties
-- Missed replies
-- Job application follow-ups
-- Deadlines
-- Renewals
-- Appointment messages
-- Confusing letters
-- Household paperwork
+The core product object is an Admin Case.
 
-## Admin Cases
+A case may contain:
 
-The core object is an Admin Case.
+- title;
+- category;
+- original material;
+- plain-English summary;
+- important facts;
+- dates;
+- visible amounts;
+- uncertainty;
+- cannot-know information;
+- evidence found;
+- evidence still needed;
+- next action;
+- editable draft or checklist;
+- status;
+- chase date;
+- timeline;
+- user-confirmed outcome;
+- local evidence-pack export.
 
-Each case should contain:
+## Current Public MVP
 
-- Title
-- Category
-- Summary
-- Value label
-- Urgency
-- Confidence
-- Evidence
-- Original source text
-- Next action
-- Draft
-- Status
-- Chase date
-- Timeline
-- Outcome
+The public MVP has one calm front door:
+
+> Check a message.
+
+A person can:
+
+- paste or type text;
+- take a photo;
+- upload an existing photo;
+- upload a supported document;
+- optionally ask a question about it;
+- review extracted or prepared text;
+- receive a plain-English result;
+- save or export the result when useful.
+
+The journey is:
+
+1. Provide a message or document.
+2. Optionally ask a question about it.
+3. Understand what it appears to be.
+4. See important facts, dates, amounts, uncertainty, and missing evidence.
+5. Know the safest next move.
+6. Save or export when useful.
+7. Remain in control.
+
+The public experience is not a menu of separate category checkers.
+
+Internal classification and narrow preparation systems sit behind one input.
+
+Nothing is sent, submitted, cancelled, claimed, applied for, paid, archived, or
+communicated automatically.
+
+## Current Public Use Cases
+
+The current product can help prepare around ordinary life-admin material such
+as:
+
+- bills;
+- confusing official letters;
+- receipts;
+- refund records;
+- delivery problems;
+- subscription messages;
+- broadband or mobile price changes;
+- travel-delay evidence;
+- household paperwork;
+- important emails and replies;
+- narrow HMRC Tax Code Notice explanation;
+- unknown official letters that need a safe fallback.
+
+Money recovery and saving remain important outcomes, but they are one valuable
+use case rather than the entire identity of AdminAvenger.
+
+AdminAvenger must not be marketed as a general tax, legal, benefits, debt,
+employment, housing, care, medical, financial, or claims adviser.
+
+## Current Milestone
+
+The current milestone is:
+
+**Pilot readiness and closed real-user validation.**
+
+The next proof is not another specialist engine.
+
+The next proof is whether approximately 5 to 10 ordinary users can use the
+existing document-to-next-step journey without coaching.
+
+The pilot should establish whether people can:
+
+- understand the single front door;
+- notice the optional question field;
+- provide material through paste, file, photo, or camera;
+- understand OCR correction and recovery;
+- recognise what the document appears to be;
+- find the main next action;
+- understand uncertainty and missing evidence;
+- understand that nothing was sent automatically;
+- save or export when useful;
+- return to an unresolved case;
+- feel calmer and more capable after using the product.
 
 ## Product Principles
 
 1. Human approval first.
 2. Show the evidence.
-3. Build trust through transparency.
-4. Avoid fear-based AI.
-5. Make it useful before making it clever.
+3. Explain uncertainty.
+4. Never invent missing facts.
+5. Make the result useful before making it clever.
 6. Start manual, then automate carefully.
-7. Design for less stress, not more engagement.
-8. Let users delete and export their data.
-9. Explain uncertainty clearly.
-10. Build for trust before automation.
+7. Resolution matters more than engagement.
+8. Design for less stress and fewer open loops.
+9. Let users review, correct, export, and delete their data.
+10. Count outcomes only after the user confirms them.
+11. Keep one calm public front door.
+12. Expand one researched and tested vertical at a time.
 
-## What We Will Never Do
+## What AdminAvenger Will Never Do
 
 AdminAvenger should never:
 
-- Silently act on behalf of the user.
-- Pretend to be the user without consent.
-- Optimise for time-in-app.
-- Sell personal admin data.
-- Hide why a recommendation was made.
-- Make legal, financial, or medical decisions for the user.
-- Create false confidence.
-- Turn life admin into another stressful inbox.
+- silently act on behalf of the user;
+- pretend to be the user;
+- send a message without explicit human action;
+- submit a claim or application automatically;
+- cancel a service automatically;
+- contact a provider, employer, adviser, or government body automatically;
+- claim entitlement, eligibility, suitability, or likely outcome;
+- calculate a person's correct tax code;
+- count possible, disputed, demanded, or researched money as recovered;
+- hide uncertainty or weak OCR;
+- invent evidence;
+- optimise for unnecessary time in the app;
+- sell personal admin data;
+- hide why a result was produced;
+- create false confidence;
+- turn life admin into another stressful inbox.
 
 ## Product Health
 
-The product should be judged by closed loops, not engagement for its own sake.
+AdminAvenger should be judged by closed loops rather than engagement for its
+own sake.
 
-Good signals:
+Good signals include:
 
-- Cases resolved
-- Money recovered
-- Money saved
-- Admin loops closed
-- Deadlines not missed
-- Time saved
-- User confidence increased
-- Stress reduced
-- Fewer forgotten follow-ups
+- users understand what a document means;
+- users know what to do next;
+- important evidence is gathered;
+- deadlines are not missed;
+- unresolved cases are chased;
+- admin loops are closed;
+- confirmed money is recovered or saved;
+- time is saved;
+- stress is reduced;
+- confidence increases;
+- fewer important tasks are forgotten;
+- users understand that they remain in control.
 
-Bad signals:
+Bad signals include:
 
-- More unnecessary time in app
-- More anxiety
-- More open loops
-- More notifications without value
-- More unnecessary clicks
+- more unnecessary time in the app;
+- increased anxiety;
+- more open loops;
+- too many notifications;
+- repeated information;
+- unnecessary clicks;
+- users thinking something was sent when it was not;
+- users trusting uncertain output as a confirmed fact;
+- possible money being presented as confirmed savings.
 
-## First Public Wedge
+## Pilot North Star
 
-The first public wedge should be:
+AdminAvenger succeeds when a pilot user can say:
 
-Money Back Avenger.
+> I understand what this is.
 
-The product should centre around:
+> I know what matters.
 
-Paste something worrying.
+> I know what to do next.
 
-Everyday users mostly bring emails, messages, screenshots, bills, and letters. The first public
-workflow should help them understand whether there is money to recover or save, what evidence they
-have, what is missing, and what to do next.
+> I know what evidence I have and what is missing.
 
-The first completed proof vertical is:
+> I understand what AdminAvenger cannot know.
 
-- Train Delay / Delay Repay
+> I know nothing was sent without me.
 
-The next validation vertical is:
+> I am still in control.
 
-- Broadband/mobile price-rise letters
+## After The Pilot
 
-Likely later verticals, only after validation:
+After the first closed pilot:
 
-- Subscriptions
-- Missing delivery, faulty goods, and returns
-- Warranties
-- Energy and water billing later
-- Financial, benefits, and regulated complaints much later because they are higher risk
+1. Rank problems by frequency and user impact.
+2. Fix the most important confirmed failures.
+3. Repeat the same acceptance journeys.
+4. Freeze the pilot release when the core journeys pass.
+5. Harden telecom as the first formal post-pilot vertical.
+6. Add fixtures before changing telecom behaviour.
+7. Expand one researched vertical at a time.
 
-Verticals are earned from real user behaviour, not declared from architecture.
-
-The product can support multiple demos, but the launch wedge must be one focused workflow.
-
-## North Star
-
-AdminAvenger wins when a user can say:
-
-I understand what this means.
-I know what to do next.
-I have the evidence.
-I have the draft.
-I know when to chase.
-I am still in control.
-
-That is AI done right.
+Authentication, cloud storage, hosted AI, provider integrations, email
+integrations, and automatic actions should remain later until real product needs
+justify them.
 
 ## Long-Term Vision
 
 AdminAvenger should grow with a person's life.
 
-It may start with refunds, subscriptions, and bill challenges. Over time, it could help with moving house, jobs, family admin, care responsibilities, bereavement admin, warranties, insurance, appointments, and household records.
+It may begin with ordinary bills, confusing letters, refunds, subscriptions,
+price changes, travel evidence, and household paperwork.
 
-The long-term goal is administrative continuity: a trusted system that remembers what happened, what was tried, what worked, what failed, and what needs attention next.
+Over time, carefully controlled preparation could support moving house, jobs,
+family administration, care responsibilities, bereavement administration,
+warranties, insurance, appointments, complaints, and important records.
+
+The long-term goal is administrative continuity:
+
+A trusted system that remembers what happened, what evidence exists, what was
+tried, what worked, what failed, and what needs attention next.
+
+The destination is not autonomous bureaucracy.
+
+The destination is a calmer, better-prepared human who remains in control.

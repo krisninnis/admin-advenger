@@ -70,6 +70,12 @@ Supported input paths:
 - Image/photo files and camera captures read locally with Tesseract.js OCR.
 - Drag/drop into the visible input panel or attachment area.
 
+The optional question remains separate from accepted document text and its source title;
+it is passed as distinct context and must not be concatenated into either value.
+
+Every intake route hands accepted text to the shared `submitAcceptedText`
+handoff, so paste, file, photo, and camera enter the same analysis pipeline.
+
 Unsupported or limited cases:
 
 - Legacy `.doc` files are not parsed.
@@ -108,6 +114,7 @@ Important decision fields:
 
 - `documentType`.
 - `title`.
+- `directAnswer`.
 - `plainEnglishSummary`.
 - `caseStrength`.
 - `strengthLabel`.
@@ -118,9 +125,18 @@ Important decision fields:
 - `deadlines`.
 - `risks`.
 - `nextSteps`.
+- `draftMessage`.
 - `safetyNotes`.
 - `amountTreatment`.
 - `sourceFacts`.
+
+Decision and evidence invariants:
+
+- Tax years remain contextual source facts and are not treated as actionable dates.
+- Guidance periods remain guidance and are not treated as actual deadlines unless
+  the source states an explicit actionable deadline.
+- Evidence deduplication is semantic: normalized facts with the same meaning are
+  merged even when their wording differs, while materially distinct facts remain separate.
 
 ## Engine Architecture
 
@@ -143,6 +159,7 @@ It classifies and analyses:
 - Consumer disputes.
 - Benefits-family documents.
 - Council Tax Reduction / Support.
+- HMRC Tax Code Notices.
 - Unknown admin disputes.
 
 Specialist engines and packs also exist:
@@ -198,6 +215,13 @@ The current result path is built around:
 The Result View Model composes decision results, benefits action packs,
 strategic next steps, workplace packs, career packs, adviser exports, and case
 progress into a safety-checked output model.
+
+The visible public result order is fixed:
+
+1. Title.
+2. Direct answer.
+3. Plain-English summary.
+4. Supporting sections such as evidence, dates, risks, next steps, and draft message.
 
 ## Career Match Architecture
 
@@ -370,6 +394,13 @@ Key test areas include:
   tests.
 - Storage, local data control, terms, copy actions, adviser export, case
   progress, safety wording, and UI regression tests.
+- HMRC Tax Code Notice one-front-door coverage: a pasted notice with an optional
+  question is classified and answered through the single Check a message front
+  door, without any category selection, and reaches the same result pipeline.
+- Rendered-result ordering and safety coverage: the public result renders title,
+  direct answer, plain-English summary, and supporting sections in that order,
+  with no invented dates, no guidance rendered as a deadline, bounded semantic
+  evidence counts, no automatic draft, and no money-saved or exact-payslip claims.
 
 Golden fixtures are synthetic. Real personal documents and manual OCR images
 must not be committed.

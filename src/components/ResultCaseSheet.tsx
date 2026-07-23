@@ -364,6 +364,8 @@ export function ResultCaseSheet({
   supportingDetailsOpen,
   onToggleSupportingDetails,
 }: ResultCaseSheetProps) {
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [whyOpen, setWhyOpen] = useState(false);
   const references = useMemo(
     () => model.evidenceFound.filter(hasReferenceSignal).slice(0, 3),
     [model.evidenceFound],
@@ -412,7 +414,7 @@ export function ResultCaseSheet({
     <article className="rounded-xl border border-white/10 bg-slate-900/90 p-4 shadow-2xl shadow-slate-950/30 sm:p-6">
       <header className="rounded-lg border border-emerald-300/20 bg-emerald-300/[0.07] p-5">
         <p className="text-sm font-bold uppercase tracking-widest text-emerald-300">
-          What AdminAvenger found
+          Your result at a glance
         </p>
         <div className="mt-3 flex flex-wrap items-start justify-between gap-4">
           <div className="max-w-3xl">
@@ -439,146 +441,217 @@ export function ResultCaseSheet({
         </p>
       </header>
 
-      <div className="mt-5 grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-        <Section title="Best next move" tone="cyan">
-          {model.bestNextMove ? (
-            <div className="space-y-3">
-              <p className="text-base font-bold text-white">{model.bestNextMove.label}</p>
-              <p>{model.bestNextMove.description}</p>
-              <p className="rounded-lg border border-cyan-300/20 bg-slate-950/45 p-3 text-cyan-50/90">
-                {model.bestNextMove.whyThisHelps}
-              </p>
-            </div>
-          ) : (
-            <p>
-              {isCareerSupportResult
-                ? "Review the target role, evidence, gaps, and wording before using or sharing anything."
-                : "Check the sender, date, reference, and requested action before deciding what to do."}
-            </p>
-          )}
-        </Section>
-
-        <Section title="What to check first" tone="amber">
-          <ul className="space-y-2">
-            {checkFirstItems.map((item) => (
-              <li key={item}>{item}</li>
-            ))}
-          </ul>
-        </Section>
-      </div>
-
-      {allActions.length > 0 || guidedNextStepButton ? (
-        <div className="mt-5 rounded-lg border border-white/10 bg-slate-950/55 p-4">
-          <p className="text-sm font-bold text-white">Next action</p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {allActions.map((action) => (
-              <ActionButton key={action.label} action={action} />
-            ))}
-            {guidedNextStepButton ? <ActionButton action={guidedNextStepButton} /> : null}
-          </div>
-        </div>
-      ) : null}
-
       {isCareerSupportResult ? (
-        <div className="mt-5 grid gap-4 lg:grid-cols-2">
-          {isCareerMatchResult ? (
-            <Section title="Requirement-by-requirement evidence map" tone="cyan">
-              <RequirementEvidenceMap items={model.careerRequirementEvidenceMap ?? []} />
+        <>
+          <div className="mt-5 grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+            <Section title="Best next move" tone="cyan">
+              {model.bestNextMove ? (
+                <div className="space-y-3">
+                  <p className="text-base font-bold text-white">{model.bestNextMove.label}</p>
+                  <p>{model.bestNextMove.description}</p>
+                  <p className="rounded-lg border border-cyan-300/20 bg-slate-950/45 p-3 text-cyan-50/90">
+                    {model.bestNextMove.whyThisHelps}
+                  </p>
+                </div>
+              ) : (
+                <p>Review the target role, evidence, gaps, and wording before using or sharing anything.</p>
+              )}
             </Section>
+
+            <Section title="What to check first" tone="amber">
+              <ul className="space-y-2">
+                {checkFirstItems.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </Section>
+          </div>
+
+          {allActions.length > 0 || guidedNextStepButton ? (
+            <div className="mt-5 rounded-lg border border-white/10 bg-slate-950/55 p-4">
+              <p className="text-sm font-bold text-white">Next action</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {allActions.map((action) => (
+                  <ActionButton key={action.label} action={action} />
+                ))}
+                {guidedNextStepButton ? <ActionButton action={guidedNextStepButton} /> : null}
+              </div>
+            </div>
           ) : null}
 
-          {(isCareerMatchResult
-            ? [
-                "career-role-clues",
-                "career-requirements-found",
-                "career-cv-evidence-may-match",
-                "career-strong-evidence-to-consider",
-                "career-gaps",
-                "career-advert-wording-to-review",
-                "career-examples-to-prepare",
-                "career-claims-to-verify",
-                "career-next-steps",
-              ]
-            : [
-                "career-target-roles",
-                "career-strengths",
-                "career-evidence",
-                "career-projects",
-                "career-experience",
-                "career-education",
-                "career-gaps",
-                "career-safer-rewrites",
-              ]
-          ).map((sectionId) => {
-            const section = model.sections.find((item) => item.id === sectionId);
+          <div className="mt-5 grid gap-4 lg:grid-cols-2">
+            {isCareerMatchResult ? (
+              <Section title="Requirement-by-requirement evidence map" tone="cyan">
+                <RequirementEvidenceMap items={model.careerRequirementEvidenceMap ?? []} />
+              </Section>
+            ) : null}
 
-            return section ? (
-              <Section key={section.id} title={section.title} tone={section.id === "career-gaps" ? "amber" : "slate"}>
+            {(isCareerMatchResult
+              ? [
+                  "career-role-clues",
+                  "career-requirements-found",
+                  "career-cv-evidence-may-match",
+                  "career-strong-evidence-to-consider",
+                  "career-gaps",
+                  "career-advert-wording-to-review",
+                  "career-examples-to-prepare",
+                  "career-claims-to-verify",
+                  "career-next-steps",
+                ]
+              : [
+                  "career-target-roles",
+                  "career-strengths",
+                  "career-evidence",
+                  "career-projects",
+                  "career-experience",
+                  "career-education",
+                  "career-gaps",
+                  "career-safer-rewrites",
+                ]
+            ).map((sectionId) => {
+              const section = model.sections.find((item) => item.id === sectionId);
+
+              return section ? (
+                <Section key={section.id} title={section.title} tone={section.id === "career-gaps" ? "amber" : "slate"}>
+                  <TextList
+                    items={section.items}
+                    emptyText="No item was found for this section. Review the CV text manually."
+                    limit={limits.evidence}
+                  />
+                </Section>
+              ) : null;
+            })}
+
+            <Section title="What AdminAvenger cannot know" tone="amber">
+              <TextList
+                items={model.cannotKnow}
+                emptyText="AdminAvenger cannot verify experience, qualifications, dates, or employer preferences."
+                limit={limits.cannotKnow}
+                minimumVisible={2}
+              />
+            </Section>
+
+            <Section title="Uncertainty / double-check" tone="amber">
+              <TextList
+                items={[...model.uncertainty, ...model.risks]}
+                emptyText="Review the CV or career material before using it."
+                limit={limits.uncertainty}
+              />
+            </Section>
+          </div>
+        </>
+      ) : (
+        <>
+          {/* "Your result at a glance" answers: urgency, what to do next
+              (with Best next move folded in), and what to have ready. */}
+          <div className="mt-5 grid gap-4 lg:grid-cols-2">
+            <Section title="Is anything urgent?">
+              <p className="text-base font-semibold text-white">{model.urgency.headline}</p>
+              {model.urgency.detail ? <p className="mt-2">{model.urgency.detail}</p> : null}
+            </Section>
+
+            <Section title="What should I do next?" tone="cyan">
+              {model.bestNextMove ? (
+                <div className="space-y-3">
+                  <p className="text-base font-bold text-white">{model.bestNextMove.label}</p>
+                  <p>{model.bestNextMove.description}</p>
+                  {model.bestNextMove.whyThisHelps ? (
+                    <div>
+                      <button
+                        type="button"
+                        aria-expanded={whyOpen}
+                        aria-controls="result-why-this-helps"
+                        onClick={() => setWhyOpen((current) => !current)}
+                        className="min-h-10 rounded-lg border border-cyan-300/20 bg-slate-950/45 px-3 py-2 text-xs font-bold text-cyan-100 transition hover:text-white focus:outline-none focus:ring-2 focus:ring-cyan-300/40"
+                      >
+                        {whyOpen ? "Hide why this helps" : "Why this helps"}
+                      </button>
+                      <p
+                        id="result-why-this-helps"
+                        hidden={!whyOpen}
+                        className="mt-2 rounded-lg border border-cyan-300/20 bg-slate-950/45 p-3 text-cyan-50/90"
+                      >
+                        {model.bestNextMove.whyThisHelps}
+                      </p>
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <p>Check the sender, date, reference, and requested action before deciding what to do.</p>
+              )}
+              {allActions.length > 0 || guidedNextStepButton ? (
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {allActions.map((action) => (
+                    <ActionButton key={action.label} action={action} />
+                  ))}
+                  {guidedNextStepButton ? <ActionButton action={guidedNextStepButton} /> : null}
+                </div>
+              ) : null}
+            </Section>
+
+            <Section title="What should I have ready?">
+              <TextList
+                items={[...model.evidenceToGather.map((item) => item.value), ...model.questionsToAnswer]}
+                emptyText="Nothing extra needs gathering right now. Keep the original safe."
+                limit={limits.evidence}
+              />
+            </Section>
+          </div>
+
+          {/* Safety-facing information stays visible, never behind disclosure. */}
+          <div className="mt-5 grid gap-4 lg:grid-cols-2">
+            <Section title="What AdminAvenger cannot know" tone="amber">
+              <TextList
+                items={model.cannotKnow}
+                emptyText="AdminAvenger cannot verify anything outside the message, file, or photo you provided."
+                limit={limits.cannotKnow}
+                minimumVisible={2}
+              />
+            </Section>
+
+            <Section title="Uncertainty / double-check" tone="amber">
+              <TextList
+                items={[...model.uncertainty, ...model.risks]}
+                emptyText="Check the original document before deciding what to do."
+                limit={limits.uncertainty}
+              />
+            </Section>
+          </div>
+
+          {/* Routine detail behind one collapsed, keyboard-accessible disclosure. */}
+          <div className="mt-5 rounded-lg border border-white/10 bg-slate-950/55 p-4">
+            <button
+              type="button"
+              aria-expanded={detailOpen}
+              aria-controls="result-routine-detail"
+              onClick={() => setDetailOpen((current) => !current)}
+              className="min-h-11 rounded-lg border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-slate-200 transition hover:border-white/20 hover:text-white focus:outline-none focus:ring-2 focus:ring-emerald-300/40"
+            >
+              {detailOpen ? "Hide dates, money, evidence and questions" : "See dates, money, evidence and questions"}
+            </button>
+            <div id="result-routine-detail" hidden={!detailOpen} className="mt-4 grid gap-4 lg:grid-cols-2">
+              <Section title="Dates to check">
+                <DateList dates={model.keyDates} />
+              </Section>
+
+              <Section title="Money mentioned">
+                <MoneyList money={model.moneyMentioned} />
+              </Section>
+
+              <Section title="Evidence / documents to bring">
+                <EvidenceList found={model.evidenceFound} toGather={model.evidenceToGather} />
+              </Section>
+
+              <Section title="Questions to answer">
                 <TextList
-                  items={section.items}
-                  emptyText="No item was found for this section. Review the CV text manually."
-                  limit={limits.evidence}
+                  items={model.questionsToAnswer}
+                  emptyText="No extra questions were listed. Check the original letter and ask someone you trust if unsure."
+                  limit={limits.questions}
                 />
               </Section>
-            ) : null;
-          })}
-
-          <Section title="What AdminAvenger cannot know" tone="amber">
-            <TextList
-              items={model.cannotKnow}
-              emptyText="AdminAvenger cannot verify experience, qualifications, dates, or employer preferences."
-              limit={limits.cannotKnow}
-              minimumVisible={2}
-            />
-          </Section>
-
-          <Section title="Uncertainty / double-check" tone="amber">
-            <TextList
-              items={[...model.uncertainty, ...model.risks]}
-              emptyText="Review the CV or career material before using it."
-              limit={limits.uncertainty}
-            />
-          </Section>
-        </div>
-      ) : (
-        <div className="mt-5 grid gap-4 lg:grid-cols-2">
-          <Section title="Dates to check">
-            <DateList dates={model.keyDates} />
-          </Section>
-
-          <Section title="Money mentioned">
-            <MoneyList money={model.moneyMentioned} />
-          </Section>
-
-          <Section title="Evidence / documents to bring">
-            <EvidenceList found={model.evidenceFound} toGather={model.evidenceToGather} />
-          </Section>
-
-          <Section title="Questions to answer">
-            <TextList
-              items={model.questionsToAnswer}
-              emptyText="No extra questions were listed. Check the original letter and ask someone you trust if unsure."
-              limit={limits.questions}
-            />
-          </Section>
-
-          <Section title="What AdminAvenger cannot know" tone="amber">
-            <TextList
-              items={model.cannotKnow}
-              emptyText="AdminAvenger cannot verify anything outside the message, file, or photo you provided."
-              limit={limits.cannotKnow}
-              minimumVisible={2}
-            />
-          </Section>
-
-          <Section title="Uncertainty / double-check" tone="amber">
-            <TextList
-              items={[...model.uncertainty, ...model.risks]}
-              emptyText="Check the original document before deciding what to do."
-              limit={limits.uncertainty}
-            />
-          </Section>
-        </div>
+            </div>
+          </div>
+        </>
       )}
 
       <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_0.9fr]">

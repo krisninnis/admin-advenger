@@ -136,7 +136,7 @@ const submitJourney = async (question: string) => {
   const textarea = screen.getByPlaceholderText("Paste the email, bill, letter, or message here...");
   fireEvent.change(textarea, { target: { value: FULL_TAX_CODE_NOTICE } });
 
-  const questionField = screen.getByLabelText("What would you like help with?");
+  const questionField = screen.getByLabelText("What would you like to know about this?");
   fireEvent.change(questionField, { target: { value: question } });
 
   const submit = screen.getByRole("button", { name: /^What does this mean\?$/i });

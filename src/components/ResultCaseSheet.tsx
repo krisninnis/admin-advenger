@@ -91,6 +91,41 @@ const uniqueTextItems = (items: string[]) => {
   return cleaned;
 };
 
+const isCancellationSwitchingRightsTopic = (item: string) =>
+  /\b(?:cancel(?:lation)?|switch(?:ing)?)\b/i.test(item) &&
+  /\brights?\b/i.test(item);
+
+const topicDedupedItems = (items: string[]): string[] => {
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  for (const item of items) {
+    const trimmed = item.trim();
+    if (!trimmed) {
+      continue;
+    }
+
+    const key = trimmed.toLowerCase().replace(/\s+/g, " ");
+
+    if (seen.has(key)) {
+      continue;
+    }
+
+    if (isCancellationSwitchingRightsTopic(trimmed)) {
+      const topicKey = "__cancellation_switching_rights";
+      if (seen.has(topicKey)) {
+        continue;
+      }
+      seen.add(topicKey);
+    }
+
+    seen.add(key);
+    result.push(trimmed);
+  }
+
+  return result;
+};
+
 function ActionButton({ action }: { action: ResultCaseSheetAction }) {
   const emphasis = action.emphasis ?? "secondary";
 
@@ -300,6 +335,27 @@ function TextList({
   );
 }
 
+const MAX_COMPACT_TOPICS = 3;
+
+function CompactHaveReadyList({ items }: { items: string[] }) {
+  const topics = topicDedupedItems(items);
+  const visible = topics.slice(0, MAX_COMPACT_TOPICS);
+
+  if (topics.length === 0) {
+    return (
+      <p>Nothing extra needs gathering right now. Keep the original safe.</p>
+    );
+  }
+
+  return (
+    <ul className="space-y-2">
+      {visible.map((item) => (
+        <li key={item}>{item}</li>
+      ))}
+    </ul>
+  );
+}
+
 function RequirementEvidenceMap({
   items,
 }: {
@@ -418,7 +474,14 @@ export function ResultCaseSheet({
         </p>
         <div className="mt-3 flex flex-wrap items-start justify-between gap-4">
           <div className="max-w-3xl">
-            <h2 className="text-2xl font-black tracking-tight text-white sm:text-3xl">
+            {!isCareerSupportResult ? (
+              <p className="text-sm font-bold uppercase tracking-widest text-cyan-300">
+                What is this?
+              </p>
+            ) : null}
+            <h2
+              className={`${isCareerSupportResult ? "" : "mt-1 "}text-2xl font-black tracking-tight text-white sm:text-3xl`}
+            >
               {model.title}
             </h2>
             {model.directAnswer ? (
@@ -426,7 +489,16 @@ export function ResultCaseSheet({
                 {model.directAnswer}
               </p>
             ) : null}
-            <p className="mt-3 text-base leading-7 text-slate-200">{model.summary}</p>
+            {!isCareerSupportResult ? (
+              <p className="mt-3 text-sm font-bold uppercase tracking-widest text-cyan-300">
+                What changed or matters?
+              </p>
+            ) : null}
+            <p
+              className={`${isCareerSupportResult ? "mt-3" : "mt-1"} text-base leading-7 text-slate-200`}
+            >
+              {model.summary}
+            </p>
           </div>
           {model.primaryStatusLabel ? (
             <span className="rounded-full border border-emerald-300/30 bg-slate-950/70 px-3 py-1 text-xs font-bold text-emerald-100">
@@ -590,10 +662,8 @@ export function ResultCaseSheet({
             </Section>
 
             <Section title="What should I have ready?">
-              <TextList
+              <CompactHaveReadyList
                 items={[...model.evidenceToGather.map((item) => item.value), ...model.questionsToAnswer]}
-                emptyText="Nothing extra needs gathering right now. Keep the original safe."
-                limit={limits.evidence}
               />
             </Section>
           </div>

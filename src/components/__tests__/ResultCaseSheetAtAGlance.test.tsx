@@ -1,9 +1,14 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { ResultCaseSheet } from "../ResultCaseSheet";
-import type { AdminCase } from "../../types";
+import type { AdminCase, AdminItem } from "../../types";
+import { demoScenarios } from "../../data/demoScenarios";
 import { analyseDecisionProblem } from "../../lib/decisionEngine/decisionEngine";
+import { analyseAdminItem } from "../../lib/mockAnalysis";
+import { createAdminCase } from "../../lib/caseFactory";
+import { deriveOpportunityCard } from "../../lib/opportunityCards";
+import { buildStrategicNextStepPlan } from "../../lib/strategicNextStep";
 import { buildResultViewModel, RESULT_URGENCY_COPY } from "../../lib/resultViewModel";
 
 afterEach(cleanup);
@@ -138,5 +143,218 @@ describe("ResultCaseSheet - your result at a glance", () => {
 
     // The routine-detail disclosure is still collapsed.
     expect(document.getElementById("result-routine-detail")!.hasAttribute("hidden")).toBe(true);
+  });
+});
+
+describe("ResultCaseSheet - price-rise notice regression", () => {
+  const priceRiseScenario = demoScenarios.find(
+    (scenario) => scenario.id === "broadband-mobile-price-rise",
+  );
+
+  if (!priceRiseScenario) {
+    throw new Error("Built-in broadband/mobile price-rise scenario is missing");
+  }
+
+  const buildPriceRiseResult = () => {
+    const item: AdminItem = {
+      id: "item-price-rise-sample",
+      title: priceRiseScenario.title,
+      sourceType: priceRiseScenario.sourceType,
+      rawText: priceRiseScenario.rawText,
+      createdAt: "2026-07-17T10:00:00.000Z",
+      analysedAt: "2026-07-17T10:00:00.000Z",
+    };
+
+    const findings = analyseAdminItem(item);
+    const priceRiseFinding = findings.find((f) => f.category === "bill_increase");
+    expect(priceRiseFinding).toBeDefined();
+
+    const adminCase = createAdminCase(priceRiseFinding!, item);
+    const opportunity = deriveOpportunityCard(adminCase, item, priceRiseFinding);
+    const strategicPlan = buildStrategicNextStepPlan({
+      opportunity,
+      adminCase,
+    });
+    const model = buildResultViewModel({
+      opportunity,
+      adminCase,
+      strategicNextStepPlan: strategicPlan,
+    });
+
+    return { model, adminCase, opportunity };
+  };
+
+  const renderPriceRiseResult = () => {
+    const { model } = buildPriceRiseResult();
+    const rendered = render(
+      <ResultCaseSheet
+        model={model}
+        supportingDetailsOpen={false}
+        onToggleSupportingDetails={() => undefined}
+      />,
+    );
+
+    return { model, ...rendered };
+  };
+
+  const getSection = (container: HTMLElement, title: string) => {
+    const section = Array.from(container.querySelectorAll("section")).find(
+      (item) => item.querySelector("h3")?.textContent === title,
+    );
+
+    expect(section).toBeDefined();
+    return section!;
+  };
+
+  const precedes = (first: Element, second: Element) =>
+    Boolean(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING);
+
+  const isCancellationSwitchingRightsTopic = (value: string) =>
+    /\b(?:cancel(?:lation)?|switch(?:ing)?)\b/i.test(value) &&
+    /\brights?\b/i.test(value);
+
+  it("renders the visible labels and each core answer once in the approved order", () => {
+    const { model, container } = renderPriceRiseResult();
+
+    const header = container.querySelector("header");
+    expect(header).not.toBeNull();
+
+    const whatIsThis = within(header!).getByText("What is this?", { selector: "p" });
+    const title = within(header!).getByRole("heading", { level: 2, name: model.title });
+    const whatChanged = within(header!).getByText("What changed or matters?", {
+      selector: "p",
+    });
+    const summary = within(header!).getByText(model.summary, { selector: "p" });
+    const supportingHeading = screen.getByRole("heading", {
+      level: 3,
+      name: "Is anything urgent?",
+    });
+
+    expect(screen.getAllByText(model.title, { exact: true })).toHaveLength(1);
+    expect(screen.getAllByText(model.summary, { exact: true })).toHaveLength(1);
+
+    expect(precedes(whatIsThis, title)).toBe(true);
+    if (model.directAnswer) {
+      const directAnswer = within(header!).getByText(model.directAnswer, {
+        selector: "p",
+      });
+      expect(screen.getAllByText(model.directAnswer, { exact: true })).toHaveLength(1);
+      expect(precedes(title, directAnswer)).toBe(true);
+      expect(precedes(directAnswer, whatChanged)).toBe(true);
+    } else {
+      expect(precedes(title, whatChanged)).toBe(true);
+    }
+    expect(precedes(whatChanged, summary)).toBe(true);
+    expect(precedes(summary, supportingHeading)).toBe(true);
+  });
+
+  it("keeps the career-result header and separate layout unchanged", () => {
+    const { model } = buildPriceRiseResult();
+    const careerModel = {
+      ...model,
+      resultKind: "career_support" as const,
+    };
+    const { container } = render(
+      <ResultCaseSheet
+        model={careerModel}
+        supportingDetailsOpen={false}
+        onToggleSupportingDetails={() => undefined}
+      />,
+    );
+
+    const header = container.querySelector("header");
+    expect(header).not.toBeNull();
+    expect(within(header!).queryByText("What is this?", { selector: "p" })).toBeNull();
+    expect(
+      within(header!).queryByText("What changed or matters?", { selector: "p" }),
+    ).toBeNull();
+    expect(within(header!).getByRole("heading", { level: 2, name: model.title })).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 3, name: "Best next move" })).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 3, name: "What to check first" })).toBeTruthy();
+  });
+
+  it("shows no more than three semantic ready topics and keeps the first rights wording", () => {
+    const { model, container } = renderPriceRiseResult();
+    const allReadyItems = [
+      ...model.evidenceToGather.map((item) => item.value),
+      ...model.questionsToAnswer,
+    ];
+    const rightsItems = allReadyItems.filter(isCancellationSwitchingRightsTopic);
+    expect(rightsItems.length).toBeGreaterThan(1);
+
+    const haveReadySection = getSection(container, "What should I have ready?");
+    const compactItems = Array.from(haveReadySection.querySelectorAll("li")).map(
+      (item) => item.textContent ?? "",
+    );
+
+    expect(compactItems.length).toBeLessThanOrEqual(3);
+    expect(compactItems.filter(isCancellationSwitchingRightsTopic)).toEqual([
+      rightsItems[0],
+    ]);
+    expect(
+      within(haveReadySection).queryByRole("button", { name: /show more/i }),
+    ).toBeNull();
+  });
+
+  it("preserves every underlying evidence and question item in expandable routine detail", () => {
+    const { model } = renderPriceRiseResult();
+    const toggle = screen.getByRole("button", {
+      name: "See dates, money, evidence and questions",
+    });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    const detail = document.getElementById("result-routine-detail");
+    expect(detail).not.toBeNull();
+    expect(detail!.hasAttribute("hidden")).toBe(true);
+
+    fireEvent.click(toggle);
+    expect(detail!.hasAttribute("hidden")).toBe(false);
+
+    for (const showMore of within(detail!).queryAllByRole("button", {
+      name: /show more/i,
+    })) {
+      fireEvent.click(showMore);
+      expect(showMore.textContent).toBe("Show less");
+    }
+
+    const detailText = detail!.textContent ?? "";
+    for (const item of model.evidenceToGather) {
+      expect(detailText).toContain(item.value);
+    }
+    for (const question of model.questionsToAnswer) {
+      expect(detailText).toContain(question);
+    }
+  });
+
+  it("uses the existing price-rise-specific action rather than generic sender identification", () => {
+    const { model, opportunity } = buildPriceRiseResult();
+    expect(model.bestNextMove).toBeDefined();
+    expect(model.bestNextMove!.label).toBe(opportunity.recommendedPathSteps[0]);
+    expect(model.bestNextMove!.description).toBe(opportunity.nextBestAction);
+
+    const rendered = render(
+      <ResultCaseSheet
+        model={model}
+        supportingDetailsOpen={false}
+        onToggleSupportingDetails={() => undefined}
+      />,
+    );
+    const nextSection = getSection(rendered.container, "What should I do next?");
+    const nextText = nextSection.textContent ?? "";
+
+    expect(nextText).toMatch(/\b(?:provider|contract|price[- ]rise|options?)\b/i);
+    expect(nextText).not.toMatch(/identify the sender, date, reference, and deadline/i);
+  });
+
+  it("preserves urgency wording and existing safety boundaries", () => {
+    const { model } = renderPriceRiseResult();
+
+    expect(screen.getByText(RESULT_URGENCY_COPY[model.urgency.level])).toBeTruthy();
+    expect(
+      screen.getByText(/^Preparation only\. Nothing has been sent\./i),
+    ).toBeTruthy();
+    expect(screen.getByText(/Nothing has been submitted/i)).toBeTruthy();
+    expect(screen.getByText(/AdminAvenger does not contact anyone for you/i)).toBeTruthy();
+    expect(screen.getByText("What AdminAvenger cannot know")).toBeTruthy();
+    expect(screen.getByText("Uncertainty / double-check")).toBeTruthy();
   });
 });

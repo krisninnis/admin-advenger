@@ -456,6 +456,24 @@ const buildPaymentReminderBestNextMove = (
   };
 };
 
+const buildBroadbandPriceRiseBestNextMove = (
+  opportunity?: OpportunityCard,
+): ResultBestNextMoveView | undefined => {
+  const label = opportunity?.recommendedPathSteps?.[0];
+  const description = opportunity?.nextBestAction;
+
+  if (!label || !description) {
+    return undefined;
+  }
+
+  return {
+    label,
+    description,
+    whyThisHelps: safeText(opportunity.opportunityNote, description),
+    source: "best_next_move",
+  };
+};
+
 const buildCareerBestNextMove = (
   careerSupportPack?: CareerSupportPack,
 ): ResultBestNextMoveView => {
@@ -743,7 +761,10 @@ export const buildResultViewModel = ({
     ? buildCareerBestNextMove(careerSupportPack)
     : isPaymentReminderOpportunity(opportunity, adminCase)
       ? buildPaymentReminderBestNextMove(opportunity)
-      : buildBestNextMove(strategicNextStepPlan);
+      : opportunity?.opportunityType === "bill_or_price_increase"
+        ? (buildBroadbandPriceRiseBestNextMove(opportunity) ??
+          buildBestNextMove(strategicNextStepPlan))
+        : buildBestNextMove(strategicNextStepPlan);
   const title = safeText(
     opportunity?.title ??
       benefitsActionPack?.title ??

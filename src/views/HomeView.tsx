@@ -2235,24 +2235,34 @@ export function HomeView({
             </div>
           )}
 
-          <div className="mt-4">
+          {/* Optional question - a calm, visually distinct section so pilot users
+              notice it. It stays one input with the same userQuestion state and the
+              same submitAcceptedText handoff; only the presentation and wording change. */}
+          <div className="mt-4 rounded-lg border border-cyan-300/20 bg-cyan-300/[0.06] p-4">
+            <span
+              id="user-question-eyebrow"
+              className="inline-flex items-center rounded-full border border-cyan-300/30 bg-cyan-300/10 px-3 py-1 text-xs font-bold uppercase tracking-wide text-cyan-100"
+            >
+              Optional question
+            </span>
             <label
               htmlFor="user-question"
-              className="block text-sm font-semibold text-slate-300"
+              className="mt-3 block text-sm font-semibold text-slate-200"
             >
-              What would you like help with?
+              What would you like to know about this?
             </label>
-            <p id="user-question-hint" className="mt-1 text-xs leading-5 text-slate-500">
-              Optional. Ask about a deadline, what something means, or whether you need to act.
+            <p id="user-question-hint" className="mt-1 text-xs leading-5 text-slate-400">
+              This question is optional and stays separate from your document. Ask what it
+              means, whether anything is urgent, if there is a deadline, or what to do next.
             </p>
             <input
               id="user-question"
               type="text"
               value={userQuestion}
               onChange={(event) => setUserQuestion(event.target.value)}
-              placeholder="e.g. Is this correct? Do I need to reply?"
+              placeholder="e.g. What does this mean? Is there a deadline? What should I do next?"
               autoComplete="off"
-              aria-describedby="user-question-hint"
+              aria-describedby="user-question-eyebrow user-question-hint"
               className="mt-2 w-full rounded-lg border border-white/10 bg-slate-950 px-4 py-2 text-sm leading-6 text-white outline-none transition placeholder:text-slate-600 focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20"
             />
           </div>

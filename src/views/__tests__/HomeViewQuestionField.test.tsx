@@ -87,39 +87,63 @@ const renderHomeView = () => {
   };
 };
 
-describe("HomeView universal question field", () => {
-  it("renders the question input found by its visible label", () => {
+const NEW_QUESTION_LABEL = "What would you like to know about this?";
+
+// The field's accessible description can be composed from more than one element
+// (the "Optional question" eyebrow and the helper text) via a space-separated
+// aria-describedby, so resolve every referenced id, not just the first.
+const resolveDescribedText = (input: HTMLElement) =>
+  (input.getAttribute("aria-describedby") ?? "")
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((id) => document.getElementById(id)?.textContent ?? "")
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+describe("HomeView optional question field", () => {
+  it("renders exactly one question input found by its visible label", () => {
     renderHomeView();
 
-    const input = screen.getByLabelText("What would you like help with?");
-    expect(input).toBeTruthy();
-    expect(input.id).toBe("user-question");
-  });
-
-  it("associates aria-describedby with the visible optional-help text", () => {
-    renderHomeView();
-
-    const input = screen.getByLabelText("What would you like help with?");
-    const describedBy = input.getAttribute("aria-describedby");
-    expect(describedBy).toBeTruthy();
-
-    const hint = document.getElementById(describedBy!);
-    expect(hint).toBeTruthy();
-    expect(hint!.textContent).toContain("Optional");
-  });
-
-  it("renders only one question input in the DOM", () => {
-    renderHomeView();
-
-    const inputs = screen.getAllByLabelText("What would you like help with?");
+    const inputs = screen.getAllByLabelText(NEW_QUESTION_LABEL);
     expect(inputs).toHaveLength(1);
+    expect(inputs[0]!.id).toBe("user-question");
+    expect((inputs[0] as HTMLInputElement).type).toBe("text");
+  });
+
+  it("presents a clearly optional section with an 'Optional question' eyebrow", () => {
+    renderHomeView();
+
+    expect(screen.getByText("Optional question")).toBeTruthy();
+  });
+
+  it("describes the field as optional, separate from the document, with useful examples", () => {
+    renderHomeView();
+
+    const input = screen.getByLabelText(NEW_QUESTION_LABEL);
+    const description = resolveDescribedText(input).toLowerCase();
+
+    // optional and explicitly separate from the document text
+    expect(description).toContain("optional");
+    expect(description).toContain("separate");
+    // examples spanning meaning, urgency, deadline, and next action
+    expect(description).toContain("mean");
+    expect(description).toContain("urgent");
+    expect(description).toContain("deadline");
+    expect(description).toContain("next");
+  });
+
+  it("keeps only one question input in the DOM", () => {
+    renderHomeView();
+
+    expect(screen.getAllByLabelText(NEW_QUESTION_LABEL)).toHaveLength(1);
   });
 
   it("preserves the question value through Paste, Photo, and File and back", async () => {
     const user = userEvent.setup();
     renderHomeView();
 
-    const input = screen.getByLabelText("What would you like help with?") as HTMLInputElement;
+    const input = screen.getByLabelText(NEW_QUESTION_LABEL) as HTMLInputElement;
 
     await user.type(input, "Is this correct?");
     expect(input.value).toBe("Is this correct?");
@@ -128,7 +152,7 @@ describe("HomeView universal question field", () => {
     await user.click(photoButton);
 
     expect(input.value).toBe("Is this correct?");
-    expect(screen.getAllByLabelText("What would you like help with?")).toHaveLength(1);
+    expect(screen.getAllByLabelText(NEW_QUESTION_LABEL)).toHaveLength(1);
 
     const cancelButton = screen.getByRole("button", { name: /Close photo capture/i });
     await user.click(cancelButton);
@@ -139,12 +163,12 @@ describe("HomeView universal question field", () => {
     await user.click(fileButton);
 
     expect(input.value).toBe("Is this correct?");
-    expect(screen.getAllByLabelText("What would you like help with?")).toHaveLength(1);
+    expect(screen.getAllByLabelText(NEW_QUESTION_LABEL)).toHaveLength(1);
 
     const pasteButton = screen.getByRole("button", { name: /Paste text/i });
     await user.click(pasteButton);
 
     expect(input.value).toBe("Is this correct?");
-    expect(screen.getAllByLabelText("What would you like help with?")).toHaveLength(1);
+    expect(screen.getAllByLabelText(NEW_QUESTION_LABEL)).toHaveLength(1);
   });
 });

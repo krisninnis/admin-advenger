@@ -95,6 +95,19 @@ export type ResultBestNextMoveView = {
   source: "best_next_move";
 };
 
+export type ResultUrgencyLevel = "high" | "medium" | "low" | "unconfirmed";
+
+// Presentation-only urgency view. `level` is a plain re-presentation of the
+// existing AdminCase urgency already supplied to buildResultViewModel. It is
+// never derived from, raised, or lowered by the presence or absence of a date;
+// a date only supplements the human-readable `detail`.
+export type ResultUrgencyView = {
+  level: ResultUrgencyLevel;
+  headline: string;
+  detail: string;
+  source: ResultViewSource;
+};
+
 export type ResultViewModel = {
   resultKind: "standard" | "career_support";
   title: string;
@@ -104,6 +117,7 @@ export type ResultViewModel = {
   summaryView: ResultSummaryView;
   primaryAction?: ResultPrimaryActionView;
   bestNextMove?: ResultBestNextMoveView;
+  urgency: ResultUrgencyView;
   keyDates: ResultDateView[];
   moneyMentioned: ResultMoneyView[];
   evidenceFound: ResultEvidenceView[];
@@ -154,6 +168,16 @@ export const RESULT_DATE_CAUTION =
 
 export const RESULT_MONEY_CAUTION =
   "This is money mentioned in the document. AdminAvenger has not counted it as saved, recovered, or owed.";
+
+// Approved final urgency wording (R2). "not urgent" is never used, and no line
+// claims that nothing is time-sensitive. Every level includes a check
+// instruction.
+export const RESULT_URGENCY_COPY: Record<ResultUrgencyLevel, string> = {
+  high: "High priority to review. Check the original document's dates and requested action promptly.",
+  medium: "Review soon. AdminAvenger cannot confirm the timing, so check the dates and requested action.",
+  low: "Lower priority to review. Still check the original for dates and anything you are being asked to do.",
+  unconfirmed: "Urgency not confirmed. Check the original for dates and requested action.",
+};
 
 export const RESULT_FORBIDDEN_PHRASES = [
   ...FORBIDDEN_OUTCOME_CLAIMS,
@@ -432,6 +456,24 @@ const buildPaymentReminderBestNextMove = (
   };
 };
 
+const buildBroadbandPriceRiseBestNextMove = (
+  opportunity?: OpportunityCard,
+): ResultBestNextMoveView | undefined => {
+  const label = opportunity?.recommendedPathSteps?.[0];
+  const description = opportunity?.nextBestAction;
+
+  if (!label || !description) {
+    return undefined;
+  }
+
+  return {
+    label,
+    description,
+    whyThisHelps: safeText(opportunity.opportunityNote, description),
+    source: "best_next_move",
+  };
+};
+
 const buildCareerBestNextMove = (
   careerSupportPack?: CareerSupportPack,
 ): ResultBestNextMoveView => {
@@ -645,6 +687,30 @@ const buildCareerRequirementChecklistBlocks = (
     })
     .filter(Boolean);
 
+// Presentation-only urgency, derived solely from the existing AdminCase urgency.
+// A first actionable date may supplement the explanation but never sets the level.
+const buildUrgencyView = (
+  adminCase: AdminCase | undefined,
+  keyDates: ResultDateView[],
+): ResultUrgencyView => {
+  const caseUrgency = adminCase?.urgency;
+  const level: ResultUrgencyLevel =
+    caseUrgency === "high" || caseUrgency === "medium" || caseUrgency === "low"
+      ? caseUrgency
+      : "unconfirmed";
+  const firstDate = keyDates[0];
+  const detail = firstDate
+    ? `There is a date to check: ${firstDate.label}: ${firstDate.value}.`
+    : "";
+
+  return {
+    level,
+    headline: RESULT_URGENCY_COPY[level],
+    detail,
+    source: "main_result",
+  };
+};
+
 export const buildResultViewModel = ({
   decisionResult,
   benefitsActionPack,
@@ -695,7 +761,10 @@ export const buildResultViewModel = ({
     ? buildCareerBestNextMove(careerSupportPack)
     : isPaymentReminderOpportunity(opportunity, adminCase)
       ? buildPaymentReminderBestNextMove(opportunity)
-      : buildBestNextMove(strategicNextStepPlan);
+      : opportunity?.opportunityType === "bill_or_price_increase"
+        ? (buildBroadbandPriceRiseBestNextMove(opportunity) ??
+          buildBestNextMove(strategicNextStepPlan))
+        : buildBestNextMove(strategicNextStepPlan);
   const title = safeText(
     opportunity?.title ??
       benefitsActionPack?.title ??
@@ -747,6 +816,7 @@ export const buildResultViewModel = ({
     ...(decisionResult?.deadlines.map(fromDeadline) ?? []),
     fromOpportunityDeadline(opportunity),
   ].filter((date): date is ResultDateView => Boolean(date)));
+  const urgency = buildUrgencyView(adminCase, keyDates);
   const moneyMentioned = dedupeMoney([
     ...(benefitsActionPack?.moneyMentioned.map(fromBenefitsMoneyLine) ?? []),
     ...moneyImpactsFor(opportunity).map(fromOpportunityMoney),
@@ -1328,6 +1398,7 @@ export const buildResultViewModel = ({
     summaryView,
     primaryAction,
     bestNextMove,
+    urgency,
     keyDates,
     moneyMentioned,
     evidenceFound,
@@ -1358,6 +1429,8 @@ export const flattenResultViewModelText = (model: ResultViewModel) =>
     model.bestNextMove?.label ?? "",
     model.bestNextMove?.description ?? "",
     model.bestNextMove?.whyThisHelps ?? "",
+    model.urgency.headline,
+    model.urgency.detail,
     ...model.keyDates.map((date) => `${date.label} ${date.value} ${date.caution} ${date.sourceQuote ?? ""}`),
     ...model.moneyMentioned.map((line) => `${line.label} ${line.amountText} ${line.caution} ${line.sourceQuote ?? ""}`),
     ...model.evidenceFound.map((item) => `${item.label} ${item.value} ${item.sourceQuote ?? ""}`),

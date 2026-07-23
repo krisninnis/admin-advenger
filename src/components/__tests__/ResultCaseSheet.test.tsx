@@ -59,9 +59,11 @@ Assessment period: 1 June 2026 to 30 June 2026
 Payment date: 7 July 2026
 Your payment this month: GBP 843.45`);
 
-    expect(html).toContain("What AdminAvenger found");
-    expect(html).toContain("Best next move");
-    expect(html).toContain("What to check first");
+    expect(html).toContain("Your result at a glance");
+    expect(html).toContain("Is anything urgent?");
+    expect(html).toContain("What should I do next?");
+    expect(html).toContain("What should I have ready?");
+    expect(html).toContain("See dates, money, evidence and questions");
     expect(html).toContain("Dates to check");
     expect(html).toContain("Money mentioned");
     expect(html).toContain("Evidence / documents to bring");
@@ -142,8 +144,10 @@ Payment date: 7 July 2026
 Your payment this month: GBP 843.45`);
 
     for (const title of [
-      "What AdminAvenger found",
-      "Best next move",
+      "Your result at a glance",
+      "Is anything urgent?",
+      "What should I do next?",
+      "What should I have ready?",
       "What AdminAvenger cannot know",
       "Adviser export action",
     ]) {
@@ -387,7 +391,7 @@ Your tax code for the tax year 2026 to 2027 is C1254L.`;
     expect(resultViewModel.directAnswer).toContain("not a tax bill");
     expect(html).toContain("HMRC tax code notice");
     expect(html).toContain("not a tax bill");
-    expect(html).toContain("What AdminAvenger found");
+    expect(html).toContain("Your result at a glance");
   });
 
   it("does not render directAnswer block when directAnswer is absent", () => {
@@ -396,7 +400,7 @@ Payment date: 7 July 2026
 Your payment this month: GBP 843.45`);
 
     expect(decisionResult.directAnswer).toBeUndefined();
-    expect(html).toContain("What AdminAvenger found");
+    expect(html).toContain("Your result at a glance");
     expect(html).toContain("What AdminAvenger cannot know");
   });
 
@@ -444,14 +448,14 @@ Your tax code for the tax year 2026 to 2027 is C1254L.`;
     const titlePos = html.indexOf(resultViewModel.title);
     const directAnswerPos = html.indexOf(resultViewModel.directAnswer!);
     const summaryPos = html.indexOf(resultViewModel.summary);
-    const bestNextMovePos = html.indexOf("Best next move");
-    const checkFirstPos = html.indexOf("What to check first");
+    const urgentPos = html.indexOf("Is anything urgent?");
+    const nextPos = html.indexOf("What should I do next?");
 
     expect(titlePos).toBeGreaterThan(0);
     expect(directAnswerPos).toBeGreaterThan(titlePos);
     expect(summaryPos).toBeGreaterThan(directAnswerPos);
-    expect(bestNextMovePos).toBeGreaterThan(summaryPos);
-    expect(checkFirstPos).toBeGreaterThan(summaryPos);
+    expect(urgentPos).toBeGreaterThan(summaryPos);
+    expect(nextPos).toBeGreaterThan(urgentPos);
   });
 
   it("result without directAnswer retains title then summary then supporting sections", () => {
@@ -463,13 +467,13 @@ Your payment this month: GBP 843.45`);
 
     const titlePos = html.indexOf(resultViewModel.title);
     const summaryPos = html.indexOf(resultViewModel.summary);
-    const bestNextMovePos = html.indexOf("Best next move");
-    const checkFirstPos = html.indexOf("What to check first");
+    const urgentPos = html.indexOf("Is anything urgent?");
+    const nextPos = html.indexOf("What should I do next?");
 
     expect(titlePos).toBeGreaterThan(0);
     expect(summaryPos).toBeGreaterThan(titlePos);
-    expect(bestNextMovePos).toBeGreaterThan(summaryPos);
-    expect(checkFirstPos).toBeGreaterThan(summaryPos);
+    expect(urgentPos).toBeGreaterThan(summaryPos);
+    expect(nextPos).toBeGreaterThan(urgentPos);
   });
 
   it("never renders forbidden case-progress wording", () => {

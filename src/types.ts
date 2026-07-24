@@ -1,5 +1,6 @@
 import type { DecisionResult } from "./lib/decisionEngine/types";
 import type { CareerSupportPack } from "./lib/careerSupportPack";
+import type { DocumentStatus } from "./lib/generalAdminExtraction";
 
 export type SourceType =
   | "email"
@@ -82,6 +83,10 @@ export type AdminFinding = {
   estimatedValue?: string;
   urgency: FindingUrgency;
   deadline?: string;
+  // Source-grounded document status for the general-admin reads (receipts,
+  // deliveries, appointments, Direct Debit bills, security alerts). Optional so
+  // every existing finding remains valid without change.
+  documentStatus?: DocumentStatus;
   confidence: FindingConfidence;
   status: FindingStatus;
   createdAt: string;

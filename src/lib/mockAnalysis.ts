@@ -30,6 +30,16 @@ import {
   type PublicScopeBoundary,
 } from "./publicScopePolicy";
 import { assessEmailSafety, createEmailSafetyFinding, getEmailSafetyRiskBand } from "./suspiciousEmail";
+import {
+  extractGeneralAdmin,
+  findNegationSpans,
+  isAppointmentReminderText,
+  isBillReadyDirectDebitText,
+  isDeliveryCompletedText,
+  isIndexNegated,
+  isSecurityAlertText,
+  selectRefundTotal,
+} from "./generalAdminExtraction";
 
 export type AdminAnalysisAccessMode = "public" | "controlled";
 
@@ -175,8 +185,6 @@ const containsAny = (text: string, keywords: string[]) =>
 
 const findMatches = (text: string, keywords: string[]) =>
   keywords.filter((keyword) => text.includes(keyword));
-
-const currencyAmountPattern = /(?:£|Â£|GBP\s*|\?\s*)\d+(?:,\d{3})*(?:\.\d{1,2})?/i;
 
 const approvedRefundSignals = [
   "refund approved",
@@ -451,41 +459,78 @@ const createDeliveryIssueFinding = (item: AdminItem, text: string): AdminFinding
   createdAt: new Date().toISOString(),
 });
 
-const createApprovedRefundFinding = (item: AdminItem): AdminFinding => ({
-  id: `finding-${crypto.randomUUID()}`,
-  itemId: item.id,
-  category: "refund",
-  title: "Refund approved",
-  summary:
-    "A refund has been approved and should be returned to the original payment method.",
-  whyItMatters:
-    "Approved refunds can still need checking because the money is not recovered until it reaches your account.",
-  suggestedAction:
-    "Check your original payment method. Chase the provider if the refund has not arrived after 10 working days.",
-  estimatedValue: `${item.title} ${item.rawText}`.match(currencyAmountPattern)?.[0] ?? "Pending recovery",
-  urgency: "medium",
-  confidence: "high",
-  status: "new",
-  createdAt: new Date().toISOString(),
-});
+const createApprovedRefundFinding = (item: AdminItem): AdminFinding => {
+  // Role-aware amount: the refund total must win over an order subtotal, postage,
+  // or a line item. selectRefundTotal returns undefined rather than guessing when
+  // no clearly-refundable amount is present.
+  const refundTotal = selectRefundTotal(`${item.title}\n${item.rawText}`);
 
-const createSubscriptionFinding = (item: AdminItem): AdminFinding => ({
-  id: `finding-${crypto.randomUUID()}`,
-  itemId: item.id,
-  category: "subscription",
-  title: "Subscription renewal to review",
-  summary:
-    "This looks like an auto-renewing or recurring subscription payment that may keep charging until cancelled.",
-  whyItMatters:
-    "Recurring subscriptions can become ongoing costs if you no longer use them.",
-  suggestedAction:
-    "Check whether you still use this subscription and review how to cancel before the next charge if not.",
-  estimatedValue: "Potential recurring cost",
-  urgency: "medium",
-  confidence: "high",
-  status: "new",
-  createdAt: new Date().toISOString(),
-});
+  return {
+    id: `finding-${crypto.randomUUID()}`,
+    itemId: item.id,
+    category: "refund",
+    title: "Refund approved",
+    summary:
+      "A refund has been approved and should be returned to the original payment method.",
+    whyItMatters:
+      "Approved refunds can still need checking because the money is not recovered until it reaches your account.",
+    suggestedAction:
+      "Check your original payment method. Chase the provider if the refund has not arrived after 10 working days.",
+    estimatedValue: refundTotal ? refundTotal.sourceQuote : "Pending recovery",
+    urgency: "medium",
+    documentStatus: "informational",
+    confidence: "high",
+    status: "new",
+    createdAt: new Date().toISOString(),
+  };
+};
+
+const createSubscriptionFinding = (item: AdminItem): AdminFinding => {
+  // Preserve the renewal amount, billing frequency, renewal/next-charge date, and
+  // cancellation wording where the source contains them, instead of discarding
+  // them behind fixed generic copy.
+  const extraction = extractGeneralAdmin(`${item.title}\n${item.rawText}`);
+  const recurring =
+    extraction.amounts.find((amount) => amount.role === "recurring_charge") ??
+    extraction.amounts[0];
+  const frequencyWord =
+    recurring?.frequency === "annual"
+      ? "per year"
+      : recurring?.frequency === "weekly"
+        ? "per week"
+        : recurring?.frequency === "monthly"
+          ? "per month"
+          : undefined;
+  const amountText = recurring
+    ? `${recurring.sourceQuote}${frequencyWord ? ` ${frequencyWord}` : ""}`
+    : undefined;
+  const renewalDate = extraction.dates.find(
+    (date) => date.role === "event_date" || date.role === "stated_deadline",
+  );
+  const cancellationWording =
+    /(?:learn how to cancel|how to cancel|cancel anytime|cancel before[^.]*|until cancelled|until canceled|manage your subscription)/i.exec(
+      `${item.title} ${item.rawText}`,
+    )?.[0];
+
+  return {
+    id: `finding-${crypto.randomUUID()}`,
+    itemId: item.id,
+    category: "subscription",
+    title: "Subscription renewal to review",
+    summary:
+      `This looks like an auto-renewing or recurring subscription${amountText ? ` of ${amountText}` : ""} that may keep charging until cancelled.${renewalDate ? ` The next charge or renewal date appears to be ${renewalDate.value}.` : ""}`,
+    whyItMatters:
+      "Recurring subscriptions can become ongoing costs if you no longer use them.",
+    suggestedAction:
+      `Check whether you still use this subscription${renewalDate ? ` and decide before ${renewalDate.value}` : ""}.${cancellationWording ? ` The message mentions how to cancel ("${cancellationWording.trim()}").` : ""} Cancel before the next charge if you no longer want it.`,
+    estimatedValue: "Potential recurring cost",
+    urgency: "medium",
+    documentStatus: "upcoming_reminder",
+    confidence: "high",
+    status: "new",
+    createdAt: new Date().toISOString(),
+  };
+};
 
 const careerDocumentTitles: Record<CareerSupportPack["documentType"], string> = {
   cv: "CV preparation notes",
@@ -711,6 +756,112 @@ const createPublicScopeBoundaryFinding = (
   createdAt: new Date().toISOString(),
 });
 
+const createSecurityAlertFinding = (item: AdminItem): AdminFinding => ({
+  id: `finding-${crypto.randomUUID()}`,
+  itemId: item.id,
+  category: "unknown",
+  title: "Security alert to check",
+  summary:
+    "This looks like a security alert about a sign-in or account activity. There is no money or payment involved.",
+  whyItMatters:
+    "Security alerts are worth checking, but they can also be faked. It is safest to check your account directly rather than through links in the message.",
+  suggestedAction:
+    "If it was not you, use the provider's official app or website (not links in this message) to check activity and change your password. If the message says do not reply, there is no need to reply.",
+  urgency: "medium",
+  documentStatus: "informational",
+  confidence: "medium",
+  status: "new",
+  createdAt: new Date().toISOString(),
+});
+
+const createDeliveryCompletedFinding = (item: AdminItem): AdminFinding => ({
+  id: `finding-${crypto.randomUUID()}`,
+  itemId: item.id,
+  category: "unknown",
+  title: "Delivery completed - no action needed",
+  summary:
+    "This looks like a delivery that has already been completed. No action is needed unless the item was not actually received.",
+  whyItMatters:
+    "A completed delivery is a record to keep. It is only worth acting on if the item is missing despite being marked as delivered.",
+  suggestedAction:
+    "Keep this as a record. If it says the parcel was left in a safe place and you cannot find it, contact the sender or courier.",
+  urgency: "low",
+  documentStatus: "completed_no_action",
+  confidence: "medium",
+  status: "new",
+  createdAt: new Date().toISOString(),
+});
+
+const createAppointmentReminderFinding = (item: AdminItem): AdminFinding => {
+  const extraction = extractGeneralAdmin(`${item.title}\n${item.rawText}`);
+  const eventDate =
+    extraction.dates.find((date) => date.role === "event_date") ?? extraction.dates[0];
+  const dateText = eventDate ? ` on ${eventDate.value}` : "";
+
+  return {
+    id: `finding-${crypto.randomUUID()}`,
+    itemId: item.id,
+    category: "unknown",
+    title: "Appointment reminder",
+    summary:
+      `This looks like a reminder of an upcoming appointment${dateText}. It is a date to note, not a deadline to act on.`,
+    whyItMatters:
+      "An appointment reminder is useful to add to your calendar. It is not a bill, a deadline, or a booking that needs rearranging.",
+    suggestedAction:
+      "Add the appointment to your calendar. Only follow the practice's cancellation notice if you cannot attend.",
+    urgency: "low",
+    documentStatus: "upcoming_reminder",
+    confidence: "medium",
+    status: "new",
+    createdAt: new Date().toISOString(),
+  };
+};
+
+const createBillReadyDirectDebitFinding = (item: AdminItem): AdminFinding => {
+  const extraction = extractGeneralAdmin(`${item.title}\n${item.rawText}`);
+  const collected =
+    extraction.amounts.find((amount) => amount.role === "amount_collected_automatically") ??
+    extraction.amounts[0];
+  const collectionDate = extraction.dates.find((date) => date.role === "event_date");
+  const amountText = collected ? ` of ${collected.sourceQuote}` : "";
+  const dateText = collectionDate ? ` on ${collectionDate.value}` : "";
+
+  return {
+    id: `finding-${crypto.randomUUID()}`,
+    itemId: item.id,
+    category: "unknown",
+    title: "Bill ready - collected by Direct Debit",
+    summary:
+      `This looks like a bill notification${amountText}. It appears it will be collected automatically by Direct Debit${dateText}, so no manual payment is needed. It is worth checking the amount and date look right.`,
+    whyItMatters:
+      "A Direct Debit bill is usually collected automatically. You do not need to make a manual payment unless you want to query the amount or cancel the Direct Debit.",
+    suggestedAction:
+      "Check the amount and collection date look right. Only act if you want to query the amount or cancel the Direct Debit.",
+    estimatedValue: collected
+      ? `${collected.sourceQuote} to be collected automatically - not a manual payment`
+      : "Amount to be collected automatically - not a manual payment",
+    urgency: "low",
+    documentStatus: "automatic_no_action",
+    confidence: "medium",
+    status: "new",
+    createdAt: new Date().toISOString(),
+  };
+};
+
+// A reply is only genuinely requested when a reply/response mention sits outside
+// any negation span (so "do not reply" / "no-reply" never counts as one).
+const hasGenuineReplyRequest = (rawText: string): boolean => {
+  const spans = findNegationSpans(rawText);
+
+  for (const match of rawText.matchAll(/\b(?:reply|respond|response)\b/gi)) {
+    if (!isIndexNegated(match.index ?? 0, spans)) {
+      return true;
+    }
+  }
+
+  return false;
+};
+
 export const analyseAdminItem = (
   item: AdminItem,
   options: AdminAnalysisOptions = {},
@@ -725,11 +876,19 @@ export const analyseAdminItem = (
     }
   }
 
+  // Email safety is assessed BEFORE career support so a high-risk phishing or
+  // account-security message that happens to trip a career keyword cannot be
+  // routed to career support and bypass the safety override.
+  const emailSafetyAssessment = assessEmailSafety(`${item.title}\n${item.rawText}`);
+  const highRiskEmailFinding = hasStrongEmailSafetyOverride(emailSafetyAssessment)
+    ? createEmailSafetyFinding(item, emailSafetyAssessment)
+    : undefined;
+
   const careerSupportPack = buildCareerSupportPack({
     text: `${item.title}\n${item.rawText}`,
   });
   const careerSupportFinding =
-    careerSupportPack.documentType !== "career_unknown"
+    !highRiskEmailFinding && careerSupportPack.documentType !== "career_unknown"
       ? createCareerSupportFinding(item, careerSupportPack)
       : undefined;
 
@@ -737,10 +896,26 @@ export const analyseAdminItem = (
     return [careerSupportFinding];
   }
 
-  const emailSafetyAssessment = assessEmailSafety(`${item.title}\n${item.rawText}`);
-  const highRiskEmailFinding = hasStrongEmailSafetyOverride(emailSafetyAssessment)
-    ? createEmailSafetyFinding(item, emailSafetyAssessment)
+  // Source-grounded, status-aware general-admin reads. These sit above the
+  // generic keyword rules (and, for the automatic/completed cases, above the
+  // manual specialists) so a completed, automatic, or informational document is
+  // never re-framed as a manual action.
+  const generalAdminText = `${item.title}\n${item.rawText}`;
+  const securityAlertFinding =
+    !highRiskEmailFinding && isSecurityAlertText(item.rawText)
+      ? createSecurityAlertFinding(item)
+      : undefined;
+  const deliveryCompletedFinding = isDeliveryCompletedText(text)
+    ? createDeliveryCompletedFinding(item)
     : undefined;
+  const billReadyDirectDebitFinding = isBillReadyDirectDebitText(generalAdminText)
+    ? createBillReadyDirectDebitFinding(item)
+    : undefined;
+  const appointmentReminderFinding =
+    isAppointmentReminderText(item.rawText) && !isAppointmentTask(text)
+      ? createAppointmentReminderFinding(item)
+      : undefined;
+
   const approvedRefundFinding = isApprovedRefund(text) ? createApprovedRefundFinding(item) : undefined;
   const travelRecoveryFinding = isTravelDisruptionRecoveryText(`${item.title}\n${item.rawText}`)
     ? createTravelRecoveryFinding(item)
@@ -761,6 +936,7 @@ export const analyseAdminItem = (
     !approvedRefundFinding &&
     !subscriptionFinding &&
     !noActionFinding &&
+    !billReadyDirectDebitFinding &&
     paymentReminderAssessment.isPaymentReminder
       ? createPaymentReminderFinding(item)
       : undefined;
@@ -768,11 +944,14 @@ export const analyseAdminItem = (
     !paymentReminderFinding && !noActionFinding && !travelRecoveryFinding && !subscriptionFinding && isReceiptRecord(text)
       ? createReceiptFinding(item)
       : undefined;
-  const deliveryIssueFinding = isDeliveryProblem(text)
-    ? createDeliveryIssueFinding(item, text)
-    : undefined;
+  const deliveryIssueFinding =
+    !deliveryCompletedFinding && isDeliveryProblem(text)
+      ? createDeliveryIssueFinding(item, text)
+      : undefined;
   const deliveryUpdateFinding =
-    !deliveryIssueFinding && isDeliveryUpdate(text) ? createDeliveryUpdateFinding(item) : undefined;
+    !deliveryCompletedFinding && !deliveryIssueFinding && isDeliveryUpdate(text)
+      ? createDeliveryUpdateFinding(item)
+      : undefined;
   const appointmentTaskFinding = isAppointmentTask(text)
     ? createAppointmentTaskFinding(item)
     : undefined;
@@ -844,6 +1023,10 @@ export const analyseAdminItem = (
   // style messages that nothing else here already handles better.
   const decisionEngineFinding =
     !highRiskEmailFinding &&
+    !securityAlertFinding &&
+    !deliveryCompletedFinding &&
+    !billReadyDirectDebitFinding &&
+    !appointmentReminderFinding &&
     !approvedRefundFinding &&
     !travelRecoveryFinding &&
     !travelEvidenceCheckFinding &&
@@ -861,6 +1044,12 @@ export const analyseAdminItem = (
       ? createDecisionEngineFinding(item, item.rawText)
       : undefined;
 
+  // A reply is only genuinely requested when it is not inside a negation span,
+  // so "do not reply" / "no-reply" never keeps the important_reply rule alive.
+  const importantReplyAllowed =
+    containsAny(text, ["urgent", "action required", "final notice", "important"]) ||
+    hasGenuineReplyRequest(item.rawText);
+
   const findings = categoryRules
     .filter((rule) => {
       if (
@@ -871,8 +1060,16 @@ export const analyseAdminItem = (
         travelRecoveryFinding ||
         travelEvidenceCheckFinding ||
         paymentReminderFinding ||
-        appointmentTaskFinding
+        appointmentTaskFinding ||
+        securityAlertFinding ||
+        deliveryCompletedFinding ||
+        billReadyDirectDebitFinding ||
+        appointmentReminderFinding
       ) {
+        return false;
+      }
+
+      if (rule.category === "important_reply" && !importantReplyAllowed) {
         return false;
       }
 
@@ -910,17 +1107,21 @@ export const analyseAdminItem = (
     })
     .map((rule) => createFinding(item, rule, text));
   const priorityFindings = [
+    highRiskEmailFinding,
+    securityAlertFinding,
     approvedRefundFinding,
     travelRecoveryFinding,
     travelEvidenceCheckFinding,
     subscriptionFinding,
     energyPriceChangeFinding,
-    highRiskEmailFinding,
+    billReadyDirectDebitFinding,
     noActionFinding,
     paymentReminderFinding,
     receiptFinding,
+    deliveryCompletedFinding,
     deliveryUpdateFinding,
     deliveryIssueFinding,
+    appointmentReminderFinding,
     appointmentTaskFinding,
     broadbandPriceRiseFinding,
     trainDelayFinding,

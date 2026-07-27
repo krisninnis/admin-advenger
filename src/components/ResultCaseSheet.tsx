@@ -409,7 +409,7 @@ export function ResultCaseSheet({
   );
 
   return (
-    <article className="rounded-xl border border-white/10 bg-slate-900/90 p-4 shadow-2xl shadow-slate-950/30 sm:p-6">
+    <article data-testid="result-panel" className="rounded-xl border border-white/10 bg-slate-900/90 p-4 shadow-2xl shadow-slate-950/30 sm:p-6">
       <header className="rounded-lg border border-emerald-300/20 bg-emerald-300/[0.07] p-5">
         <p className="text-sm font-bold uppercase tracking-widest text-emerald-300">
           What AdminAvenger found

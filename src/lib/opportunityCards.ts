@@ -8,6 +8,7 @@ import type {
   OpportunityType,
 } from "../types";
 import { buildCareerSupportPack } from "./careerSupportPack";
+import { selectRefundTotal } from "./generalAdminExtraction";
 import {
   annualiseMonthlyAmount,
   extractEnergyAnnualCosts,
@@ -195,7 +196,10 @@ const getEvidenceValue = (adminCase: AdminCase, labelPattern: RegExp) =>
 
 const getRefundEvidence = (adminCase: AdminCase, item?: AdminItem) => {
   const text = `${item?.title ?? ""}\n${item?.rawText ?? ""}`;
-  const amount = findFirstAmount(text);
+  // Role-aware: the refund total must win over a subtotal, postage, or a line
+  // item. Falls back to the first amount only when no refund total is identified
+  // (e.g. a single-amount refund), preserving existing single-amount behaviour.
+  const amount = selectRefundTotal(text)?.amount ?? findFirstAmount(text);
   const formattedAmount = amount === undefined ? undefined : formatCurrency(amount);
   const refundWindow =
     getEvidenceValue(adminCase, /refund window|expected refund window/i) ??
@@ -267,7 +271,10 @@ export const deriveOpportunityCard = (
     const assessment = adminCase.broadbandPriceRiseAssessment;
     const monthlyAmount = toAmount(assessment.monthlyIncrease);
     const annualAmount = toAmount(assessment.annualIncrease);
-    const deadline = assessment.responseDeadline ?? assessment.effectiveDate ?? adminCase.chaseDate;
+    // Source-derived dates only. A synthesised chase date must never populate an
+    // opportunity deadline (which surfaces as a "Key date to check"); the chase
+    // date stays on the case for the user-controlled chase workflow.
+    const deadline = assessment.responseDeadline ?? assessment.effectiveDate;
 
     return {
       id: `opportunity-${adminCase.id}`,
@@ -429,7 +436,7 @@ export const deriveOpportunityCard = (
       plainEnglishSummary:
         "This looks like a payment reminder. Check the provider, account reference, amount, and whether it has already been paid before deciding what to do.",
       moneyAtStake: moneyImpact("Amount being requested", amount, "one_off", "unknown"),
-      deadline: paymentReminder.responseDeadline ?? paymentReminder.paymentDueDate ?? adminCase.chaseDate,
+      deadline: paymentReminder.responseDeadline ?? paymentReminder.paymentDueDate,
       deadlineLabel: paymentReminder.responseDeadline
         ? "Response/contact deadline"
         : "Payment due date",
@@ -563,8 +570,11 @@ export const deriveOpportunityCard = (
       opportunityType,
       title: "Delivery issue to chase",
       plainEnglishSummary: "This looks like a delivery issue that may need a response or missing parcel follow-up.",
-      deadline: adminCase.chaseDate,
-      deadlineLabel: "Suggested chase/action date",
+      // No source-derived date here (a "within 48 hours" window is relative, not
+      // a dated deadline), so the analysis result shows no key date rather than a
+      // synthesised chase date.
+      deadline: undefined,
+      deadlineLabel: undefined,
       evidenceFound: baseEvidence,
       missingInformation: missingEvidence,
       nextBestAction: adminCase.nextAction,
@@ -829,8 +839,10 @@ export const deriveOpportunityCard = (
       moneyImpactRows: [
         moneyImpact("Pending recovery", refund.amount, "one_off", "pending"),
       ],
-      deadline: adminCase.chaseDate,
-      deadlineLabel: "Suggested chase date",
+      // A refund window ("5 to 10 working days") is relative, not a dated
+      // deadline, so no source key date is shown; the chase date stays on the case.
+      deadline: undefined,
+      deadlineLabel: undefined,
       statusLabel: "Pending recovery - not confirmed yet",
       evidenceFound: [
         refund.formattedAmount ? `Refund amount: ${refund.formattedAmount}` : undefined,
@@ -874,7 +886,7 @@ export const deriveOpportunityCard = (
     potentialRecovery: isRefund ? moneyImpact("Pending recovery", recoverableAmount, "one_off", "pending") : undefined,
     potentialSaving: isSubscription ? moneyImpact("Potential saving opportunity", amount, "one_off", "potential") : undefined,
     moneyAtStake: amount !== undefined ? moneyImpact("Money mentioned", amount, "one_off", "potential") : undefined,
-    deadline: finding?.deadline ?? adminCase.chaseDate,
+    deadline: finding?.deadline,
     deadlineLabel: isRefund ? "Chase if not received by" : "Deadline or chase date",
     evidenceFound: baseEvidence,
     missingInformation: missingEvidence,

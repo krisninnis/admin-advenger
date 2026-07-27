@@ -12,6 +12,7 @@ import {
   FORBIDDEN_OUTCOME_CLAIMS,
   normaliseSafetyText,
 } from "./safetyWording";
+import { isSupportedBySource, normaliseForSupport } from "./sourceSupport";
 import type { StrategicNextStepPlan } from "./strategicNextStep";
 import type { WorkplaceSupportPack } from "./workplaceSupportPack";
 
@@ -142,6 +143,11 @@ export type ResultViewModelSafetyReport = {
   uncertaintyPresent: boolean;
   datesUserCheckRequired: boolean;
   moneyDisplayOnly: boolean;
+  // When a source text is supplied, every date/amount presented as a source fact
+  // must be supported by it (via the shared normalisation helper). Without a
+  // source text these default to true, so existing callers are unaffected.
+  datesSourceSupported: boolean;
+  moneySourceSupported: boolean;
   noContactSafetyNotePresent: boolean;
   safe: boolean;
 };
@@ -1379,7 +1385,10 @@ export const flattenResultViewModelText = (model: ResultViewModel) =>
     ...model.detailSections.flatMap((section) => [section.title, ...section.items]),
   ].join("\n");
 
-export const validateResultViewModelSafety = (model: ResultViewModel): ResultViewModelSafetyReport => {
+export const validateResultViewModelSafety = (
+  model: ResultViewModel,
+  options: { sourceText?: string } = {},
+): ResultViewModelSafetyReport => {
   const text = flattenResultViewModelText(model);
   const forbiddenPhrases = RESULT_FORBIDDEN_PHRASES.filter((phrase) =>
     hasAnyPhrase(text, [phrase]),
@@ -1393,6 +1402,38 @@ export const validateResultViewModelSafety = (model: ResultViewModel): ResultVie
   const moneyDisplayOnly = model.moneyMentioned.every(
     (line) => line.countedInMoneyTracker === false && normaliseResultText(line.caution).includes("not counted"),
   );
+
+  // Source-support guardrail. Only active when a source text is supplied. A date
+  // or amount presented as a source fact must be supported by the submitted text,
+  // compared through the shared normalisation helper (whitespace / line-ending /
+  // OCR / currency-encoding tolerant). A "check the original document" placeholder
+  // is not a source claim and is not checked.
+  const sourceText = options.sourceText;
+  const placeholder = /check the (?:original document|case file)/i;
+  const amountDigits = (value: string) =>
+    (value.match(/\d[\d,]*(?:\.\d{1,2})?/)?.[0] ?? "").replace(/,/g, "");
+  const dateSupported = (quote: string | undefined) =>
+    !sourceText || !quote || placeholder.test(quote) ? true : isSupportedBySource(quote, sourceText);
+  const moneySupported = (sourceQuote: string | undefined, amountText: string) => {
+    if (!sourceText) {
+      return true;
+    }
+    if (sourceQuote) {
+      return isSupportedBySource(sourceQuote, sourceText);
+    }
+    if (placeholder.test(amountText)) {
+      return true;
+    }
+    const digits = amountDigits(amountText);
+    return digits ? normaliseForSupport(sourceText).replace(/,/g, "").includes(digits) : true;
+  };
+  const datesSourceSupported = model.keyDates.every((date) =>
+    dateSupported(date.sourceQuote ?? date.value),
+  );
+  const moneySourceSupported = model.moneyMentioned.every((line) =>
+    moneySupported(line.sourceQuote, line.amountText),
+  );
+
   const cannotKnowPresent = model.cannotKnow.length > 0;
   const uncertaintyPresent = model.uncertainty.length > 0;
   const noContactSafetyNotePresent = model.safetyNotes.some((note) =>
@@ -1410,6 +1451,8 @@ export const validateResultViewModelSafety = (model: ResultViewModel): ResultVie
     uncertaintyPresent,
     datesUserCheckRequired,
     moneyDisplayOnly,
+    datesSourceSupported,
+    moneySourceSupported,
     noContactSafetyNotePresent,
     safe:
       !hasForbiddenWording &&
@@ -1418,6 +1461,8 @@ export const validateResultViewModelSafety = (model: ResultViewModel): ResultVie
       uncertaintyPresent &&
       datesUserCheckRequired &&
       moneyDisplayOnly &&
+      datesSourceSupported &&
+      moneySourceSupported &&
       noContactSafetyNotePresent,
   };
 };

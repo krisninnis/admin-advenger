@@ -13,6 +13,11 @@ import type {
   ValidationIssue,
 } from "./types.ts";
 import { EMPTY_HUMAN_REVIEW_WORKFLOW } from "./humanReviewWorkflow.ts";
+import { probateKnowledgeCandidates } from "./probateKnowledgeAuthoring.ts";
+import {
+  probateDraftApprovalProfile,
+  probateDraftExternalApprovalEvidence,
+} from "./probateKnowledgeGovernance.ts";
 import { tellUsOnceSeparateContactAuthoringEntry } from "./walkingSkeletonAuthoring.ts";
 
 export const walkingSkeletonApprovalProfile: ApprovalProfile = {
@@ -59,9 +64,15 @@ export const walkingSkeletonActivationManifest: ActivationManifest = {
 };
 
 export const walkingSkeletonGovernedInputs: GovernedCorpusInputs = {
-  entries: [tellUsOnceSeparateContactAuthoringEntry],
-  profiles: [walkingSkeletonApprovalProfile],
-  approvalEvidence: walkingSkeletonExternalApprovalEvidence,
+  entries: [
+    tellUsOnceSeparateContactAuthoringEntry,
+    ...probateKnowledgeCandidates,
+  ],
+  profiles: [walkingSkeletonApprovalProfile, probateDraftApprovalProfile],
+  approvalEvidence: [
+    ...walkingSkeletonExternalApprovalEvidence,
+    ...probateDraftExternalApprovalEvidence,
+  ],
   humanReviewWorkflow: EMPTY_HUMAN_REVIEW_WORKFLOW,
   activationManifest: walkingSkeletonActivationManifest,
 };

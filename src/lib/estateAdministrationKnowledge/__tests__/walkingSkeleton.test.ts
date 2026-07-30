@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { classifyDecisionDocument } from "../../decisionEngine/classifier.ts";
+import { analyseDecisionProblem } from "../../decisionEngine/decisionEngine.ts";
 import {
   buildRuntimeKnowledgeBundle,
   createExplicitRollbackManifest,
@@ -134,6 +136,133 @@ const codesFor = (
 };
 
 describe("Estate Administration knowledge walking skeleton", () => {
+  describe("real candidate approval readiness", () => {
+    it("keeps the review candidate draft, blocked, hidden, and unapproved", () => {
+      expect(tellUsOnceSeparateContactAuthoringEntry).toMatchObject({
+        exactRevision: "ea-ew-tell-us-once-separate-contact-001@r1",
+        disposition: "draft",
+        evidenceConfidence: "blocked",
+        approvalProfileId:
+          "estate_administration_walking_skeleton_non_production_v1",
+        approvedConsumptionScope:
+          "estate_administration_hidden_walking_skeleton",
+      });
+      expect(walkingSkeletonApprovalProfile.nonProduction).toBe(true);
+      expect(walkingSkeletonExternalApprovalEvidence).toEqual([]);
+      expect(walkingSkeletonActivationManifest.pins).toEqual([]);
+    });
+
+    it("cannot activate the real candidate even if an exact pin is supplied in memory", () => {
+      const blockCodes = codesFor(
+        tellUsOnceSeparateContactAuthoringEntry,
+        [],
+        manifestFor(tellUsOnceSeparateContactAuthoringEntry),
+      );
+
+      expect(blockCodes).toEqual(
+        expect.arrayContaining([
+          "not_approved",
+          "approval_evidence_missing",
+          "evidence_confidence_blocked",
+        ]),
+      );
+    });
+
+    it("fails closed without external approval evidence", () => {
+      const candidate = approvedEntry();
+
+      expect(codesFor(candidate, [], manifestFor(candidate))).toContain(
+        "approval_evidence_missing",
+      );
+    });
+
+    it("fails closed when no production approval profile exists", () => {
+      const result = deriveRuntimeEligibility(
+        tellUsOnceSeparateContactAuthoringEntry,
+        [],
+        [],
+        walkingSkeletonActivationManifest,
+        {
+          asOfDate,
+          jurisdiction: "england_and_wales",
+          consumptionScope: "estate_administration_public",
+          productScope: {
+            availability: "public",
+            featureEnabled: true,
+            productApproved: true,
+            jurisdictionAvailable: true,
+          },
+          factReadiness: "met",
+        },
+      );
+
+      expect(result).toMatchObject({
+        status: "blocked",
+        reasons: expect.arrayContaining([
+          expect.objectContaining({ code: "approval_profile_missing" }),
+        ]),
+      });
+    });
+
+    it("fails closed without an exact activation pin", () => {
+      const candidate = approvedEntry();
+
+      expect(
+        codesFor(
+          candidate,
+          syntheticEvidenceFor(candidate),
+          walkingSkeletonActivationManifest,
+        ),
+      ).toContain("not_activated");
+    });
+
+    it("changes the canonical digest when governed candidate content changes", () => {
+      const changed = recomputeAuthoringContentDigest({
+        ...tellUsOnceSeparateContactAuthoringEntry,
+        allowedWording: [
+          `${tellUsOnceSeparateContactAuthoringEntry.allowedWording[0]} Changed.`,
+        ],
+      });
+
+      expect(tellUsOnceSeparateContactAuthoringEntry.contentDigest).toMatch(
+        /^sha256:[0-9a-f]{64}$/,
+      );
+      expect(changed.contentDigest).not.toBe(
+        tellUsOnceSeparateContactAuthoringEntry.contentDigest,
+      );
+    });
+
+    it("keeps matching input on the general route with no Estate Administration runtime entry", () => {
+      const input =
+        "I used Tell Us Once after a death. Which organisations should I contact separately?";
+      const runtimeAsset = buildWalkingSkeletonRuntimeAsset(asOfDate);
+
+      expect(classifyDecisionDocument(input)).toBe("unknown_admin_dispute");
+      expect(analyseDecisionProblem(input).documentType).toBe(
+        "unknown_admin_dispute",
+      );
+      expect(runtimeAsset.bundle.loaderInvoked).toBe(false);
+      expect(runtimeAsset.bundle.artifact.entries).toEqual([]);
+    });
+
+    it("removes the unsupported open-ended organisation category", () => {
+      const governedText = [
+        tellUsOnceSeparateContactAuthoringEntry.plainEnglishClaim,
+        tellUsOnceSeparateContactAuthoringEntry.preciseInternalClaim,
+        tellUsOnceSeparateContactAuthoringEntry.sourceSnapshot.evidenceText,
+        ...tellUsOnceSeparateContactAuthoringEntry.allowedWording,
+        ...tellUsOnceSeparateContactAuthoringEntry.requiredQualifiers,
+      ].join(" ");
+
+      expect(governedText).not.toContain("other private organisations");
+      expect(
+        tellUsOnceSeparateContactAuthoringEntry.authoringOnly.privateReviewNotes,
+      ).toContain(
+        "The unsupported phrase 'other private organisations' was removed; this revision makes no claim about unlisted organisation categories.",
+      );
+    });
+  });
+
   describe("authoring and immutable revision integrity", () => {
     it("parses the one real authoring entry", () => {
       const parsed = parseAuthoringKnowledgeEntry(

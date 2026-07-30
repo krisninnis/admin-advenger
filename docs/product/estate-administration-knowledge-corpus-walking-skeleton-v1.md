@@ -7,14 +7,15 @@ Administration to the public product, classifier, navigation, routes or UI.
 
 The provisional claim is:
 
-> Tell Us Once does not notify every organisation. Some organisations,
-> including many banks, insurers, utilities and other private organisations,
-> may still need to be contacted separately.
+> GOV.UK says banks, mortgage providers, insurers, utilities, landlords or
+> housing associations, and most personal or workplace pension schemes need to
+> be contacted separately from Tell Us Once.
 
 The repository does not represent this claim as legally or professionally
 reviewed. The real entry is `draft`, its approval evidence list is empty, and
-its activation manifest has no pins. The phrase “other private organisations”
-is explicitly recorded as requiring evidence and scope review.
+its activation manifest has no pins. The unsupported phrase “other private
+organisations” has been removed, but the narrowed claim remains blocked pending
+source recheck and genuine human review.
 
 ## Locations
 
@@ -28,6 +29,7 @@ is explicitly recorded as requiring evidence and scope review.
 | Activation manifest | `walkingSkeletonActivationManifest` in `walkingSkeletonGovernance.ts`; intentionally unpinned |
 | Exact hidden TypeScript rule | `src/lib/estateAdministrationKnowledge/hiddenDecisionRule.ts` |
 | Behavioural proofs | `src/lib/estateAdministrationKnowledge/__tests__/walkingSkeleton.test.ts` |
+| Human review packet | `docs/product/estate-administration-tell-us-once-approval-readiness-v1.md` |
 | Build-only browser-safe asset | `assets/estate-administration-knowledge-runtime.json` in Vite build output |
 
 Approval evidence is supplied separately from the authoring entry. Entry fields

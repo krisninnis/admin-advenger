@@ -91,8 +91,10 @@ Files are processed in the order they were attached:
 
 - Image files are read with the same on-device OCR
   (`readTextFromImage` in `src/lib/photoOcr.ts`, Tesseract.js) already used by
-  "Take or upload a photo" - nothing new was added to the OCR pipeline
-  itself.
+  "Take or upload a photo". The worker, core/WASM and English-language
+  application assets are downloaded lazily from AdminAvenger's own origin;
+  the image and extracted text are not sent to an external OCR service. See
+  `docs/product/ocr-local-assets-privacy-alignment-v1.md`.
 - Text files (`.txt`, `.md`, `.csv`, `.json`) are read with the browser's own
   `File.text()`, the same as the existing "Upload a file" path.
 - Once everything that can be read has been read, the extracted text from
@@ -164,12 +166,14 @@ rules them out (`src/lib/safetyWording.ts`).
 
 ## OCR limitations
 
-Nothing about OCR itself changed. The attachment area reuses the same
+The attachment area reuses the same
 Tesseract.js-based `readTextFromImage` function, with the same known
 limitations already documented in `src/lib/photoOcr.ts`: blurry photos, small
 print, folds, shadows, handwriting, and poor lighting can all produce
 mistakes. The same low/moderate-confidence warnings already shown on the
-single-photo flow are shown here too, file by file.
+single-photo flow are shown here too, file by file. OCR asset hosting changed
+later under `ocr-local-assets-privacy-alignment-v1`; recognition behaviour did
+not.
 
 ## How it feeds the normal result flow
 

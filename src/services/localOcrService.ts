@@ -3,6 +3,7 @@
 // without the user's say-so - safe to remove in a follow-up cleanup once
 // nothing else references it.
 import { normalizeOcrText } from "../lib/photoIntake";
+import { LOCAL_OCR_RUNTIME_OPTIONS } from "../lib/ocrRuntimeAssets";
 
 type TesseractModule = typeof import("tesseract.js");
 
@@ -24,6 +25,7 @@ export const readTextFromPhoto = async (
 ): Promise<LocalOcrResult> => {
   const Tesseract = await loadTesseract();
   const result = await Tesseract.recognize(file, "eng", {
+    ...LOCAL_OCR_RUNTIME_OPTIONS,
     logger: (message) => {
       onProgress?.({
         status: message.status,

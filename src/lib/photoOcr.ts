@@ -1,11 +1,13 @@
-// Local, on-device OCR for the "Take or upload a photo" flow (see
+// In-browser OCR for the "Take or upload a photo" flow (see
 // src/components/PhotoCapturePanel.tsx and the inline photo-review section in
-// src/views/HomeView.tsx). Tesseract.js runs entirely inside this browser tab
-// - nothing here uploads the photo, sends it to a server, or contacts any
-// external OCR/cloud service. The result is always handed back as editable
-// text that the user must review before AdminAvenger uses it (see
+// src/views/HomeView.tsx). Tesseract.js runs inside this browser tab using
+// worker, core/WASM, and English-language application assets downloaded from
+// AdminAvenger's own origin. The document image and extracted text are not
+// uploaded or sent to an external OCR/cloud service. The result is always
+// handed back as editable text that the user must review before use (see
 // OCR_ON_DEVICE_MESSAGE below), matching the same "human always decides" rule
 // as every other input path (paste, file upload, camera capture).
+import { LOCAL_OCR_RUNTIME_OPTIONS } from "./ocrRuntimeAssets";
 import { normalizeOcrText } from "./photoIntake";
 
 type TesseractModule = typeof import("tesseract.js");
@@ -77,7 +79,8 @@ export const OCR_READING_STATUS_MESSAGE = "Reading photo…";
 // Two more standing privacy lines used alongside OCR_ON_DEVICE_MESSAGE, kept
 // here (not just inline in UI copy) so they can be safety-tested the same way
 // the camera-flow copy in src/lib/photoCapture.ts is.
-export const OCR_RUNS_ON_DEVICE_MESSAGE = "OCR runs on your device.";
+export const OCR_RUNS_ON_DEVICE_MESSAGE =
+  "OCR runs in this browser using software loaded from AdminAvenger. Your photo is not sent to an external OCR service.";
 export const OCR_REVIEW_BEFORE_CHECKING_MESSAGE = "Review the extracted text before checking it.";
 
 // Below this many non-whitespace characters, OCR is treated as having found
@@ -520,6 +523,7 @@ export const readTextFromImage = async (
   try {
     const Tesseract = await loadTesseract();
     const result = await Tesseract.recognize(sourceForOcr, "eng", {
+      ...LOCAL_OCR_RUNTIME_OPTIONS,
       logger: (message) => {
         onProgress?.({
           status: message.status,

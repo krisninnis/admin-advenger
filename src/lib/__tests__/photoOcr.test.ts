@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import vercelConfigSource from "../../../vercel.json?raw";
 import photoOcrSource from "../photoOcr.ts?raw";
 import localOcrServiceSource from "../../services/localOcrService.ts?raw";
+import {
+  LOCAL_OCR_RUNTIME_OPTIONS,
+  OCR_RUNTIME_ASSET_PATHS,
+} from "../ocrRuntimeAssets";
+import { readTextFromPhoto } from "../../services/localOcrService";
 
 const recognizeMock = vi.fn();
 
@@ -65,6 +71,64 @@ describe("OCR runtime loading", () => {
     expect(localOcrServiceSource).not.toMatch(/import\s+.*\s+from\s+["']tesseract\.js["']/);
     expect(photoOcrSource).toContain('import("tesseract.js")');
     expect(localOcrServiceSource).toContain('import("tesseract.js")');
+  });
+
+  it("uses one explicit same-origin asset configuration with no CDN fallback", () => {
+    expect(LOCAL_OCR_RUNTIME_OPTIONS).toEqual({
+      workerPath: "/ocr/tesseract/worker.min.js",
+      corePath: "/ocr/tesseract-core",
+      langPath: "/ocr/tesseract-data",
+      workerBlobURL: false,
+      gzip: true,
+    });
+    expect(
+      Object.values(OCR_RUNTIME_ASSET_PATHS).every(
+        (path) => path.startsWith("/") && !path.includes("://"),
+      ),
+    ).toBe(true);
+    expect(JSON.stringify(LOCAL_OCR_RUNTIME_OPTIONS)).not.toMatch(
+      /cdn|jsdelivr|https?:\/\//i,
+    );
+    expect(photoOcrSource).toContain("...LOCAL_OCR_RUNTIME_OPTIONS");
+    expect(localOcrServiceSource).toContain(
+      "...LOCAL_OCR_RUNTIME_OPTIONS",
+    );
+  });
+
+  it("removes jsDelivr from the production CSP while preserving local service access", () => {
+    const config = JSON.parse(vercelConfigSource) as {
+      headers: Array<{
+        headers: Array<{ key: string; value: string }>;
+      }>;
+    };
+    const csp = config.headers
+      .flatMap((entry) => entry.headers)
+      .find((header) => header.key === "Content-Security-Policy")?.value;
+
+    expect(csp).toBeDefined();
+    expect(csp).not.toMatch(/cdn\.jsdelivr\.net/i);
+    expect(csp).toContain("script-src 'self' 'wasm-unsafe-eval'");
+    expect(csp).toContain("worker-src 'self'");
+    expect(csp).toContain("connect-src 'self'");
+    expect(csp).toContain("http://localhost:*");
+    expect(csp).toContain("http://127.0.0.1:*");
+  });
+
+  it("passes the approved local asset options through both OCR paths", async () => {
+    recognizeMock.mockResolvedValue({
+      data: { text: "Readable local OCR text", confidence: 91 },
+    });
+
+    await readTextFromImage(fakeImage);
+    expect(recognizeMock.mock.calls[0]?.[2]).toMatchObject(
+      LOCAL_OCR_RUNTIME_OPTIONS,
+    );
+
+    recognizeMock.mockClear();
+    await readTextFromPhoto(fakeImage as File);
+    expect(recognizeMock.mock.calls[0]?.[2]).toMatchObject(
+      LOCAL_OCR_RUNTIME_OPTIONS,
+    );
   });
 });
 
@@ -702,7 +766,9 @@ describe("OCR copy never implies cloud upload, sending, storage, or a guaranteed
     expect(OCR_MISTAKES_MESSAGE).toBe(
       "OCR can make mistakes, especially with blurry photos, small print, folds, shadows, handwriting, or poor lighting.",
     );
-    expect(OCR_RUNS_ON_DEVICE_MESSAGE).toBe("OCR runs on your device.");
+    expect(OCR_RUNS_ON_DEVICE_MESSAGE).toBe(
+      "OCR runs in this browser using software loaded from AdminAvenger. Your photo is not sent to an external OCR service.",
+    );
     expect(OCR_REVIEW_BEFORE_CHECKING_MESSAGE).toBe("Review the extracted text before checking it.");
   });
 

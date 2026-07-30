@@ -37,7 +37,7 @@ describe("HomeView photo OCR review", () => {
       "Photo read, but not clearly enough. Important details are hidden until you retake, add a close-up, or review the text.",
     );
     expect(LOW_CONFIDENCE_OCR_PRIVACY_MESSAGE).toBe(
-      "Your photo and extracted text are processed in this browser and are not uploaded to AdminAvenger. Nothing has been sent or saved to your cases.",
+      "Your photo and extracted text are processed in this browser and are not sent to an external OCR service. OCR software is loaded from AdminAvenger's own site. Nothing has been sent or saved to your cases.",
     );
 
     const successBlock = sliceBetween(

@@ -44,7 +44,7 @@ Expanded warning:
 
 Privacy/control line:
 
-"Your photo and extracted text are processed in this browser and are not uploaded to AdminAvenger. Nothing has been sent or saved to your cases."
+"Your photo and extracted text are processed in this browser and are not sent to an external OCR service. OCR software is loaded from AdminAvenger's own site. Nothing has been sent or saved to your cases."
 
 ## Action Hierarchy
 

@@ -31,3 +31,8 @@ Expected behaviour:
 - `Use full photo` should warn that background may make OCR less reliable.
 - The OCR review text remains editable before checking.
 - Low-confidence OCR still hides key details until the text is reliable or reviewed.
+- On first OCR use, the browser may request `/ocr/tesseract/worker.min.js`,
+  a compatible same-origin LSTM core loader/WASM pair, and
+  `/ocr/tesseract-data/eng.traineddata.gz`.
+- No OCR request uses jsDelivr or another external OCR host, and no request
+  body contains the document image or extracted text.

@@ -97,8 +97,8 @@ entirely inside this browser tab.
   network request, no upload, and no server round-trip anywhere in either
   function.
 - `mammoth` and `pdfjs-dist` both run their parsing in-browser (`pdfjs-dist`
-  via its own local Web Worker, bundled with the package - never a
-  network-hosted worker script).
+  via a worker emitted with the application build and downloaded from the
+  same origin, never an external worker host).
 - The attachment area still shows, unconditionally:
 
   > Files are read in this browser. AdminAvenger does not upload them or

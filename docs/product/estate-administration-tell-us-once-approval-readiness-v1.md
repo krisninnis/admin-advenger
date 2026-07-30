@@ -14,6 +14,8 @@ The checked-in candidate remains:
 | Exact revision | `ea-ew-tell-us-once-separate-contact-001@r1` |
 | Editorial disposition | `draft` |
 | Evidence confidence | `blocked` |
+| Latest source recheck | 30 July 2026 |
+| `validUntil` | Unset |
 | Jurisdiction | England and Wales |
 | Topic | Tell Us Once separate-contact boundary |
 | Current approval profile | `estate_administration_walking_skeleton_non_production_v1` |
@@ -32,7 +34,8 @@ create a new immutable revision and be reviewed again.
 The candidate's intended future use is a calm, plain-English preparation prompt
 when a separately approved product rule has established an England and Wales
 Tell Us Once separate-contact question. It may explain only that the snapshotted
-GOV.UK guidance identifies organisations that need separate contact and suggest
+GOV.UK guidance identifies organisations that need contact after Tell Us Once
+when closing or changing the person's financial-account details, and suggest
 checking the current official list and the organisation's own process.
 
 It must not determine that Tell Us Once was used, that any organisation was or
@@ -59,16 +62,16 @@ Excluded from this candidate are:
 
 | Field | Value |
 |---|---|
-| Snapshot ID | `tuo-01-accessed-2026-07-27` |
+| Snapshot ID | `tuo-01-accessed-2026-07-30` |
 | Source ID | `TUO-01` |
 | Title | What to do after someone dies: Tell Us Once |
 | Issuing authority | GOV.UK |
 | Public location | `https://www.gov.uk/after-a-death/organisations-you-need-to-contact-and-tell-us-once` |
 | Source type | Government guidance |
-| Access date | 27 July 2026 |
-| Source revision | `dossier-access-snapshot-2026-07-27` |
+| Access date | 30 July 2026 |
+| Source revision | `live-page-recheck-2026-07-30-no-update-date-displayed` |
 | Evidence kind | Dossier paraphrase |
-| Governed pinpoint | Dossier findings VF-33 to VF-36 and claim-control section 13 |
+| Governed pinpoint | GOV.UK section “After you use Tell Us Once”, opening sentence and five organisation-category bullets |
 
 ### Governed research record
 
@@ -90,11 +93,78 @@ The candidate relies only on:
 candidate and is not required to support the narrowed `VF-33` proposition.
 Using it for additional wording would require a governed revision.
 
+## Official-source recheck — 30 July 2026
+
+The source was rechecked directly at:
+
+`https://www.gov.uk/after-a-death/organisations-you-need-to-contact-and-tell-us-once`
+
+| Recheck field | Result |
+|---|---|
+| Official page title | What to do after someone dies: Tell Us Once |
+| Publishing service | GOV.UK |
+| Access date | 30 July 2026 |
+| Supporting section | “After you use Tell Us Once” |
+| Page update date | Not displayed |
+| Source availability | Available |
+
+The section frames the list with the purpose “To close or change the details”
+of the person's financial accounts and says contact is needed with
+organisations “like” the listed examples. The exact supported categories are:
+
+- banks;
+- mortgage providers;
+- insurance providers;
+- companies the person had contracts with, with utility companies, landlords,
+  and housing associations given as examples;
+- personal or workplace pension schemes, except a public-sector pension scheme
+  that Tell Us Once contacts.
+
+The wider page states that Tell Us Once is for a person who was living in
+England, Scotland, or Wales, including a temporary death abroad. It excludes a
+person living in Northern Ireland or permanently abroad. This candidate remains
+intentionally narrower: England and Wales only. The source recheck does not
+authorise adding Scotland.
+
+### Comparison with the 27 July snapshot and candidate
+
+| Compared item | Result | Treatment |
+|---|---|---|
+| Official URL and page title | No material change | Retained |
+| Banks | No material change | Retained |
+| Mortgage providers | No material change | Retained |
+| “Insurers” versus the live “insurance providers” | Wording-only change | Governed wording now uses `insurance providers` |
+| “Utilities” versus contract companies such as utility companies | Scope clarification | Governed wording preserves the contract-company grouping and example status |
+| Landlords or housing associations | Scope clarification | Retained within the live contract-company grouping |
+| “Most” personal/workplace pensions versus the explicit public-sector exception | Scope clarification | Governed wording now states the exception |
+| Purpose of closing or changing financial-account details | Scope clarification | Added to the precise claim and permitted wording |
+| Page covers Scotland as well as England and Wales | Scope clarification | Recorded as a qualifier; candidate scope remains England and Wales |
+| Page update date | Source unavailable or ambiguous | No update date was displayed; the access date is recorded instead |
+
+No retained category is unsupported. No material factual change was identified.
+The historical dossier paraphrase was directionally accurate but less precise
+than the live page about purpose, category grouping, examples, and the pension
+exception.
+
+No new immutable revision is required. The candidate remains an unsubmitted
+`draft`, and no formal review or external approval evidence has attached to
+`r1`. Under the existing lifecycle rule, the live-source clarification may be
+recorded in the same draft revision. The canonical digest changes because the
+source snapshot, governed wording, qualifiers, and freshness date changed. If
+formal review had begun, these changes would require a new revision and renewed
+review.
+
+Unresolved ambiguity remains because GOV.UK does not display a page update
+date, uses an example-based “like” list rather than declaring it exhaustive,
+and frames the list around financial-account details while including several
+contract relationships. The candidate must not turn that framing into a
+universal organisation list or a case-specific instruction.
+
 ## Claim-to-source and claim-type mapping
 
 | Candidate content | Type | Support and treatment |
 |---|---|---|
-| GOV.UK identifies banks, mortgage providers, insurance providers, utilities, landlords or housing associations, and most personal or workplace pension schemes for separate contact | Government service description | `TUO-01`; dossier `VF-33`; section 13 separate-contact row; section 17 separate-actions row |
+| GOV.UK identifies banks, mortgage providers, insurance providers, relevant contract companies such as utility companies, landlords or housing associations, and personal or workplace pension schemes subject to the public-sector exception | Government service description | Live `TUO-01` section “After you use Tell Us Once”; dossier `VF-33`; section 13 separate-contact row; section 17 separate-actions row |
 | The candidate is limited to England and Wales | Jurisdiction limitation | Dossier status and scope; `TUO-01` source record is used only within the dossier's England and Wales scope |
 | The wording is not a legal requirement | Legal-requirement distinction | The source is classified as Tier 2 government service guidance, not legislation; a qualified reviewer must confirm the final wording preserves that distinction |
 | Use only after jurisdiction and current service coverage are established | Conditional advice / rule constraint | Authoring applicability constraint; not a claim about an individual case |
@@ -113,8 +183,9 @@ scope remain unsupported for this candidate.
 
 Known blockers:
 
-- the GOV.UK page has not been rechecked for an approval decision;
-- `verifiedAt` and `validUntil` are unset;
+- the GOV.UK page was rechecked on 30 July 2026, but not by an authorised
+  evidence or domain reviewer;
+- `verifiedAt` records the recheck, but `validUntil` remains unset;
 - the dossier itself remains unapproved for product use;
 - no qualified domain, product-safety, engine-use, freshness, or activation
   review has been supplied;
@@ -138,10 +209,11 @@ The following statements are high-risk and must be rejected:
 
 ## Expiry and review considerations
 
-The source is mutable government service guidance. The existing non-production
-profile requires a `validUntil` value and lists a GOV.UK page change, a Tell Us
-Once organisation-list change, jurisdiction change, and any claim wording or
-qualifier change as re-review triggers.
+The source is mutable government service guidance. It was available and
+rechecked on 30 July 2026, but GOV.UK displayed no page update date. The
+existing non-production profile requires a `validUntil` value and lists a
+GOV.UK page change, a Tell Us Once organisation-list change, jurisdiction
+change, and any claim wording or qualifier change as re-review triggers.
 
 A real production profile must be separately designed and approved. It must
 define a conservative verification date, expiry period, source-recheck
@@ -176,7 +248,7 @@ for the checked-in draft:
 |---|---|
 | Digest schema | `estate-administration-approval-content-v1` |
 | Exact revision | `ea-ew-tell-us-once-separate-contact-001@r1` |
-| Content digest | `sha256:9521036b1d96aeca3e0da30e3c5a3aaea3663cbd82de7bffd6df7938d230f2ec` |
+| Content digest | `sha256:4afd10553c461698a09917ba489f691b2ab53c018621c97416fc81a4712b1b82` |
 | Generator | `computeAuthoringContentDigest` via `createAuthoringKnowledgeEntry` |
 | Canonical form | `canonicalizeApprovalRelevantContent` |
 

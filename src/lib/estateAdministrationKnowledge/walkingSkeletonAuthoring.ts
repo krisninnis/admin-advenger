@@ -14,11 +14,11 @@ export const tellUsOnceSeparateContactAuthoringEntry =
     topic: "tell_us_once",
     jurisdiction: "england_and_wales",
     plainEnglishClaim:
-      "GOV.UK says banks, mortgage providers, insurers, utilities, landlords or housing associations, and most personal or workplace pension schemes need to be contacted separately from Tell Us Once.",
+      "GOV.UK says contact is needed with banks, mortgage providers, insurance providers, companies the person had contracts with such as utility companies, landlords or housing associations, and personal or workplace pension schemes unless Tell Us Once contacts the public-sector scheme.",
     preciseInternalClaim:
-      "For the England and Wales scope, TUO-01 explicitly directs users to contact banks, mortgage providers, insurance providers, utilities, landlords or housing associations, and personal or workplace pension schemes other than listed public schemes separately.",
+      "Under 'After you use Tell Us Once', TUO-01 says that to close or change the details of the deceased person's financial accounts, contact is needed with organisations including banks, mortgage providers, insurance providers, companies the person had contracts with such as utility companies, landlords or housing associations, and personal or workplace pension schemes unless Tell Us Once contacts the public-sector scheme.",
     sourceSnapshot: {
-      snapshotId: "tuo-01-accessed-2026-07-27",
+      snapshotId: "tuo-01-accessed-2026-07-30",
       sourceId: "TUO-01",
       title: "What to do after someone dies: Tell Us Once",
       issuingAuthority: "GOV.UK",
@@ -26,13 +26,14 @@ export const tellUsOnceSeparateContactAuthoringEntry =
       publicLocation:
         "https://www.gov.uk/after-a-death/organisations-you-need-to-contact-and-tell-us-once",
       jurisdiction: "england_and_wales",
-      accessDate: "2026-07-27",
-      sourceRevision: "dossier-access-snapshot-2026-07-27",
+      accessDate: "2026-07-30",
+      sourceRevision:
+        "live-page-recheck-2026-07-30-no-update-date-displayed",
       pinpoint:
-        "Estate Administration death-registration/Tell Us Once dossier, findings VF-33 to VF-36 and claim-control section 13",
+        "GOV.UK section 'After you use Tell Us Once', opening sentence and five organisation-category bullets",
       evidenceKind: "dossier_paraphrase",
       evidenceText:
-        "The dossier records that GOV.UK directs people to contact banks, mortgage providers, insurers, utilities, landlords or housing associations, and most personal or workplace pension schemes separately.",
+        "The live GOV.UK section says contact is needed with banks, mortgage providers, insurance providers, contract companies such as utility companies, landlords or housing associations, and personal or workplace pension schemes unless Tell Us Once contacts the public-sector scheme.",
     },
     evidenceConfidence: "blocked",
     applicabilityConstraints: [
@@ -46,10 +47,11 @@ export const tellUsOnceSeparateContactAuthoringEntry =
     uncertaintyNote:
       "This entry cannot establish whether Tell Us Once was used, which organisations were notified, which accounts exist, or what any organisation requires in an individual estate.",
     allowedWording: [
-      "The GOV.UK guidance accessed on 27 July 2026 says some organisations need to be contacted separately from Tell Us Once. Check the current official list before deciding what to do.",
+      "The GOV.UK guidance rechecked on 30 July 2026 says some organisations need separate contact after Tell Us Once when closing or changing the person's financial-account details. Check the current official list before deciding what to do.",
     ],
     requiredQualifiers: [
       "This is government service guidance for England and Wales, not a legal requirement.",
+      "The official page also covers Scotland; this candidate is intentionally limited to England and Wales.",
       "This is preparation, not confirmation that a particular organisation must be contacted or that any notification is complete.",
       "Check the organisation's current bereavement process.",
     ],
@@ -65,7 +67,7 @@ export const tellUsOnceSeparateContactAuthoringEntry =
     ],
     freshness: {
       category: "government_service_guidance",
-      verifiedAt: null,
+      verifiedAt: "2026-07-30",
       validUntil: null,
     },
     approvalProfileId:
@@ -87,8 +89,9 @@ export const tellUsOnceSeparateContactAuthoringEntry =
         "No qualified legal or domain review has been supplied.",
         "No production approval profile, external approval evidence, activation pin, product route, or UI scope has been supplied.",
         "The unsupported phrase 'other private organisations' was removed; this revision makes no claim about unlisted organisation categories.",
+        "TUO-01 was rechecked against the live official GOV.UK page on 30 July 2026; the retained categories remain supported, with wording and scope clarifications recorded in the approval-readiness packet.",
       ],
       semanticChangeReason:
-        "Narrow the unreviewed r1 draft to the TUO-01 separate-contact proposition and prepare its governed content for human review without approving or activating it.",
+        "Recheck the unreviewed r1 draft against live TUO-01, preserve the supported category proposition, and add the source's exact purpose, grouping, pension exception, and wider-page jurisdiction boundaries without approving or activating it.",
     },
   });

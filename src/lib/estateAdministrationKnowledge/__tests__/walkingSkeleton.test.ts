@@ -34,7 +34,7 @@ import {
   walkingSkeletonExternalApprovalEvidence,
 } from "../walkingSkeletonGovernance.ts";
 
-const asOfDate = "2026-07-29";
+const asOfDate = "2026-07-30";
 
 const developmentContext = (
   overrides: Partial<EligibilityContext> = {},
@@ -66,8 +66,8 @@ const approvedEntry = (
     evidenceConfidence: "high",
     freshness: {
       category: "government_service_guidance",
-      verifiedAt: "2026-07-29",
-      validUntil: "2026-08-29",
+      verifiedAt: "2026-07-30",
+      validUntil: "2026-08-30",
     },
     ...overrides,
     entryId,
@@ -142,6 +142,18 @@ describe("Estate Administration knowledge walking skeleton", () => {
         exactRevision: "ea-ew-tell-us-once-separate-contact-001@r1",
         disposition: "draft",
         evidenceConfidence: "blocked",
+        sourceSnapshot: {
+          snapshotId: "tuo-01-accessed-2026-07-30",
+          accessDate: "2026-07-30",
+          sourceRevision:
+            "live-page-recheck-2026-07-30-no-update-date-displayed",
+          pinpoint:
+            "GOV.UK section 'After you use Tell Us Once', opening sentence and five organisation-category bullets",
+        },
+        freshness: {
+          verifiedAt: "2026-07-30",
+          validUntil: null,
+        },
         approvalProfileId:
           "estate_administration_walking_skeleton_non_production_v1",
         approvedConsumptionScope:
@@ -150,6 +162,23 @@ describe("Estate Administration knowledge walking skeleton", () => {
       expect(walkingSkeletonApprovalProfile.nonProduction).toBe(true);
       expect(walkingSkeletonExternalApprovalEvidence).toEqual([]);
       expect(walkingSkeletonActivationManifest.pins).toEqual([]);
+    });
+
+    it("retains r1 for the pre-review source recheck and matches the canonical digest", () => {
+      const regenerated = recomputeAuthoringContentDigest({
+        ...tellUsOnceSeparateContactAuthoringEntry,
+      });
+
+      expect(tellUsOnceSeparateContactAuthoringEntry.exactRevision).toBe(
+        "ea-ew-tell-us-once-separate-contact-001@r1",
+      );
+      expect(tellUsOnceSeparateContactAuthoringEntry.contentDigest).toBe(
+        "sha256:4afd10553c461698a09917ba489f691b2ab53c018621c97416fc81a4712b1b82",
+      );
+      expect(regenerated.contentDigest).toBe(
+        tellUsOnceSeparateContactAuthoringEntry.contentDigest,
+      );
+      expect(walkingSkeletonExternalApprovalEvidence).toEqual([]);
     });
 
     it("cannot activate the real candidate even if an exact pin is supplied in memory", () => {

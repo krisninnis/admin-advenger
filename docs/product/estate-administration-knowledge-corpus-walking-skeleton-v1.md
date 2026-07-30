@@ -7,15 +7,17 @@ Administration to the public product, classifier, navigation, routes or UI.
 
 The provisional claim is:
 
-> GOV.UK says banks, mortgage providers, insurers, utilities, landlords or
-> housing associations, and most personal or workplace pension schemes need to
-> be contacted separately from Tell Us Once.
+> GOV.UK says contact is needed with banks, mortgage providers, insurance
+> providers, relevant contract companies such as utility companies, landlords
+> or housing associations, and personal or workplace pension schemes unless
+> Tell Us Once contacts the public-sector scheme.
 
 The repository does not represent this claim as legally or professionally
 reviewed. The real entry is `draft`, its approval evidence list is empty, and
 its activation manifest has no pins. The unsupported phrase “other private
-organisations” has been removed, but the narrowed claim remains blocked pending
-source recheck and genuine human review.
+organisations” has been removed. The official source was rechecked on 30 July
+2026, but the narrowed claim remains blocked pending genuine human review,
+approved expiry policy, approval evidence, and activation authority.
 
 ## Locations
 

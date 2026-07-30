@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { findForbiddenCoreSafetyPhrases } from "../safetyWordingCore.ts";
 import {
   EDITORIAL_DISPOSITIONS,
+  HUMAN_REVIEW_DECISIONS,
   type ActivationManifest,
   type ApprovalProfile,
   type AuthoringKnowledgeEntry,
@@ -21,6 +22,12 @@ import {
   type RuntimeKnowledgeEntry,
   type ValidationIssue,
 } from "./types.ts";
+import {
+  assessHumanReviewEvidence,
+  EMPTY_HUMAN_REVIEW_WORKFLOW,
+  reviewDecisionCanSatisfyApproval,
+  validateHumanReviewWorkflow,
+} from "./humanReviewWorkflow.ts";
 
 const isoDatePattern = /^\d{4}-\d{2}-\d{2}$/;
 const fullGitCommitPattern = /^[0-9a-f]{40}$/i;
@@ -50,6 +57,22 @@ const blockMessages: Readonly<Record<EligibilityBlockCode, string>> = {
     "One or more approval roles have no externally supplied evidence.",
   approval_evidence_invalid:
     "Approval evidence does not match the exact revision, digest, profile, or required role.",
+  review_request_missing:
+    "Human-review evidence has no valid request bound to the exact revision, digest, profile, role, and evidence set.",
+  review_assignment_missing:
+    "Human-review evidence has no accepted assignment for the eligible reviewer, role, and scope.",
+  reviewer_ineligible:
+    "The reviewer is not eligible for the required role, profile, scope, or review date.",
+  reviewer_conflict_unresolved:
+    "The reviewer or evidence record contains a declared or unresolved conflict of interest.",
+  review_dimension_missing:
+    "One or more review dimensions required by the approval profile are missing.",
+  review_decision_not_approving:
+    "The review decision is changes required, rejected, withdrawn, or otherwise non-approving.",
+  review_conditions_unsatisfied:
+    "Conditional approval contains an open, manual, or unverified condition.",
+  review_evidence_expired:
+    "Required human-review evidence is missing an expiry date or has expired.",
   synthetic_approval_non_production_only:
     "Synthetic approval evidence is accepted only in the isolated hidden development scope.",
   evidence_confidence_blocked:
@@ -534,7 +557,8 @@ export const validateApprovalProfiles = (
       !isNonEmptyString(profile.version) ||
       profile.requiredRoles.length === 0 ||
       profile.allowedEvidenceKinds.length === 0 ||
-      profile.allowedConsumptionScopes.length === 0
+      profile.allowedConsumptionScopes.length === 0 ||
+      typeof profile.requiresReviewEvidenceExpiry !== "boolean"
     ) {
       issues.push(
         issue(
@@ -589,18 +613,63 @@ export const validateApprovalEvidenceShape = (
   evidence.flatMap((record) => {
     const requiredValues = [
       record.evidenceId,
+      record.entryId,
       record.exactRevision,
       record.contentDigest,
       record.approvalProfileId,
+      record.reviewRequestId,
+      record.reviewAssignmentId,
       record.reviewerId,
+      record.reviewerQualificationOrAuthorityBasis,
+      record.reviewScope,
       record.reviewedCommit,
       record.reviewedAt,
       record.evidenceReference,
     ];
+    const conflictIsValid =
+      isRecord(record.conflictDeclaration) &&
+      ((record.conflictDeclaration.status === "none_declared" &&
+        record.conflictDeclaration.details === null) ||
+        (record.conflictDeclaration.status === "declared" &&
+          isNonEmptyString(record.conflictDeclaration.details)));
+    const conditionsAreValid =
+      Array.isArray(record.conditions) &&
+      record.conditions.every(
+        (condition) =>
+          isRecord(condition) &&
+          isNonEmptyString(condition.conditionId) &&
+          isNonEmptyString(condition.description) &&
+          (condition.enforcement === "machine_gate" ||
+            condition.enforcement === "manual_block") &&
+          (condition.status === "open" ||
+            condition.status === "satisfied") &&
+          (condition.status === "open"
+            ? condition.satisfactionEvidenceReference === null
+            : isNonEmptyString(condition.satisfactionEvidenceReference)),
+      );
+    const conditionalDecisionIsValid =
+      (record.decision === "approved_with_conditions" &&
+        Array.isArray(record.conditions) &&
+        record.conditions.length > 0) ||
+      (record.decision !== "approved_with_conditions" &&
+        (record.decision !== "approved" ||
+          (Array.isArray(record.conditions) &&
+            record.conditions.length === 0)));
 
     if (
       requiredValues.every(isNonEmptyString) &&
+      HUMAN_REVIEW_DECISIONS.includes(record.decision) &&
       isoDatePattern.test(record.reviewedAt) &&
+      hasIsoDateOrNull(record.expiresAt) &&
+      Array.isArray(record.evidenceReviewed) &&
+      record.evidenceReviewed.length > 0 &&
+      record.evidenceReviewed.every(isNonEmptyString) &&
+      Array.isArray(record.findings) &&
+      record.findings.length > 0 &&
+      record.findings.every(isNonEmptyString) &&
+      conflictIsValid &&
+      conditionsAreValid &&
+      conditionalDecisionIsValid &&
       hasValidReviewedCommit(record)
     ) {
       return [];
@@ -608,9 +677,9 @@ export const validateApprovalEvidenceShape = (
 
     return [
       issue(
-        "invalid_approval_evidence",
-        record.evidenceId || "approvalEvidence",
-        "Approval evidence must identify the reviewer role, exact revision, digest, commit, date, and external reference.",
+          "invalid_approval_evidence",
+          record.evidenceId || "approvalEvidence",
+          "Approval evidence must bind the entry, revision, digest, profile, request, assignment, reviewer authority, role, scope, commit, evidence reviewed, findings, outcome, conditions, dates, and external reference.",
       ),
     ];
   });
@@ -670,6 +739,10 @@ export const validateGovernedCorpusInputs = (
   ...validateAuthoringRegistry(inputs.entries),
   ...validateApprovalProfiles(inputs.profiles),
   ...validateApprovalEvidenceShape(inputs.approvalEvidence),
+  ...validateHumanReviewWorkflow(
+    inputs.humanReviewWorkflow ?? EMPTY_HUMAN_REVIEW_WORKFLOW,
+    inputs.approvalEvidence,
+  ),
   ...validateActivationManifest(inputs.activationManifest),
 ];
 
@@ -722,6 +795,7 @@ const approvalReasons = (
   profile: ApprovalProfile | undefined,
   evidence: readonly ExternalApprovalEvidence[],
   context: EligibilityContext,
+  humanReviewWorkflow = EMPTY_HUMAN_REVIEW_WORKFLOW,
 ): readonly EligibilityBlockReason[] => {
   if (!profile) {
     return [block("approval_profile_missing")];
@@ -748,33 +822,75 @@ const approvalReasons = (
 
     if (roleEvidence.length === 0) {
       reasons.push(block("approval_evidence_missing"));
+      reasons.push(block("review_dimension_missing"));
       continue;
     }
 
-    const validEvidence = roleEvidence.some(
-      (record) =>
-        record.decision === "approved" &&
+    const assessments = roleEvidence.map((record) => {
+      const basicEvidenceValid =
+        validateApprovalEvidenceShape([record]).length === 0 &&
         record.contentDigest === entry.contentDigest &&
         record.approvalProfileId === profile.profileId &&
         profile.allowedEvidenceKinds.includes(record.evidenceKind) &&
-        (record.evidenceKind !== "synthetic_test" ||
-          (profile.nonProduction && isolatedSyntheticContext)) &&
         isNonEmptyString(record.reviewerId) &&
         hasValidReviewedCommit(record) &&
         isNonEmptyString(record.evidenceReference) &&
-        isoDatePattern.test(record.reviewedAt),
+        isoDatePattern.test(record.reviewedAt);
+
+      if (!basicEvidenceValid) {
+        return {
+          satisfied: false,
+          blockCodes: ["approval_evidence_invalid"] as const,
+        };
+      }
+
+      if (record.evidenceKind === "synthetic_test") {
+        return {
+          satisfied:
+            profile.nonProduction &&
+            isolatedSyntheticContext &&
+            reviewDecisionCanSatisfyApproval(record) &&
+            (!profile.requiresReviewEvidenceExpiry ||
+              record.expiresAt !== null) &&
+            (record.expiresAt === null ||
+              context.asOfDate <= record.expiresAt),
+          blockCodes:
+            profile.nonProduction && isolatedSyntheticContext
+              ? (profile.requiresReviewEvidenceExpiry &&
+                  record.expiresAt === null) ||
+                (record.expiresAt !== null &&
+                  context.asOfDate > record.expiresAt)
+                ? (["review_evidence_expired"] as const)
+                : reviewDecisionCanSatisfyApproval(record)
+                  ? []
+                  : record.decision === "approved_with_conditions"
+                    ? (["review_conditions_unsatisfied"] as const)
+                    : (["review_decision_not_approving"] as const)
+              : (["synthetic_approval_non_production_only"] as const),
+        };
+      }
+
+      return assessHumanReviewEvidence(
+        record,
+        entry,
+        profile,
+        role,
+        context.asOfDate,
+        humanReviewWorkflow,
+      );
+    });
+    const validEvidence = assessments.some(
+      (assessment) => assessment.satisfied,
     );
 
     if (!validEvidence) {
-      if (
-        roleEvidence.some(
-          (record) => record.evidenceKind === "synthetic_test",
-        ) &&
-        !isolatedSyntheticContext
-      ) {
-        reasons.push(block("synthetic_approval_non_production_only"));
-      } else {
+      const assessmentCodes = assessments.flatMap(
+        (assessment) => assessment.blockCodes,
+      );
+      if (assessmentCodes.length === 0) {
         reasons.push(block("approval_evidence_invalid"));
+      } else {
+        reasons.push(...assessmentCodes.map(block));
       }
     }
   }
@@ -818,6 +934,7 @@ export const deriveRuntimeEligibility = (
   evidence: readonly ExternalApprovalEvidence[],
   manifest: ActivationManifest,
   context: EligibilityContext,
+  humanReviewWorkflow = EMPTY_HUMAN_REVIEW_WORKFLOW,
 ): RuntimeEligibility => {
   const scopeReasons = assessProductScopePrecedence(context.productScope);
   if (scopeReasons.length > 0) {
@@ -869,7 +986,15 @@ export const deriveRuntimeEligibility = (
   const profile = profiles.find(
     (candidate) => candidate.profileId === entry.approvalProfileId,
   );
-  reasons.push(...approvalReasons(entry, profile, evidence, context));
+  reasons.push(
+    ...approvalReasons(
+      entry,
+      profile,
+      evidence,
+      context,
+      humanReviewWorkflow,
+    ),
+  );
   reasons.push(...activationReasons(entry, manifest, context));
 
   if (entry.freshness.verifiedAt === null) {
@@ -977,6 +1102,7 @@ export const buildRuntimeKnowledgeBundle = (
       inputs.approvalEvidence,
       inputs.activationManifest,
       context,
+      inputs.humanReviewWorkflow ?? EMPTY_HUMAN_REVIEW_WORKFLOW,
     );
     eligibilityByRevision[entry.exactRevision] = eligibility;
     if (eligibility.status === "usable") {

@@ -359,3 +359,13 @@ For `ea-ew-tell-us-once-separate-contact-001@r1`:
 The tests use only unmistakably synthetic, non-production records to prove
 positive and negative workflow behavior. They do not represent a real person,
 qualification, organisation, review, decision, signature, or approval.
+
+## Probate candidates remain blocked
+
+The England and Wales probate candidate pack uses the same workflow and a
+separate profile explicitly marked non-production. Every candidate remains
+`draft` with blocked evidence confidence, unset `validUntil`, no real workflow
+records or approval evidence, and no activation pin. The blank template above
+does not approve any probate proposition. See
+`estate-administration-probate-approval-readiness-v1.md` for its inventory,
+sources, exclusions, and unresolved review requirements.

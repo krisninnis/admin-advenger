@@ -4,6 +4,9 @@
 
 This is hidden, non-production infrastructure. It does not add Estate
 Administration to the public product, classifier, navigation, routes or UI.
+The governed authoring registry now contains the original Tell Us Once
+walking-skeleton candidate and a separate pack of draft England and Wales
+probate candidates. None is approved or active.
 
 The provisional claim is:
 
@@ -26,13 +29,17 @@ approved expiry policy, approval evidence, and activation authority.
 | Authoring/runtime contracts | `src/lib/estateAdministrationKnowledge/types.ts` |
 | Structural, governance, eligibility and projection logic | `src/lib/estateAdministrationKnowledge/governance.ts` |
 | Human-review request, eligibility, assignment and decision validation | `src/lib/estateAdministrationKnowledge/humanReviewWorkflow.ts` |
-| Single authoring entry and immutable source snapshot | `src/lib/estateAdministrationKnowledge/walkingSkeletonAuthoring.ts` |
+| Tell Us Once authoring entry and immutable source snapshot | `src/lib/estateAdministrationKnowledge/walkingSkeletonAuthoring.ts` |
+| Draft probate authoring pack and source snapshots | `src/lib/estateAdministrationKnowledge/probateKnowledgeAuthoring.ts` |
 | Non-production approval profile | `src/lib/estateAdministrationKnowledge/walkingSkeletonGovernance.ts` |
+| Non-production probate review profile | `src/lib/estateAdministrationKnowledge/probateKnowledgeGovernance.ts` |
 | External approval evidence | `walkingSkeletonExternalApprovalEvidence` in `walkingSkeletonGovernance.ts`; intentionally empty |
 | Activation manifest | `walkingSkeletonActivationManifest` in `walkingSkeletonGovernance.ts`; intentionally unpinned |
 | Exact hidden TypeScript rule | `src/lib/estateAdministrationKnowledge/hiddenDecisionRule.ts` |
 | Behavioural proofs | `src/lib/estateAdministrationKnowledge/__tests__/walkingSkeleton.test.ts` |
+| Probate candidate and fail-closed proofs | `src/lib/estateAdministrationKnowledge/__tests__/probateKnowledge.test.ts` |
 | Human review packet | `docs/product/estate-administration-tell-us-once-approval-readiness-v1.md` |
+| Probate pack review packet | `docs/product/estate-administration-probate-approval-readiness-v1.md` |
 | Human-review lifecycle and blank record template | `docs/product/estate-administration-human-review-workflow-v1.md` |
 | Build-only browser-safe asset | `assets/estate-administration-knowledge-runtime.json` in Vite build output |
 
@@ -114,8 +121,8 @@ The product-safe provenance link uses the valid heading anchor
 
 The Vite build-only plugin:
 
-1. validates the one authoring revision, approval profile, external evidence
-   shape and activation manifest;
+1. validates the governed authoring registry, approval profiles, external
+   evidence shape and activation manifest;
 2. applies product-scope precedence before knowledge selection;
 3. derives `usable` or explicit block reasons;
 4. projects only eligible exact revisions through the runtime allowlist;
@@ -170,4 +177,5 @@ This walking skeleton does not make any of those decisions.
 No Estate Workspace, public route, classifier support, broad corpus, generic
 rules language, probate or authority decision, tax/benefits/intestacy logic,
 remote revocation, database, vector search, automated ingestion or UI has been
-implemented.
+implemented. The probate pack is candidate authoring content only and is not a
+decision rule, workflow, route, or complete guide.

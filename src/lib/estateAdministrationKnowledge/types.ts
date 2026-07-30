@@ -44,7 +44,7 @@ export type SourceSnapshot = {
   sourceId: string;
   title: string;
   issuingAuthority: string;
-  sourceType: "government_guidance";
+  sourceType: "government_guidance" | "legislation";
   publicLocation: string;
   jurisdiction: EstateAdministrationJurisdiction;
   accessDate: string;
@@ -61,7 +61,7 @@ export type AuthoringOnlyMetadata = {
 };
 
 export type FreshnessPolicy = {
-  category: "government_service_guidance";
+  category: "government_service_guidance" | "legislation";
   verifiedAt: string | null;
   validUntil: string | null;
 };
@@ -73,7 +73,7 @@ export type AuthoringKnowledgeEntry = {
   contentDigest: string;
   title: string;
   domain: "estate_administration";
-  topic: "tell_us_once";
+  topic: "tell_us_once" | "probate";
   jurisdiction: EstateAdministrationJurisdiction;
   plainEnglishClaim: string;
   preciseInternalClaim: string;

@@ -21,6 +21,7 @@ The checked-in candidate remains:
 | Current approval profile | `estate_administration_walking_skeleton_non_production_v1` |
 | Approved consumption scope field | `estate_administration_hidden_walking_skeleton` |
 | External approval evidence | None |
+| Review requests / reviewer eligibility / assignments | None |
 | Activation pin | None |
 | Production approval profile | None |
 
@@ -187,8 +188,8 @@ Known blockers:
   evidence or domain reviewer;
 - `verifiedAt` records the recheck, but `validUntil` remains unset;
 - the dossier itself remains unapproved for product use;
-- no qualified domain, product-safety, engine-use, freshness, or activation
-  review has been supplied;
+- no qualified evidence, domain, product-safety, accessibility, privacy,
+  product-scope, engine-use, freshness, or activation review has been supplied;
 - no production approval profile exists;
 - no public or controlled product scope is approved;
 - the candidate cannot know the facts of an individual estate.
@@ -223,14 +224,17 @@ itself remotely, so expiry must continue to fail closed using local time.
 
 ## Required reviewer qualifications
 
-The current governance model separates six roles. Real reviewers or authorised
+The current governance model separates nine roles. Real reviewers or authorised
 owners must be identified outside the authoring entry:
 
 | Role | Required competence for this candidate |
 |---|---|
 | Evidence | Able to inspect the current official GOV.UK page and verify the exact source snapshot, categories, date, jurisdiction treatment, and dossier mapping |
 | Domain | Competent to review England and Wales death-registration/Tell Us Once service boundaries and identify any legal or operational overstatement |
-| Product safety | Able to review high-stakes, bereavement-sensitive wording, uncertainty, accessibility, and the human-control boundary |
+| Product safety | Able to review high-stakes, bereavement-sensitive wording, uncertainty, emotional safety, and the human-control boundary |
+| Accessibility | Able to review understandable wording and accessible presentation for the intended use |
+| Privacy | Able to review data minimisation and prevent unsafe collection, retention, or disclosure implications |
+| Product scope | Authorised to decide whether the exact claim is permitted for the named consumption scope without broadening the product |
 | Engine use | Able to verify that any future deterministic rule uses only the runtime projection, matches only the approved facts and jurisdiction, and preserves qualifiers and prohibited conclusions |
 | Freshness | Authorised to choose and enforce verification and expiry dates for mutable government guidance |
 | Activation | Authorised to approve a named product scope and, separately, an exact activation-manifest pin |
@@ -319,13 +323,16 @@ Reject the candidate or require a new revision if:
    exact digest with the existing canonical function.
 4. Obtain durable external approval evidence for every profile-required role,
    tied to the exact revision, digest, and full reviewed commit.
-5. Add and validate that evidence without changing the reviewed governed
+5. Create and validate the bound review request, reviewer-eligibility records,
+   accepted assignments, and evidence records described in
+   `estate-administration-human-review-workflow-v1.md`.
+6. Add and validate that evidence without changing the reviewed governed
    content. If content changes, create the required revision and repeat review.
-6. Only after valid evidence exists may a separate change set the editorial
+7. Only after valid evidence exists may a separate change set the editorial
    disposition and production scope consistently with the approved profile.
-7. Run the governance validator and prove the exact revision remains blocked
+8. Run the governance validator and prove the exact revision remains blocked
    unless every independent approval and freshness gate passes.
-8. In a later, separately authorised activation task, approve product scope and
+9. In a later, separately authorised activation task, approve product scope and
    routing before knowledge selection, add one exact manifest pin, and verify
    the projected runtime entry and user-facing qualifiers.
 

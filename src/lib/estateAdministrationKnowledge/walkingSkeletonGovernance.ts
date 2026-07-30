@@ -12,6 +12,7 @@ import type {
   RuntimeBundleResult,
   ValidationIssue,
 } from "./types.ts";
+import { EMPTY_HUMAN_REVIEW_WORKFLOW } from "./humanReviewWorkflow.ts";
 import { tellUsOnceSeparateContactAuthoringEntry } from "./walkingSkeletonAuthoring.ts";
 
 export const walkingSkeletonApprovalProfile: ApprovalProfile = {
@@ -23,6 +24,9 @@ export const walkingSkeletonApprovalProfile: ApprovalProfile = {
     "evidence",
     "domain",
     "product_safety",
+    "accessibility",
+    "privacy",
+    "product_scope",
     "engine_use",
     "freshness",
     "activation",
@@ -32,6 +36,7 @@ export const walkingSkeletonApprovalProfile: ApprovalProfile = {
     "estate_administration_hidden_walking_skeleton",
   ],
   requiresValidUntil: true,
+  requiresReviewEvidenceExpiry: true,
   reReviewTriggers: [
     "GOV.UK Tell Us Once page change",
     "Tell Us Once organisation-list change",
@@ -57,6 +62,7 @@ export const walkingSkeletonGovernedInputs: GovernedCorpusInputs = {
   entries: [tellUsOnceSeparateContactAuthoringEntry],
   profiles: [walkingSkeletonApprovalProfile],
   approvalEvidence: walkingSkeletonExternalApprovalEvidence,
+  humanReviewWorkflow: EMPTY_HUMAN_REVIEW_WORKFLOW,
   activationManifest: walkingSkeletonActivationManifest,
 };
 

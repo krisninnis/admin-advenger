@@ -83,14 +83,29 @@ const syntheticEvidenceFor = (
   roles.map((role) => ({
     evidenceId: `synthetic-${role}-${entry.exactRevision}`,
     evidenceKind: "synthetic_test",
+    entryId: entry.entryId,
     exactRevision: entry.exactRevision,
     contentDigest: entry.contentDigest,
     approvalProfileId: walkingSkeletonApprovalProfile.profileId,
     role,
     decision: "approved",
+    reviewRequestId: `synthetic-request-${entry.exactRevision}`,
+    reviewAssignmentId: `synthetic-assignment-${role}-${entry.exactRevision}`,
     reviewerId: `synthetic-test-role:${role}`,
+    reviewerOrganisationId: null,
+    reviewerQualificationOrAuthorityBasis:
+      "Synthetic fixture authority only; not a human qualification.",
+    conflictDeclaration: {
+      status: "none_declared",
+      details: null,
+    },
+    reviewScope: `Synthetic ${role} review fixture only`,
     reviewedCommit: "synthetic-test-commit",
     reviewedAt: asOfDate,
+    evidenceReviewed: [`synthetic-evidence:${entry.exactRevision}`],
+    findings: ["Synthetic fixture finding only; no human review occurred."],
+    conditions: [],
+    expiresAt: "2026-08-30",
     evidenceReference: `synthetic-test:${role}:${entry.exactRevision}`,
   }));
 

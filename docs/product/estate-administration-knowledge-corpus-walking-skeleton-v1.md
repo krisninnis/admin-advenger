@@ -25,6 +25,7 @@ approved expiry policy, approval evidence, and activation authority.
 |---|---|
 | Authoring/runtime contracts | `src/lib/estateAdministrationKnowledge/types.ts` |
 | Structural, governance, eligibility and projection logic | `src/lib/estateAdministrationKnowledge/governance.ts` |
+| Human-review request, eligibility, assignment and decision validation | `src/lib/estateAdministrationKnowledge/humanReviewWorkflow.ts` |
 | Single authoring entry and immutable source snapshot | `src/lib/estateAdministrationKnowledge/walkingSkeletonAuthoring.ts` |
 | Non-production approval profile | `src/lib/estateAdministrationKnowledge/walkingSkeletonGovernance.ts` |
 | External approval evidence | `walkingSkeletonExternalApprovalEvidence` in `walkingSkeletonGovernance.ts`; intentionally empty |
@@ -32,6 +33,7 @@ approved expiry policy, approval evidence, and activation authority.
 | Exact hidden TypeScript rule | `src/lib/estateAdministrationKnowledge/hiddenDecisionRule.ts` |
 | Behavioural proofs | `src/lib/estateAdministrationKnowledge/__tests__/walkingSkeleton.test.ts` |
 | Human review packet | `docs/product/estate-administration-tell-us-once-approval-readiness-v1.md` |
+| Human-review lifecycle and blank record template | `docs/product/estate-administration-human-review-workflow-v1.md` |
 | Build-only browser-safe asset | `assets/estate-administration-knowledge-runtime.json` in Vite build output |
 
 Approval evidence is supplied separately from the authoring entry. Entry fields

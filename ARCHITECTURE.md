@@ -67,7 +67,10 @@ Supported input paths:
 - TXT, Markdown, CSV, and JSON text files read with browser file APIs.
 - DOCX read locally with `mammoth.extractRawText`.
 - Selectable-text PDFs read locally with `pdfjs-dist`.
-- Image/photo files and camera captures read locally with Tesseract.js OCR.
+- Image/photo files and camera captures are read in-browser with Tesseract.js
+  OCR. Its lazy worker, core/WASM and English-language application assets are
+  downloaded from AdminAvenger's own origin; document images and extracted
+  text are not sent to an external OCR service.
 - Drag/drop into the visible input panel or attachment area.
 
 The optional question remains separate from accepted document text and its source title;

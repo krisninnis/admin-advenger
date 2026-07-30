@@ -13,7 +13,7 @@ export const LOW_CONFIDENCE_OCR_STATUS_ANNOUNCEMENT =
   "Photo read, but not clearly enough. Important details are hidden until you retake, add a close-up, or review the text.";
 
 export const LOW_CONFIDENCE_OCR_PRIVACY_MESSAGE =
-  "Your photo and extracted text are processed in this browser and are not uploaded to AdminAvenger. Nothing has been sent or saved to your cases.";
+  "Your photo and extracted text are processed in this browser and are not sent to an external OCR service. OCR software is loaded from AdminAvenger's own site. Nothing has been sent or saved to your cases.";
 
 type LowConfidenceOcrReviewPanelProps = {
   previewUrl?: string;

@@ -126,7 +126,7 @@ The verdict at the bottom is **internal alpha today; private-beta-ready after a 
 
 ### 6. Security / Privacy
 
-**Status:** Materially better than last week: no cloud gateway, no external calls in src except user-configured localhost Ollama, no secrets in git history (verified: no `.env` was ever committed). But the app is linked to a **Vercel project** (`.vercel/project.json`) and nobody in this room can say what build is live at that URL right now. If it's a pre-audit build, the unauthenticated OpenAI proxy and the old parser bugs may be publicly deployed at this moment.
+**Status:** Materially better than last week: no cloud gateway, no external content-processing calls in src except user-configured localhost Ollama, no secrets in git history (verified: no `.env` was ever committed). Same-origin application assets are still downloaded by the browser and must not be described as “no network activity.” But the app is linked to a **Vercel project** (`.vercel/project.json`) and nobody in this room can say what build is live at that URL right now. If it's a pre-audit build, the unauthenticated OpenAI proxy and the old parser bugs may be publicly deployed at this moment.
 
 **Working:** Local-first is currently *true*, which is rare. The privacy line ("checked in your browser, nothing uploaded in this version") matches the code today. Risky-email mode refuses to draft replies to the sender — good.
 
@@ -343,7 +343,7 @@ Hard rules encoded, not remembered: AI output is *candidate facts*, never decisi
 
 ## Security / legal review
 
-**Beta defaults (all default-on, none negotiable):** local rules mode; no network calls except user-enabled localhost Ollama; links in pasted content inert; no analytics; export/delete always visible; nothing sent, ever.
+**Beta defaults (all default-on, none negotiable):** local rules mode; no document content sent to a remote processing service; same-origin application-asset requests and user-enabled localhost Ollama remain possible; links in pasted content inert; no analytics; export/delete always visible; no automatic sending.
 
 **Consolidated pre-beta checklist:**
 

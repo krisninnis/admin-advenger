@@ -4,6 +4,17 @@ import type { CommunityHelperPack } from "./communityHelperPack";
 import type { DecisionResult } from "./decisionEngine/types";
 import type { ResultViewModel } from "./resultViewModel";
 import type { StrategicMove, StrategicNextStepPlan } from "./strategicNextStep";
+import {
+  CORE_FORBIDDEN_ADVERSARIAL_LANGUAGE,
+  CORE_FORBIDDEN_ADVICE_CLAIMS,
+  CORE_FORBIDDEN_AUTOMATION_CLAIMS,
+  CORE_FORBIDDEN_COMMUNITY_HELPER_CLAIMS,
+  CORE_FORBIDDEN_MONEY_CLAIMS,
+  CORE_FORBIDDEN_OUTCOME_CLAIMS,
+  CORE_FORBIDDEN_OVERCLAIM_PHRASES,
+  findForbiddenCoreSafetyPhrases,
+  normaliseCoreSafetyText,
+} from "./safetyWordingCore";
 
 export type SafetyWordingGroup =
   | "outcome_claim"
@@ -37,93 +48,24 @@ export type FindForbiddenSafetyPhrasesOptions = {
   context?: string;
 };
 
-export const FORBIDDEN_OUTCOME_CLAIMS = [
-  "you will win",
-  "you will lose",
-  "you qualify",
-  "you do not qualify",
-  "you are entitled",
-  "you are not entitled",
-  "you deserve",
-  "guaranteed",
-  "definitely",
-  "certainly",
-  "confirmed outcome",
-] as const;
+export const FORBIDDEN_OUTCOME_CLAIMS = CORE_FORBIDDEN_OUTCOME_CLAIMS;
 
-export const FORBIDDEN_ADVICE_CLAIMS = [
-  "dwp is wrong",
-  "the council is wrong",
-  "the creditor is wrong",
-  "this is unlawful",
-  "this is illegal",
-  "valid claim",
-  "invalid claim",
-  "you do not owe this",
-  "you definitely owe this",
-  "this debt is not enforceable",
-  "this debt is enforceable",
-  "you should appeal",
-  "you must appeal",
-  "you should pay",
-  "you must pay",
-  "you should ignore",
-  "you can safely ignore",
-  "do not pay",
-  "do not contact",
-  "tell them they are wrong",
-  "case strength",
-] as const;
+export const FORBIDDEN_ADVICE_CLAIMS = CORE_FORBIDDEN_ADVICE_CLAIMS;
 
-export const FORBIDDEN_ADVERSARIAL_LANGUAGE = [
-  "game theory",
-  "opponent",
-  "exploit",
-  "beat dwp",
-  "beat the council",
-  "beat the creditor",
-  "force them",
-  "pressure them",
-  "use leverage",
-  "weaponise",
-  "trap them",
-] as const;
+export const FORBIDDEN_ADVERSARIAL_LANGUAGE =
+  CORE_FORBIDDEN_ADVERSARIAL_LANGUAGE;
 
-export const FORBIDDEN_MONEY_CLAIMS = [
-  "money saved",
-  "money recovered",
-  "refund won",
-  "savings confirmed",
-  "amount owed to you",
-  "you are owed",
-  "we recovered",
-] as const;
+export const FORBIDDEN_MONEY_CLAIMS = CORE_FORBIDDEN_MONEY_CLAIMS;
 
-export const FORBIDDEN_AUTOMATION_CLAIMS = [
-  "sent automatically",
-  "submitted automatically",
-  "automatic submission",
-  "we contacted",
-  "we applied for you",
-  "we appealed for you",
-  "we challenged for you",
-  "claim submitted",
-] as const;
+export const FORBIDDEN_AUTOMATION_CLAIMS =
+  CORE_FORBIDDEN_AUTOMATION_CLAIMS;
 
 // Document File Support v1 - technical/privacy overclaims that would make a
 // stronger promise about file handling than a client-side, local-only
 // prototype can actually verify (see src/lib/documentFileText.ts and
 // src/lib/documentAttachmentIntake.ts for the honest wording these rule out).
-export const FORBIDDEN_OVERCLAIM_PHRASES = [
-  "secure upload",
-  "securely uploaded",
-  "cloud processed",
-  "gdpr compliant",
-  "bank-level security",
-  "every pdf",
-  "we read every pdf",
-  "guaranteed text extraction",
-] as const;
+export const FORBIDDEN_OVERCLAIM_PHRASES =
+  CORE_FORBIDDEN_OVERCLAIM_PHRASES;
 
 // Community Helper Pack Core v1 - claims a preparation-only community/helper
 // pack must never make, since it would overstep into a diagnosis,
@@ -136,24 +78,8 @@ export const FORBIDDEN_OVERCLAIM_PHRASES = [
 // your diagnosis") legitimately use that word without making a diagnosis
 // claim - banning it outright would break required safe disclaimers
 // elsewhere in the app. See docs/product/community-helper-pack-core-v1.md.
-export const FORBIDDEN_COMMUNITY_HELPER_CLAIMS = [
-  "you are diagnosed",
-  "this proves disability",
-  "this proves neglect",
-  "safeguarding issue confirmed",
-  "risk score",
-  "care score",
-  "eligibility score",
-  "they qualify",
-  "council must provide",
-  "needs this equipment",
-  "needs this adaptation",
-  "cannot live alone",
-  "lacks capacity",
-  "financial abuse proven",
-  "money owed",
-  "contacted automatically",
-] as const;
+export const FORBIDDEN_COMMUNITY_HELPER_CLAIMS =
+  CORE_FORBIDDEN_COMMUNITY_HELPER_CLAIMS;
 
 export const REQUIRED_SAFETY_THEMES: Record<SafetyTheme, readonly string[]> = {
   no_contact: [
@@ -213,60 +139,13 @@ const forbiddenGroups: Record<SafetyWordingGroup, readonly string[]> = {
 
 export const ALL_FORBIDDEN_SAFETY_PHRASES = Object.values(forbiddenGroups).flat();
 
-export const normaliseSafetyText = (text: string) =>
-  text
-    .toLowerCase()
-    .replace(/[‘’]/g, "'")
-    .replace(/[“”]/g, '"')
-    .replace(/\s+/g, " ")
-    .trim();
-
-const getExcerpt = (text: string, index: number) => {
-  const start = Math.max(0, index - 48);
-  const end = Math.min(text.length, index + 96);
-
-  return text.slice(start, end).trim();
-};
+export const normaliseSafetyText = normaliseCoreSafetyText;
 
 export const findForbiddenSafetyPhrases = (
   text: string,
   options: FindForbiddenSafetyPhrasesOptions = {},
-): ForbiddenSafetyPhraseMatch[] => {
-  const normalisedText = normaliseSafetyText(text);
-  const disabledGroups = new Set(options.disabledGroups ?? []);
-  const allowedPhrases = new Set((options.allowedPhrases ?? []).map(normaliseSafetyText));
-  const matches: ForbiddenSafetyPhraseMatch[] = [];
-
-  for (const [group, phrases] of Object.entries(forbiddenGroups) as Array<
-    [SafetyWordingGroup, readonly string[]]
-  >) {
-    if (disabledGroups.has(group)) {
-      continue;
-    }
-
-    for (const phrase of phrases) {
-      const normalisedPhrase = normaliseSafetyText(phrase);
-
-      if (allowedPhrases.has(normalisedPhrase)) {
-        continue;
-      }
-
-      const index = normalisedText.indexOf(normalisedPhrase);
-
-      if (index >= 0) {
-        matches.push({
-          phrase,
-          group,
-          index,
-          excerpt: getExcerpt(normalisedText, index),
-          context: options.context,
-        });
-      }
-    }
-  }
-
-  return matches;
-};
+): ForbiddenSafetyPhraseMatch[] =>
+  findForbiddenCoreSafetyPhrases(text, options);
 
 export const assertNoForbiddenSafetyPhrases = (
   text: string,

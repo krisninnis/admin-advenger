@@ -320,9 +320,49 @@ const deriveFromOpportunity = (
   finding: AdminFinding | undefined,
   opportunity: OpportunityCard,
 ): GuidedNextStep => {
+  if (opportunity.opportunityType === "account_outcome_confirmation") {
+    return {
+      primaryAction: {
+        kind: "evidence_checklist",
+        label: "Review confirmation steps",
+        title: opportunity.title,
+        evidenceNeeded: dedupe(opportunity.recommendedPathSteps),
+      },
+      secondaryActions: [],
+    };
+  }
+
+  if (adminCase.generalAdminFallback) {
+    return {
+      primaryAction: {
+        kind: "evidence_checklist",
+        label: adminCase.generalAdminFallback.status === "no_action_needed"
+          ? "Keep confirmation"
+          : "Review source-grounded next step",
+        title: opportunity.title,
+        evidenceNeeded: dedupe([
+          adminCase.generalAdminFallback.nextAction,
+          ...(adminCase.generalAdminFallback.evidenceToGather ?? []).map(
+            (record) => `Have to hand: ${record}`,
+          ),
+          ...opportunity.recommendedPathSteps,
+        ]),
+      },
+      secondaryActions: opportunity.deadline
+        ? [
+            buildDeadlineAction(opportunity.title, [
+              opportunity.deadlineLabel
+                ? `${opportunity.deadlineLabel}: ${opportunity.deadline}`
+                : opportunity.deadline,
+            ]),
+          ].filter((action): action is NextStepAction => Boolean(action))
+        : [],
+    };
+  }
+
   // No clear category was found for this input at all - same honest "ask for
   // more information" fallback as the unknown decision-engine case above.
-  if (isNoClearOpportunity(opportunity)) {
+  if (isNoClearOpportunity(opportunity) && adminCase.category !== "complaint") {
     const questions =
       opportunity.missingInformation.length > 0
         ? opportunity.missingInformation

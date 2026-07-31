@@ -1,6 +1,6 @@
 import type { DecisionResult } from "./lib/decisionEngine/types";
 import type { CareerSupportPack } from "./lib/careerSupportPack";
-import type { DocumentStatus } from "./lib/generalAdminExtraction";
+import type { DocumentStatus, StructuredGeneralAdminFallback } from "./lib/generalAdminExtraction";
 
 export type SourceType =
   | "email"
@@ -87,6 +87,7 @@ export type AdminFinding = {
   // deliveries, appointments, Direct Debit bills, security alerts). Optional so
   // every existing finding remains valid without change.
   documentStatus?: DocumentStatus;
+  generalAdminFallback?: StructuredGeneralAdminFallback;
   confidence: FindingConfidence;
   status: FindingStatus;
   createdAt: string;
@@ -115,6 +116,7 @@ export type PreparedMessageDraft = {
 };
 
 export type OpportunityType =
+  | "account_outcome_confirmation"
   | "refund_expected"
   | "travel_extra_cost_recovery"
   | "travel_evidence_check"
@@ -451,6 +453,7 @@ export type AdminCase = {
   emailSafetyAssessment?: EmailSafetyAssessment;
   decisionResult?: DecisionResult;
   careerSupportPack?: CareerSupportPack;
+  generalAdminFallback?: StructuredGeneralAdminFallback;
   createdAt: string;
   updatedAt: string;
   evidence: EvidenceItem[];

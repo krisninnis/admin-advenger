@@ -8,7 +8,17 @@ import type {
   OpportunityType,
 } from "../types";
 import { buildCareerSupportPack } from "./careerSupportPack";
-import { selectRefundTotal } from "./generalAdminExtraction";
+import {
+  detectSensitiveInformationRequest,
+  SENSITIVE_INFORMATION_REQUEST_EVIDENCE_LABEL,
+  SENSITIVE_INFORMATION_WARNING,
+} from "./sensitiveInformationRequest";
+import {
+  assessAccountOutcome,
+  assessRefundState,
+  extractGeneralAdmin,
+  selectRefundTotal,
+} from "./generalAdminExtraction";
 import {
   annualiseMonthlyAmount,
   extractEnergyAnnualCosts,
@@ -109,6 +119,13 @@ const getRiskLevel = (adminCase: AdminCase): OpportunityCard["riskLevel"] => {
 const getOpportunityType = (adminCase: AdminCase, item?: AdminItem): OpportunityType => {
   const text = `${item?.title ?? ""} ${item?.rawText ?? ""}`.toLowerCase();
 
+  if (adminCase.generalAdminFallback) {
+    return adminCase.generalAdminFallback.status === "no_action_needed" ||
+      adminCase.generalAdminFallback.status === "resolved"
+      ? "no_action_needed"
+      : "needs_human_check";
+  }
+
   if (
     adminCase.emailSafetyAssessment ||
     /email safety|email needs safety check|risk email|high risk email|high risk signals/i.test(adminCase.title)
@@ -129,6 +146,14 @@ const getOpportunityType = (adminCase: AdminCase, item?: AdminItem): Opportunity
     /cv preparation|career support|cover letter|job advert preparation|application answer/i.test(adminCase.title)
   ) {
     return "career_support";
+  }
+
+  if (
+    /^(?:account closure confirmed|account closed - balance needs checking|account closure needs a document|charge removal confirmed)$/i.test(
+      adminCase.title,
+    )
+  ) {
+    return "account_outcome_confirmation";
   }
 
   if (
@@ -172,8 +197,8 @@ const getOpportunityType = (adminCase: AdminCase, item?: AdminItem): Opportunity
     return "no_action_needed";
   }
 
-  if (adminCase.category === "refund" || /^refund approved$/i.test(adminCase.title)) {
-    return /^refund approved$/i.test(adminCase.title) ? "refund_expected" : "money_back";
+  if (adminCase.category === "refund" || /^refund (?:approved|promised)$/i.test(adminCase.title)) {
+    return /^refund (?:approved|promised)$/i.test(adminCase.title) ? "refund_expected" : "money_back";
   }
 
   if (adminCase.category === "warranty") {
@@ -266,6 +291,62 @@ export const deriveOpportunityCard = (
   const missingEvidence = adminCase.evidence
     .filter((evidence) => /missing|needed|not found/i.test(`${evidence.label} ${evidence.value}`))
     .map((evidence) => `${evidence.label}: ${evidence.value}`);
+
+  if (adminCase.generalAdminFallback) {
+    const fallback = adminCase.generalAdminFallback;
+    const firstDate = fallback.dates.find((date) => date.role === "stated_deadline") ?? fallback.dates[0];
+    const moneyRoleLabel: Record<(typeof fallback.amounts)[number]["role"], string> = {
+      amount_demanded: "Amount requested by the source",
+      amount_collected_automatically: "Automatic collection amount",
+      refund_total: "Refund amount mentioned",
+      order_subtotal: "Order subtotal mentioned",
+      postage: "Postage amount mentioned",
+      line_item: "Line-item amount mentioned",
+      recurring_charge: "Recurring charge mentioned",
+      price_old: "Old price",
+      price_new: "New price",
+      price_increase: "Price increase mentioned",
+      total_cost: "Total cost mentioned",
+      recoverable_amount: "Possible recovery mentioned",
+      balance_under_review: "Balance under review - no decision",
+      former_balance: "Former balance",
+      amount_received: "Payment the source records as received",
+      future_amount: "Amount that may become payable after review",
+      unknown: "Amount mentioned - check its role",
+    };
+    const frequency = (value: (typeof fallback.amounts)[number]["frequency"]): MoneyImpactFrequency =>
+      value === "monthly" || value === "annual" ? value : value === "one_off" ? "one_off" : "unknown";
+
+    return {
+      id: `opportunity-${adminCase.id}`,
+      caseId: adminCase.id,
+      opportunityType,
+      title: adminCase.title,
+      plainEnglishSummary: adminCase.summary,
+      moneyImpactRows: fallback.amounts.map((amount) =>
+        moneyImpact(moneyRoleLabel[amount.role], amount.amount, frequency(amount.frequency), "unknown"),
+      ),
+      deadline: firstDate?.value,
+      deadlineLabel: firstDate
+        ? `Source date - ${firstDate.role.replaceAll("_", " ")}`
+        : undefined,
+      opportunityNote: fallback.uncertaintyNote,
+      statusLabel: fallback.status.replaceAll("_", " "),
+      evidenceFound: adminCase.evidence.map((evidence) => `${evidence.label}: ${evidence.value}`),
+      missingInformation: [],
+      nextBestAction: fallback.nextAction,
+      recommendedPathSteps: [
+        fallback.nextAction,
+        "Check source details before acting and use an independently verified contact route.",
+        "Only update the outcome when you have evidence of what actually happened.",
+      ],
+      riskLevel: getRiskLevel(adminCase),
+      confidenceLabel: adminCase.confidence,
+      sourceCaseType: adminCase.category,
+      createdAt,
+      updatedAt,
+    };
+  }
 
   if (adminCase.broadbandPriceRiseAssessment) {
     const assessment = adminCase.broadbandPriceRiseAssessment;
@@ -375,17 +456,34 @@ export const deriveOpportunityCard = (
   if (opportunityType === "suspicious_email_risk") {
     const suspicious = adminCase.emailSafetyAssessment ?? assessEmailSafety(text);
     const riskBand = getEmailSafetyRiskBand(suspicious);
+    const extraction = extractGeneralAdmin(text);
+    const demandedAmount = extraction.amounts.find((amount) => amount.role === "amount_demanded");
+    // A direct credential request is kept visible as a source-attributed fact so
+    // the person can see what was asked for, while the recommended action
+    // refuses it. The request is never restated as something to do.
+    const credentialRequest = detectSensitiveInformationRequest(text);
 
     return {
       id: `opportunity-${adminCase.id}`,
       caseId: adminCase.id,
       opportunityType,
       title: "Email needs safety check",
-      plainEnglishSummary: `${getEmailSafetyRiskBandLabel(suspicious)}. ${getEmailSafetyRiskBandExplanation(suspicious)}`,
+      plainEnglishSummary: credentialRequest.requested
+        ? `The message asks you to hand over sensitive security information. ${getEmailSafetyRiskBandLabel(suspicious)}. ${getEmailSafetyRiskBandExplanation(suspicious)} AdminAvenger has not determined that the message is a scam.`
+        : demandedAmount
+        ? `Suspected payment-pressure scam pattern: the message combines a payment request with warning signs. ${getEmailSafetyRiskBandLabel(suspicious)}. ${getEmailSafetyRiskBandExplanation(suspicious)} AdminAvenger has not determined that the message is a scam.`
+        : `${getEmailSafetyRiskBandLabel(suspicious)}. ${getEmailSafetyRiskBandExplanation(suspicious)}`,
+      moneyAtStake: demandedAmount
+        ? moneyImpact("Amount requested by message", demandedAmount.amount, "one_off", "unknown")
+        : undefined,
       opportunityNote:
         "AdminAvenger does not count this as a saving or recovery. It is a detected-signal warning so you can verify before acting.",
       statusLabel: getEmailSafetyRiskBandLabel(suspicious),
       evidenceFound: [
+        credentialRequest.sourceQuote
+          ? `${SENSITIVE_INFORMATION_REQUEST_EVIDENCE_LABEL}: ${credentialRequest.sourceQuote}`
+          : undefined,
+        demandedAmount ? `Amount requested by message: ${demandedAmount.sourceQuote}` : undefined,
         ...suspicious.riskSignals,
         ...suspicious.cautionSignals,
         suspicious.senderAddress ? `Sender: ${suspicious.senderAddress}` : undefined,
@@ -396,9 +494,16 @@ export const deriveOpportunityCard = (
         "Whether you were expecting this message",
         "Whether the sender address matches an independently checked contact route",
       ],
-      nextBestAction: suspicious.nextAction,
+      nextBestAction: credentialRequest.requested
+        ? SENSITIVE_INFORMATION_WARNING
+        : "Avoid making the requested payment or using the message's link or contact details. Verify the request independently through the provider's official website, app, or a trusted number.",
       recommendedPathSteps: [
-        "Do not click links or open attachments from the email.",
+        ...(credentialRequest.requested
+          ? [
+              "Do not send the requested code, password, PIN, or card or bank details to anyone, including the sender.",
+            ]
+          : []),
+        "Do not pay, click links, use contact details, or open attachments from the message.",
         "Check the sender address and reply-to address.",
         "Open the provider's official website or app directly and check your account there.",
         "Never share passwords, card details, or one-time codes.",
@@ -434,7 +539,7 @@ export const deriveOpportunityCard = (
       opportunityType,
       title: "Payment reminder to check",
       plainEnglishSummary:
-        "This looks like a payment reminder. Check the provider, account reference, amount, and whether it has already been paid before deciding what to do.",
+        `This looks like a payment reminder. Check the provider, account reference, amount, and whether it has already been paid before deciding what to do.${paymentReminder.collectionActivityPossible ? " The provider says further collection activity may follow if the payment or dispute is not addressed by the stated date." : ""}`,
       moneyAtStake: moneyImpact("Amount being requested", amount, "one_off", "unknown"),
       deadline: paymentReminder.responseDeadline ?? paymentReminder.paymentDueDate,
       deadlineLabel: paymentReminder.responseDeadline
@@ -454,6 +559,114 @@ export const deriveOpportunityCard = (
         "Keep proof of payment.",
       ],
       riskLevel: getRiskLevel(adminCase),
+      confidenceLabel: adminCase.confidence,
+      sourceCaseType: adminCase.category,
+      createdAt,
+      updatedAt,
+    };
+  }
+
+  if (opportunityType === "account_outcome_confirmation") {
+    const outcome = assessAccountOutcome(text);
+    const amountLabel =
+      outcome.amount?.context === "former_balance"
+        ? outcome.unresolvedFinancialOutcome
+          ? outcome.waiverUnderReview || outcome.futurePaymentPossible || outcome.providerReviewPending
+            ? "Balance under review"
+            : "Final balance mentioned"
+          : "Former balance"
+        : outcome.amount?.context === "final_direct_debit"
+          ? "Final Direct Debit mentioned"
+          : outcome.amount?.context === "outstanding_amount"
+            ? "Outstanding amount mentioned"
+          : outcome.chargeRemoved
+            ? "Charge mentioned"
+            : "Money mentioned";
+    const statusLabel = outcome.closurePending
+      ? "Provider action - account remains open until the required document is sent"
+      : outcome.balanceStillPayable
+      ? "Provider confirmation - balance still needs checking"
+      : outcome.waiverUnderReview
+        ? "Provider confirmation - charge outcome still under review"
+      : outcome.futurePaymentPossible || outcome.providerReviewPending
+        ? "Provider confirmation - future payment decision still pending"
+      : outcome.finalDirectDebitPending
+        ? "Provider confirmation - final collection may still be pending"
+        : outcome.responseRequired
+          ? "Provider confirmation - separate response still required"
+        : outcome.conditionalDirectDebitFollowUp
+          ? "Provider confirmation - resolved, with conditional monitoring"
+          : "Provider confirmation - resolved";
+
+    return {
+      id: `opportunity-${adminCase.id}`,
+      caseId: adminCase.id,
+      opportunityType,
+      title: adminCase.title,
+      plainEnglishSummary: adminCase.summary,
+      moneyAtStake: outcome.amount
+        ? moneyImpact(amountLabel, outcome.amount.amount, "one_off", "unknown")
+        : undefined,
+      deadline: outcome.actionDeadline,
+      deadlineLabel: outcome.actionDeadline ? "Required action deadline" : undefined,
+      opportunityNote:
+        "This reflects what the provider says in the message. AdminAvenger has not independently verified the account, charge, or payment position.",
+      statusLabel,
+      evidenceFound: adminCase.evidence
+        .filter((evidence) => !/^source$/i.test(evidence.label))
+        .map((evidence) => `${evidence.label}: ${evidence.value}`),
+      missingInformation: [],
+      nextBestAction: adminCase.nextAction,
+      recommendedPathSteps: outcome.closurePending
+        ? [
+            `Send the ${outcome.requiredDocument ?? "required document"}${outcome.actionDeadline ? ` by ${outcome.actionDeadline}` : ""} through a verified provider channel.`,
+            "Keep proof that the document was sent.",
+            "Do not treat the account as closed until the provider confirms closure.",
+          ]
+        : outcome.balanceStillPayable
+        ? [
+            "Keep the account-closure confirmation.",
+            "Check the final balance and reference against the original message.",
+            "Use a verified provider channel if you need to query what remains payable.",
+          ]
+        : outcome.waiverUnderReview
+          ? [
+              "Keep the account-closure confirmation.",
+              "Wait for the provider's separate decision about the charge.",
+              "Do not treat the charge as removed unless the provider confirms that outcome.",
+              ...(outcome.conditionalFollowUp && outcome.followUpPeriod
+                ? [`Follow up if no response arrives ${outcome.followUpPeriod}.`]
+                : []),
+            ]
+        : outcome.futurePaymentPossible || outcome.providerReviewPending
+          ? [
+              "Keep the account-closure confirmation.",
+              "Wait for the provider's promised review decision.",
+              "Do not treat the balance as waived or payable now unless the provider confirms that outcome.",
+            ]
+        : outcome.finalDirectDebitPending
+          ? [
+              "Keep the account-closure confirmation.",
+              "Check the relevant bank account for the stated final Direct Debit.",
+              "Keep the provider reference with the record.",
+            ]
+          : outcome.responseRequired
+            ? [
+                "Keep the account-closure confirmation.",
+                "Treat the separate response or complaint as unresolved.",
+                "Use a verified provider channel before responding or acting.",
+              ]
+          : [
+              "Keep the confirmation with the relevant records.",
+              "Check the relevant bank account for any later Direct Debit.",
+              "Only contact the provider through a verified channel if the message outcome does not match what happens next.",
+            ],
+      riskLevel:
+        outcome.collectionActivityPossible || outcome.actionDeadline
+          ? "high"
+          : outcome.unresolvedFinancialOutcome || outcome.closurePending
+            ? "medium"
+            : "low",
       confidenceLabel: adminCase.confidence,
       sourceCaseType: adminCase.category,
       createdAt,
@@ -637,6 +850,49 @@ export const deriveOpportunityCard = (
   const isRefundExpected = opportunityType === "refund_expected";
   const isEnergyPriceChange = opportunityType === "energy_price_change";
   const isTravelRecovery = opportunityType === "travel_extra_cost_recovery";
+
+  if (isRefundExpected && /^refund promised$/i.test(adminCase.title)) {
+    const refund = assessRefundState(text);
+
+    return {
+      id: `opportunity-${adminCase.id}`,
+      caseId: adminCase.id,
+      opportunityType,
+      title: "Refund promised",
+      plainEnglishSummary:
+        "The provider has promised a refund, but the money has not been confirmed received.",
+      potentialRecovery: moneyImpact("Promised refund - not received", refund.amount?.amount, "one_off", "pending"),
+      moneyImpactRows: [
+        moneyImpact("Promised refund - not received", refund.amount?.amount, "one_off", "pending"),
+      ],
+      deadline: undefined,
+      deadlineLabel: undefined,
+      statusLabel: "Refund promised - not confirmed received",
+      evidenceFound: [
+        refund.amount ? `Refund amount: ${refund.amount.sourceQuote}` : undefined,
+        refund.relativePeriod ? `Promised refund window: ${refund.relativePeriod.value}` : undefined,
+        refund.reference ? `Reference: ${refund.reference.value}` : undefined,
+      ].filter((entry): entry is string => Boolean(entry)),
+      missingInformation: [
+        "Whether the refund has reached the original payment method",
+        "Provider or retailer name if not found",
+      ],
+      nextBestAction: refund.relativePeriod
+        ? `Monitor the original payment method for ${refund.relativePeriod.value.replace(/^within\s+/i, "")}. Chase the provider only if the refund has not arrived after that period.`
+        : "Monitor the original payment method for the promised period. Chase the provider only if the refund has not arrived after that period.",
+      recommendedPathSteps: [
+        "Check the original payment method.",
+        "Keep the refund promise and any reference.",
+        "Chase only if the refund has not arrived after the promised period.",
+        "Only mark recovered when you can see the money has arrived.",
+      ],
+      riskLevel: getRiskLevel(adminCase),
+      confidenceLabel: adminCase.confidence,
+      sourceCaseType: adminCase.category,
+      createdAt,
+      updatedAt,
+    };
+  }
 
   if (isTravelRecovery) {
     const travel = extractTravelRecoveryDetails(text);

@@ -29,8 +29,14 @@ import {
   assessPublicIntakeScope,
   type PublicScopeBoundary,
 } from "./publicScopePolicy";
-import { assessEmailSafety, createEmailSafetyFinding, getEmailSafetyRiskBand } from "./suspiciousEmail";
 import {
+  assessEmailSafety,
+  createEmailSafetyFinding,
+  shouldPrioritiseEmailSafety,
+} from "./suspiciousEmail";
+import {
+  assessAccountOutcome,
+  assessRefundState,
   extractGeneralAdmin,
   findNegationSpans,
   isAppointmentReminderText,
@@ -38,7 +44,9 @@ import {
   isDeliveryCompletedText,
   isIndexNegated,
   isSecurityAlertText,
+  getStructuredGeneralAdminFallbackTitle,
   selectRefundTotal,
+  type StructuredGeneralAdminFallback,
 } from "./generalAdminExtraction";
 
 export type AdminAnalysisAccessMode = "public" | "controlled";
@@ -300,15 +308,6 @@ const receiptSignals = [
 
 const isReceiptRecord = (text: string) => containsAny(text, receiptSignals);
 
-const hasStrongEmailSafetyOverride = (
-  assessment: ReturnType<typeof assessEmailSafety>,
-) =>
-  assessment.isEmailLike &&
-  (getEmailSafetyRiskBand(assessment) === "high_risk_signals" ||
-    (assessment.riskSignals.includes("Asks for bank details") &&
-      assessment.riskSignals.includes("Reply-to mismatch") &&
-      assessment.cautionSignals.includes("Urgent pressure")));
-
 const getUrgency = (
   text: string,
   sourceType: SourceType,
@@ -403,6 +402,53 @@ const createUnknownFinding = (item: AdminItem): AdminFinding => ({
   status: "new",
   createdAt: new Date().toISOString(),
 });
+
+const createStructuredGeneralAdminFallbackFinding = (
+  item: AdminItem,
+  fallback: StructuredGeneralAdminFallback,
+): AdminFinding => {
+  const attribution = fallback.attribution === "authority"
+    ? "The authority says"
+    : fallback.attribution === "provider"
+      ? "The provider says"
+      : fallback.attribution === "letter"
+        ? "The letter says"
+        : "The message says";
+  const details = [
+    `${attribution}: ${fallback.sourceStatement}`,
+    fallback.inconsistency
+      ? `The message contains contradictory statements and the position is unresolved: ${fallback.inconsistency} AdminAvenger cannot decide which statement is correct.`
+      : undefined,
+    fallback.dependency ? `Open dependency: ${fallback.dependency}` : undefined,
+    fallback.consequence ? `Stated consequence: ${fallback.consequence}` : undefined,
+  ].filter((entry): entry is string => Boolean(entry));
+  const findingStatus: AdminFinding["status"] = fallback.status === "ready_to_act"
+    ? "to_do"
+    : fallback.status;
+
+  return {
+    id: `finding-${crypto.randomUUID()}`,
+    itemId: item.id,
+    category: "unknown",
+    title: getStructuredGeneralAdminFallbackTitle(fallback.topic),
+    summary: details.join(" "),
+    whyItMatters:
+      "Useful facts should stay visible even when AdminAvenger cannot safely assign a specialist category or decide the underlying outcome.",
+    suggestedAction: fallback.nextAction,
+    urgency: fallback.consequence ||
+      fallback.inconsistency ||
+      fallback.dates.some((date) => date.role === "stated_deadline")
+      ? "high"
+      : fallback.status === "ready_to_act" || fallback.status === "waiting"
+        ? "medium"
+        : "low",
+    deadline: fallback.dates.find((date) => date.role === "stated_deadline")?.value,
+    confidence: "medium",
+    status: findingStatus,
+    generalAdminFallback: fallback,
+    createdAt: new Date().toISOString(),
+  };
+};
 
 const createDeliveryUpdateFinding = (item: AdminItem): AdminFinding => ({
   id: `finding-${crypto.randomUUID()}`,
@@ -663,7 +709,7 @@ const createPaymentReminderFinding = (item: AdminItem): AdminFinding => {
     category: "important_reply",
     title: "Payment reminder to check",
     summary:
-      `This looks like a payment reminder asking the user to check an amount${amountText}. AdminAvenger has not decided whether the money is owed.`,
+      `This looks like a payment reminder asking the user to check an amount${amountText}. AdminAvenger has not decided whether the money is owed.${assessment.collectionActivityPossible ? " The provider says further collection activity may follow if the payment or dispute is not addressed by the stated date." : ""}`,
     whyItMatters:
       "Payment reminders can have dates and account references worth checking, but the user should verify the provider and whether the amount is correct or already paid before acting.",
     suggestedAction: buildPaymentReminderSuggestedAction(assessment),
@@ -673,7 +719,7 @@ const createPaymentReminderFinding = (item: AdminItem): AdminFinding => {
     urgency: assessment.responseDeadline || assessment.paymentDueDate ? "high" : "medium",
     deadline: assessment.responseDeadline ?? assessment.paymentDueDate,
     confidence: "medium",
-    status: "new",
+    status: assessment.collectionActivityPossible ? "to_do" : "new",
     createdAt: new Date().toISOString(),
   };
 };
@@ -730,31 +776,60 @@ const createDecisionEngineFinding = (item: AdminItem, text: string): AdminFindin
 const createPublicScopeBoundaryFinding = (
   item: AdminItem,
   boundary: Extract<PublicScopeBoundary, { status: "blocked" }>,
-): AdminFinding => ({
-  id: `finding-${crypto.randomUUID()}`,
-  itemId: item.id,
-  category: "important_reply",
-  title:
-    boundary.availability === "controlled_beta"
-      ? "This needs a careful human review"
-      : "Specialist support may be needed",
-  summary:
-    boundary.availability === "controlled_beta"
-      ? "This looks outside the public Check a message scope. AdminAvenger is keeping it as preparation only and is not opening a specialist beta automatically."
-      : "This may involve urgent, safeguarding, housing, crisis, or another specialist area. AdminAvenger is keeping it as preparation only and is not deciding what action to take.",
-  whyItMatters:
-    "Some topics need a qualified person, trusted helper, or the original organisation to check the details. AdminAvenger can help keep track of the wording, but it will not decide rights, entitlement, eligibility, debt, housing, employment, or safety issues from this message.",
-  suggestedAction:
-    boundary.dateMentioned
-      ? `Keep the original message and note the date mentioned: ${boundary.dateMentioned}. Review the source wording carefully before deciding what to do next.`
-      : "Keep the original message, review the source wording carefully, and decide who should look at it next.",
-  estimatedValue: "No money counted",
-  urgency: boundary.reason === "safeguarding" || boundary.reason === "housing_or_crisis" ? "high" : "medium",
-  deadline: boundary.dateMentioned,
-  confidence: "medium",
-  status: "new",
-  createdAt: new Date().toISOString(),
-});
+): AdminFinding => {
+  const text = `${item.title}\n${item.rawText}`;
+  const isUcAppointment =
+    /\buniversal credit\b/i.test(text) && /\b(?:appointment|jobcentre|journal)\b/i.test(text);
+  const isDisciplinaryInvitation =
+    /\bdisciplinary\b/i.test(text) && /\b(?:hearing|invitation|invited)\b/i.test(text);
+  const isPossessionNotice =
+    /\b(?:notice seeking possession|possession notice|possession order)\b/i.test(text);
+
+  const title = isUcAppointment
+    ? "Universal Credit appointment to prepare for"
+    : isDisciplinaryInvitation
+      ? "Disciplinary hearing invitation to prepare for"
+      : isPossessionNotice
+        ? "Possession notice needs urgent checking"
+        : boundary.availability === "controlled_beta"
+          ? "This needs a careful human review"
+          : "Specialist support may be needed";
+  const summary = isUcAppointment
+    ? "The message describes a Universal Credit appointment or claim action. AdminAvenger can help you prepare and preserve the stated date, but it cannot decide entitlement or whether a requirement has been met."
+    : isDisciplinaryInvitation
+      ? "The message is an invitation to a disciplinary hearing, not an outcome. Review the invitation and attached evidence, and gather relevant records before deciding what to do. AdminAvenger cannot decide whether the employer's action is lawful."
+      : isPossessionNotice
+        ? "The source uses possession wording and says court action may follow after the stated date. This does not mean eviction is certain. Check the notice urgently and seek independent housing advice."
+        : boundary.availability === "controlled_beta"
+          ? "This looks outside the public Check a message scope. AdminAvenger is keeping it as preparation only and is not opening a specialist beta automatically."
+          : "This may involve urgent, safeguarding, housing, crisis, or another specialist area. AdminAvenger is keeping it as preparation only and is not deciding what action to take.";
+  const suggestedAction = isUcAppointment
+    ? `Review the Universal Credit journal or appointment details${boundary.dateMentioned ? ` for ${boundary.dateMentioned}` : ""}, prepare what the message asks you to bring, and attend or use the official account if you need to query it.`
+    : isDisciplinaryInvitation
+      ? `Review the disciplinary invitation and allegations${boundary.dateMentioned ? ` before ${boundary.dateMentioned}` : ""}. Gather the attached evidence and relevant records, and consider suitable independent workplace support.`
+      : isPossessionNotice
+        ? `Check the possession notice and stated date${boundary.dateMentioned ? ` (${boundary.dateMentioned})` : ""} urgently. Keep the source document and seek independent housing advice; AdminAvenger cannot confirm the notice's legal effect.`
+        : boundary.dateMentioned
+          ? `Keep the original message and note the date mentioned: ${boundary.dateMentioned}. Review the source wording carefully before deciding what to do next.`
+          : "Keep the original message, review the source wording carefully, and decide who should look at it next.";
+
+  return {
+    id: `finding-${crypto.randomUUID()}`,
+    itemId: item.id,
+    category: "important_reply",
+    title,
+    summary,
+    whyItMatters:
+      "Some topics need a qualified person, trusted helper, or the original organisation to check the details. AdminAvenger can help keep track of the wording, but it will not decide rights, entitlement, eligibility, debt, housing, employment, or safety issues from this message.",
+    suggestedAction,
+    estimatedValue: "No money counted",
+    urgency: boundary.reason === "safeguarding" || boundary.reason === "housing_or_crisis" ? "high" : "medium",
+    deadline: boundary.dateMentioned,
+    confidence: "medium",
+    status: isUcAppointment || isDisciplinaryInvitation || isPossessionNotice ? "to_do" : "new",
+    createdAt: new Date().toISOString(),
+  };
+};
 
 const createSecurityAlertFinding = (item: AdminItem): AdminFinding => ({
   id: `finding-${crypto.randomUUID()}`,
@@ -848,6 +923,173 @@ const createBillReadyDirectDebitFinding = (item: AdminItem): AdminFinding => {
   };
 };
 
+const createPromisedRefundFinding = (item: AdminItem): AdminFinding => {
+  const refund = assessRefundState(`${item.title}\n${item.rawText}`);
+  const window = refund.relativePeriod?.value;
+  return {
+    id: `finding-${crypto.randomUUID()}`,
+    itemId: item.id,
+    category: "refund",
+    title: "Refund promised",
+    summary: `The provider says it will refund the stated amount${window ? ` ${window}` : ""}. Receipt has not been confirmed.`,
+    whyItMatters:
+      "A promised refund remains pending until it reaches the original payment method.",
+    suggestedAction: window
+      ? `Monitor the original payment method for ${window.replace(/^within\s+/i, "")}. Chase through a verified provider channel only if the refund has not arrived after that period.`
+      : "Monitor the original payment method and chase through a verified provider channel if the promised refund does not arrive.",
+    estimatedValue: refund.amount?.sourceQuote ?? "Pending recovery",
+    urgency: "medium",
+    documentStatus: "informational",
+    confidence: "high",
+    status: "waiting",
+    createdAt: new Date().toISOString(),
+  };
+};
+
+const createAccountOutcomeFinding = (item: AdminItem): AdminFinding => {
+  const assessment = assessAccountOutcome(`${item.title}\n${item.rawText}`);
+  const amountText = assessment.amount?.sourceQuote;
+  const title = assessment.closurePending
+    ? "Account closure needs a document"
+    : assessment.unresolvedFinancialOutcome
+      ? "Account closed - balance needs checking"
+    : assessment.accountClosed
+      ? "Account closure confirmed"
+      : "Charge removal confirmed";
+  const summaryParts = [
+    assessment.accountClosed
+      ? "The provider says the account has been closed."
+      : undefined,
+    assessment.closurePending
+      ? "The provider says the account cannot be closed until the stated requirement is completed."
+      : undefined,
+    assessment.accountRemainsActive
+      ? "The provider says the account remains active."
+      : undefined,
+    assessment.chargesContinue
+      ? "The provider says monthly charges will continue until then."
+      : undefined,
+    assessment.chargeRemoved
+      ? `The provider says the${amountText ? ` ${amountText}` : ""} charge has been removed.`
+      : undefined,
+    assessment.noPaymentRequired
+      ? "The provider says no payment is required."
+      : undefined,
+    assessment.noFurtherBills
+      ? "The provider says no further bills should be issued."
+      : undefined,
+    assessment.noFurtherDirectDebits
+      ? "The provider says no further Direct Debits should be issued or collected."
+      : undefined,
+    assessment.finalDirectDebitPending
+      ? "The provider says one final Direct Debit may still be collected."
+      : undefined,
+    assessment.waiverUnderReview
+      ? "The provider says the request to remove the charge is still under review."
+      : undefined,
+    assessment.waiverUnderReview
+      ? "The message does not confirm that the balance is cancelled or payable now."
+      : undefined,
+    assessment.noDecisionYet
+      ? "The provider says no decision has been made yet."
+      : undefined,
+    assessment.paymentNotRequiredToday
+      ? "The provider says payment is not requested today."
+      : undefined,
+    assessment.futurePaymentPossible
+      ? "The provider says the balance may become payable after its review."
+      : undefined,
+    assessment.providerReviewPending && !assessment.waiverUnderReview
+      ? "The provider says its review is pending."
+      : undefined,
+    assessment.providerWillWriteAgain
+      ? "The provider says it will write again with its decision."
+      : undefined,
+    assessment.requiredDocument
+      ? `The provider says the ${assessment.requiredDocument} is required${assessment.actionDeadline ? ` by ${assessment.actionDeadline}` : ""}.`
+      : undefined,
+    assessment.collectionActivityPossible
+      ? "The provider says the balance may be referred for further collection activity."
+      : undefined,
+    assessment.conditionalFollowUp && assessment.followUpPeriod
+      ? `The provider says to follow up if no response arrives ${assessment.followUpPeriod}.`
+      : undefined,
+    assessment.chargeRemovalDenied
+      ? "The provider says the charge has not been removed."
+      : undefined,
+    assessment.amountStillOwed &&
+    !assessment.chargeRemovalDenied &&
+    !(assessment.chargeRemoved && assessment.noPaymentRequired)
+      ? "The provider says an amount may still be owed."
+      : undefined,
+  ].filter((part): part is string => Boolean(part));
+  const status: AdminFinding["status"] = assessment.balanceStillPayable
+    ? "to_do"
+    : assessment.closurePending || assessment.requiredDocument
+      ? "to_do"
+    : assessment.finalDirectDebitPending ||
+        assessment.waiverUnderReview ||
+        assessment.futurePaymentPossible ||
+        assessment.providerReviewPending ||
+        assessment.providerWillWriteAgain
+      ? "waiting"
+      : assessment.responseRequired
+        ? "to_do"
+      : "resolved";
+
+  return {
+    id: `finding-${crypto.randomUUID()}`,
+    itemId: item.id,
+    category: "unknown",
+    title,
+    summary: summaryParts.join(" "),
+    whyItMatters:
+      "This is a provider confirmation to keep and check against the original message. AdminAvenger has not independently verified the account or payment position.",
+    suggestedAction: assessment.closurePending || assessment.requiredDocument
+      ? `Send the ${assessment.requiredDocument ?? "required document"}${assessment.actionDeadline ? ` by ${assessment.actionDeadline}` : ""} through a verified provider channel, then keep proof and reference${assessment.reference ? ` ${assessment.reference}` : ""}. The account is not yet closed.`
+      : assessment.balanceStillPayable
+      ? `Keep the closure confirmation and check the provider's stated balance and reference${assessment.reference ? ` ${assessment.reference}` : ""} through a verified channel before deciding what to do.`
+      : assessment.waiverUnderReview
+        ? `Keep the closure confirmation and wait for the provider's separate charge decision${assessment.reference ? `, keeping reference ${assessment.reference} with the record` : ""}.${assessment.conditionalFollowUp && assessment.followUpPeriod ? ` Follow up through a verified channel if no response arrives ${assessment.followUpPeriod}.` : ""} Do not treat the charge as removed unless the provider confirms that outcome.`
+      : assessment.futurePaymentPossible || assessment.providerReviewPending
+        ? "Keep the closure confirmation and wait for the provider's promised decision. The balance is not requested today, but do not treat it as waived because the message says it may become payable after review."
+      : assessment.finalDirectDebitPending
+        ? `Keep the confirmation and check the relevant bank account for the stated final Direct Debit${assessment.reference ? `, keeping reference ${assessment.reference} with the record` : ""}.`
+        : assessment.responseRequired
+          ? `Keep the closure confirmation and separately check the response the message says is required${assessment.reference ? `, using reference ${assessment.reference}` : ""}. Use a verified provider channel before acting.`
+        : `Keep this confirmation with the relevant records and check the relevant bank account. ${
+            assessment.conditionalDirectDebitFollowUp
+              ? `Contact the provider through a verified channel only if a later Direct Debit is collected${assessment.reference ? `; quote reference ${assessment.reference}` : ""}.`
+              : "Only contact the provider if the account outcome does not match what happens next."
+          }`,
+    estimatedValue: amountText
+      ? `${amountText} mentioned by the provider - not counted as saved or recovered`
+      : undefined,
+    urgency:
+      assessment.collectionActivityPossible || assessment.actionDeadline
+        ? "high"
+        : assessment.balanceStillPayable || assessment.responseRequired || assessment.closurePending
+          ? "medium"
+        : "low",
+    deadline: assessment.actionDeadline,
+    documentStatus: assessment.balanceStillPayable || assessment.responseRequired || assessment.closurePending
+      ? "pending_manual_action"
+      : assessment.finalDirectDebitPending
+        ? "informational"
+        : "completed_no_action",
+    confidence:
+      Number(assessment.accountClosed) +
+        Number(assessment.chargeRemoved) +
+        Number(assessment.noPaymentRequired) +
+        Number(assessment.noFurtherBills) >=
+      3
+        ? "high"
+        : "medium",
+    status,
+    createdAt: new Date().toISOString(),
+  };
+};
+
 // A reply is only genuinely requested when a reply/response mention sits outside
 // any negation span (so "do not reply" / "no-reply" never counts as one).
 const hasGenuineReplyRequest = (rawText: string): boolean => {
@@ -867,22 +1109,35 @@ export const analyseAdminItem = (
   options: AdminAnalysisOptions = {},
 ): AdminFinding[] => {
   const text = `${item.title} ${item.rawText} ${sourceTypeLabels[item.sourceType]}`.toLowerCase();
+  const generalAdminText = `${item.title}\n${item.rawText}`;
+  const accountOutcomeAssessment = assessAccountOutcome(generalAdminText);
+  // Direct security signals must be assessed before topical public-scope
+  // gating. A scam message can mention debt, employment, housing, or benefits
+  // precisely to create pressure; those words must not hide the safer
+  // independently-verified-channel result.
+  const emailSafetyAssessment = assessEmailSafety(
+    `${item.title}\n${item.rawText}`,
+    item.sourceType,
+  );
+  const highRiskEmailFinding = shouldPrioritiseEmailSafety(
+    `${item.title}\n${item.rawText}`,
+    emailSafetyAssessment,
+  )
+    ? createEmailSafetyFinding(item, emailSafetyAssessment)
+    : undefined;
 
-  if (options.accessMode === "public" && !isBroadbandPriceRiseScenario(item)) {
+  if (
+    options.accessMode === "public" &&
+    !highRiskEmailFinding &&
+    !isBroadbandPriceRiseScenario(item) &&
+    !accountOutcomeAssessment.isAccountOutcome
+  ) {
     const publicScopeBoundary = assessPublicIntakeScope(item);
 
     if (publicScopeBoundary.status === "blocked") {
       return [createPublicScopeBoundaryFinding(item, publicScopeBoundary)];
     }
   }
-
-  // Email safety is assessed BEFORE career support so a high-risk phishing or
-  // account-security message that happens to trip a career keyword cannot be
-  // routed to career support and bypass the safety override.
-  const emailSafetyAssessment = assessEmailSafety(`${item.title}\n${item.rawText}`);
-  const highRiskEmailFinding = hasStrongEmailSafetyOverride(emailSafetyAssessment)
-    ? createEmailSafetyFinding(item, emailSafetyAssessment)
-    : undefined;
 
   const careerSupportPack = buildCareerSupportPack({
     text: `${item.title}\n${item.rawText}`,
@@ -900,7 +1155,11 @@ export const analyseAdminItem = (
   // generic keyword rules (and, for the automatic/completed cases, above the
   // manual specialists) so a completed, automatic, or informational document is
   // never re-framed as a manual action.
-  const generalAdminText = `${item.title}\n${item.rawText}`;
+  const accountOutcomeFinding =
+    !highRiskEmailFinding && accountOutcomeAssessment.isAccountOutcome
+      ? createAccountOutcomeFinding(item)
+      : undefined;
+  const structuredGeneralAdminFallback = extractGeneralAdmin(item.rawText).fallback;
   const securityAlertFinding =
     !highRiskEmailFinding && isSecurityAlertText(item.rawText)
       ? createSecurityAlertFinding(item)
@@ -916,11 +1175,20 @@ export const analyseAdminItem = (
       ? createAppointmentReminderFinding(item)
       : undefined;
 
-  const approvedRefundFinding = isApprovedRefund(text) ? createApprovedRefundFinding(item) : undefined;
+  const refundState = assessRefundState(generalAdminText);
+  const promisedRefundFinding =
+    !highRiskEmailFinding && refundState.stage === "promised"
+      ? createPromisedRefundFinding(item)
+      : undefined;
+  const approvedRefundFinding =
+    !promisedRefundFinding && isApprovedRefund(text)
+      ? createApprovedRefundFinding(item)
+      : undefined;
   const travelRecoveryFinding = isTravelDisruptionRecoveryText(`${item.title}\n${item.rawText}`)
     ? createTravelRecoveryFinding(item)
     : undefined;
   const travelEvidenceCheckFinding =
+    !promisedRefundFinding &&
     !approvedRefundFinding &&
     !travelRecoveryFinding &&
     isTravelEvidenceCheckText(`${item.title}\n${item.rawText}`)
@@ -930,9 +1198,13 @@ export const analyseAdminItem = (
   const energyPriceChangeFinding = isEnergyPriceChangeText(`${item.title}\n${item.rawText}`)
     ? createEnergyPriceChangeFinding(item)
     : undefined;
-  const noActionFinding = isNoActionRecord(text) ? createUnknownFinding(item) : undefined;
+  const noActionFinding =
+    !accountOutcomeFinding && isNoActionRecord(text)
+      ? createUnknownFinding(item)
+      : undefined;
   const paymentReminderAssessment = assessPaymentReminder(item);
   const paymentReminderFinding =
+    !promisedRefundFinding &&
     !approvedRefundFinding &&
     !subscriptionFinding &&
     !noActionFinding &&
@@ -941,7 +1213,11 @@ export const analyseAdminItem = (
       ? createPaymentReminderFinding(item)
       : undefined;
   const receiptFinding =
-    !paymentReminderFinding && !noActionFinding && !travelRecoveryFinding && !subscriptionFinding && isReceiptRecord(text)
+    !paymentReminderFinding &&
+    !noActionFinding &&
+    !travelRecoveryFinding &&
+    !subscriptionFinding &&
+    isReceiptRecord(text)
       ? createReceiptFinding(item)
       : undefined;
   const deliveryIssueFinding =
@@ -1027,6 +1303,7 @@ export const analyseAdminItem = (
     !deliveryCompletedFinding &&
     !billReadyDirectDebitFinding &&
     !appointmentReminderFinding &&
+    !promisedRefundFinding &&
     !approvedRefundFinding &&
     !travelRecoveryFinding &&
     !travelEvidenceCheckFinding &&
@@ -1040,6 +1317,9 @@ export const analyseAdminItem = (
     !appointmentTaskFinding &&
     !broadbandPriceRiseFinding &&
     !trainDelayFinding &&
+    !(accountOutcomeFinding &&
+      !accountOutcomeAssessment.unresolvedFinancialOutcome &&
+      !accountOutcomeAssessment.closurePending) &&
     isDecisionEngineDocument(item.rawText)
       ? createDecisionEngineFinding(item, item.rawText)
       : undefined;
@@ -1073,7 +1353,7 @@ export const analyseAdminItem = (
         return false;
       }
 
-      if (approvedRefundFinding) {
+      if (promisedRefundFinding || approvedRefundFinding) {
         return false;
       }
 
@@ -1109,6 +1389,7 @@ export const analyseAdminItem = (
   const priorityFindings = [
     highRiskEmailFinding,
     securityAlertFinding,
+    promisedRefundFinding,
     approvedRefundFinding,
     travelRecoveryFinding,
     travelEvidenceCheckFinding,
@@ -1127,7 +1408,20 @@ export const analyseAdminItem = (
     trainDelayFinding,
     decisionEngineFinding,
   ].filter((finding): finding is AdminFinding => Boolean(finding));
-  const allFindings = [...priorityFindings, ...findings];
+  const allFindings = [
+    ...priorityFindings,
+    ...findings,
+    ...(accountOutcomeFinding ? [accountOutcomeFinding] : []),
+  ];
+  const strongerFindings = allFindings.filter((finding) => finding !== noActionFinding);
 
-  return allFindings.length > 0 ? allFindings : [createUnknownFinding(item)];
+  if (strongerFindings.length > 0) {
+    return strongerFindings;
+  }
+
+  if (structuredGeneralAdminFallback) {
+    return [createStructuredGeneralAdminFallbackFinding(item, structuredGeneralAdminFallback)];
+  }
+
+  return noActionFinding ? [noActionFinding] : [createUnknownFinding(item)];
 };

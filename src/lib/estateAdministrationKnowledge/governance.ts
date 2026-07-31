@@ -5,6 +5,7 @@ import {
   HUMAN_REVIEW_DECISIONS,
   type ActivationManifest,
   type ApprovalProfile,
+  type ApprovalRole,
   type AuthoringKnowledgeEntry,
   type AuthoringKnowledgeEntryInput,
   type EligibilityBlockCode,
@@ -14,6 +15,7 @@ import {
   type ExplicitRollbackResult,
   type ExternalApprovalEvidence,
   type GovernedCorpusInputs,
+  type HumanReviewWorkflowInputs,
   type ParseResult,
   type ProductScopeContext,
   type RuntimeBundleResult,
@@ -790,6 +792,84 @@ const uniqueReasons = (
   });
 };
 
+export const assessApprovalEvidenceRecord = (
+  entry: AuthoringKnowledgeEntry,
+  profile: ApprovalProfile,
+  record: ExternalApprovalEvidence,
+  role: ApprovalRole,
+  context: EligibilityContext,
+  humanReviewWorkflow: HumanReviewWorkflowInputs,
+): {
+  satisfied: boolean;
+  blockCodes: readonly EligibilityBlockCode[];
+} => {
+  const blockCodes: EligibilityBlockCode[] = [];
+  const basicEvidenceValid =
+    validateApprovalEvidenceShape([record]).length === 0 &&
+    record.entryId === entry.entryId &&
+    record.exactRevision === entry.exactRevision &&
+    record.contentDigest === entry.contentDigest &&
+    record.approvalProfileId === profile.profileId &&
+    record.role === role &&
+    profile.allowedEvidenceKinds.includes(record.evidenceKind) &&
+    isNonEmptyString(record.reviewerId) &&
+    hasValidReviewedCommit(record) &&
+    isNonEmptyString(record.evidenceReference) &&
+    isoDatePattern.test(record.reviewedAt);
+
+  if (!basicEvidenceValid) {
+    blockCodes.push("approval_evidence_invalid");
+  }
+
+  if (record.evidenceKind === "synthetic_test") {
+    const isolatedSyntheticContext =
+      profile.nonProduction &&
+      context.productScope.availability === "development_only" &&
+      context.consumptionScope ===
+        "estate_administration_hidden_walking_skeleton";
+    if (!isolatedSyntheticContext) {
+      blockCodes.push("synthetic_approval_non_production_only");
+    }
+    if (!reviewDecisionCanSatisfyApproval(record)) {
+      blockCodes.push(
+        record.decision === "approved_with_conditions"
+          ? "review_conditions_unsatisfied"
+          : "review_decision_not_approving",
+      );
+    }
+    if (
+      (profile.requiresReviewEvidenceExpiry &&
+        record.expiresAt === null) ||
+      (record.expiresAt !== null &&
+        context.asOfDate > record.expiresAt)
+    ) {
+      blockCodes.push("review_evidence_expired");
+    }
+
+    const uniqueBlockCodes = [...new Set(blockCodes)];
+    return {
+      satisfied: uniqueBlockCodes.length === 0,
+      blockCodes: uniqueBlockCodes,
+    };
+  }
+
+  blockCodes.push(
+    ...assessHumanReviewEvidence(
+      record,
+      entry,
+      profile,
+      role,
+      context.asOfDate,
+      humanReviewWorkflow,
+    ).blockCodes,
+  );
+  const uniqueBlockCodes = [...new Set(blockCodes)];
+  return {
+    satisfied: uniqueBlockCodes.length === 0,
+    blockCodes: uniqueBlockCodes,
+  };
+};
+
 const approvalReasons = (
   entry: AuthoringKnowledgeEntry,
   profile: ApprovalProfile | undefined,
@@ -826,59 +906,16 @@ const approvalReasons = (
       continue;
     }
 
-    const assessments = roleEvidence.map((record) => {
-      const basicEvidenceValid =
-        validateApprovalEvidenceShape([record]).length === 0 &&
-        record.contentDigest === entry.contentDigest &&
-        record.approvalProfileId === profile.profileId &&
-        profile.allowedEvidenceKinds.includes(record.evidenceKind) &&
-        isNonEmptyString(record.reviewerId) &&
-        hasValidReviewedCommit(record) &&
-        isNonEmptyString(record.evidenceReference) &&
-        isoDatePattern.test(record.reviewedAt);
-
-      if (!basicEvidenceValid) {
-        return {
-          satisfied: false,
-          blockCodes: ["approval_evidence_invalid"] as const,
-        };
-      }
-
-      if (record.evidenceKind === "synthetic_test") {
-        return {
-          satisfied:
-            profile.nonProduction &&
-            isolatedSyntheticContext &&
-            reviewDecisionCanSatisfyApproval(record) &&
-            (!profile.requiresReviewEvidenceExpiry ||
-              record.expiresAt !== null) &&
-            (record.expiresAt === null ||
-              context.asOfDate <= record.expiresAt),
-          blockCodes:
-            profile.nonProduction && isolatedSyntheticContext
-              ? (profile.requiresReviewEvidenceExpiry &&
-                  record.expiresAt === null) ||
-                (record.expiresAt !== null &&
-                  context.asOfDate > record.expiresAt)
-                ? (["review_evidence_expired"] as const)
-                : reviewDecisionCanSatisfyApproval(record)
-                  ? []
-                  : record.decision === "approved_with_conditions"
-                    ? (["review_conditions_unsatisfied"] as const)
-                    : (["review_decision_not_approving"] as const)
-              : (["synthetic_approval_non_production_only"] as const),
-        };
-      }
-
-      return assessHumanReviewEvidence(
-        record,
+    const assessments = roleEvidence.map((record) =>
+      assessApprovalEvidenceRecord(
         entry,
         profile,
+        record,
         role,
-        context.asOfDate,
+        context,
         humanReviewWorkflow,
-      );
-    });
+      ),
+    );
     const validEvidence = assessments.some(
       (assessment) => assessment.satisfied,
     );

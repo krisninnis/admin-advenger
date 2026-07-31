@@ -13,6 +13,7 @@ import {
   getEmailSafetyOrdinarySignals,
   getEmailSafetyRiskBand,
   getEmailSafetyRiskBandLabel,
+  shouldPrioritiseEmailSafety,
 } from "../suspiciousEmail";
 
 const now = "2026-07-17T10:00:00.000Z";
@@ -34,6 +35,81 @@ const expectNoScamScores = (label: string, value: unknown) => {
 };
 
 describe("email safety risk bands", () => {
+  it("recognises complete numeric payment demands without matching unrelated numbers", () => {
+    for (const text of [
+      "Pay 5 today",
+      "Pay 50 today",
+      "Pay £50 today",
+      "Send 100 now",
+      "Transfer £1,250.00 immediately",
+    ]) {
+      expect(assessEmailSafety(text, "email").riskSignals, text).toContain(
+        "Payment pressure or unusual payment request",
+      );
+    }
+
+    expect(assessEmailSafety("Invoice reference 139. Order 1250.", "email").riskSignals).not.toContain(
+      "Payment pressure or unusual payment request",
+    );
+  });
+
+  it("does not turn negated, descriptive or expected security wording into requests", () => {
+    const ordinary = [
+      "Do not share your verification code.",
+      "Your bank account statement is ready.",
+      "Do not use the link in this message. Open the official app directly.",
+      "We will never ask for your password.",
+      "Your verification code is 482901. Do not share it with anyone.",
+      "Invoice INV-50 for £50 is attached for your records.",
+      "Your expected monthly statement is attached.",
+    ];
+
+    for (const text of ordinary) {
+      const assessment = assessEmailSafety(text, "email");
+      expect(assessment.riskSignals, text).toEqual([]);
+      expect(assessment.cautionSignals, text).not.toContain("Click/verify immediately wording");
+      expect(assessment.cautionSignals, text).not.toContain("Unexpected attachment wording");
+      expect(shouldPrioritiseEmailSafety(text, assessment), text).toBe(false);
+    }
+  });
+
+  it("requires direct requests or corroborating signals for primary security precedence", () => {
+    const weakSingles = [
+      "Please review the information using this link.",
+      "Open the attached invoice when convenient.",
+      "Payment of £50 is shown on the ordinary invoice.",
+      "Action required: review your account statement.",
+    ];
+    for (const text of weakSingles) {
+      expect(shouldPrioritiseEmailSafety(text, assessEmailSafety(text, "email")), text).toBe(false);
+    }
+
+    const strong = [
+      "Send us the verification code you just received.",
+      "Urgent: pay £50 today using https://pay-now.example/link.",
+      "Our bank details have changed. Send the invoice payment to the new account immediately.",
+      "This is the tax office. Transfer £700 now to avoid arrest.",
+      "Guaranteed investment return: send £2,000 today and double it this month.",
+      "Your account will be suspended. Click this link to avoid suspension.",
+      "Open the attached invoice and enable editing to see the amount.",
+    ];
+    for (const text of strong) {
+      expect(shouldPrioritiseEmailSafety(text, assessEmailSafety(text, "email")), text).toBe(true);
+    }
+  });
+
+  it("keeps weak email cautions on the normal public route", () => {
+    for (const rawText of [
+      "Please review this ordinary invoice using this link.",
+      "Your expected monthly statement is attached for your records.",
+      "Do not use the link in this message. Open the official app directly.",
+    ]) {
+      const [finding] = analyseAdminItem(makeItem("Pasted admin text", rawText), { accessMode: "public" });
+      expect(finding.title, rawText).not.toBe("Email needs safety check");
+      expect(finding.title, rawText).not.toBe("Email safety check");
+    }
+  });
+
   it("returns deterministic plain-language bands without public percentage fields", () => {
     const high = assessEmailSafety(
       "Sender: support@secure-bank-login-example.com\nReply-to: randomhelpdesk@example.net\nYour account will be locked today. Click this link immediately to verify your bank details.",
@@ -81,7 +157,7 @@ describe("email safety risk bands", () => {
     expect(adminCase.evidence.map((evidence) => evidence.label)).not.toContain("Threat signals");
     expect(adminCase.evidence.map((evidence) => evidence.label)).not.toContain("Normal/lower-risk signals");
     expect(opportunity.statusLabel).toBe("High-risk signals found");
-    expect(draft.safetyNote).toContain("cannot determine whether this is a scam");
+    expect(draft.safetyNote).toContain("cannot determine whether the message is fraudulent");
     expect(markdown).toContain("Plain-language band");
     expect(markdown).toContain("What AdminAvenger Cannot Confirm");
     expect(modalHtml).toContain("High-risk signals found");

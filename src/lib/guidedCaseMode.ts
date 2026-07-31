@@ -19,6 +19,7 @@ const savingOrReviewTypes = new Set<OpportunityType>([
 ]);
 
 const recordTypes = new Set<OpportunityType>([
+  "account_outcome_confirmation",
   "no_action_needed",
   "delivery_update",
   "receipt_guardian",

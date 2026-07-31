@@ -23,11 +23,21 @@ import {
 } from "./moneyParsers";
 import { assessPaymentReminder } from "./paymentReminderAssessment";
 import {
+  assessAccountOutcome,
+  assessRefundState,
+  extractGeneralAdmin,
+} from "./generalAdminExtraction";
+import {
   assessEmailSafety,
+  describeStatedPressure,
   getEmailSafetyOrdinarySignals,
   getEmailSafetyRiskBandExplanation,
   getEmailSafetyRiskBandLabel,
 } from "./suspiciousEmail";
+import {
+  detectSensitiveInformationRequest,
+  SENSITIVE_INFORMATION_REQUEST_EVIDENCE_LABEL,
+} from "./sensitiveInformationRequest";
 
 const emailSafetyNextAction =
   "Use the email safety check. If unsure, open the provider's official website or app directly instead of using links in this email.";
@@ -78,6 +88,11 @@ const isApprovedRefundFinding = (finding: AdminFinding, item: AdminItem) =>
       `${item.title} ${item.rawText}`,
     ));
 
+const isPromisedRefundFinding = (finding: AdminFinding, item: AdminItem) =>
+  finding.category === "refund" &&
+  /^refund promised$/i.test(finding.title) &&
+  assessRefundState(`${item.title}\n${item.rawText}`).stage === "promised";
+
 const isEnergyPriceChangeFinding = (finding: AdminFinding, item: AdminItem) =>
   finding.category === "bill_increase" &&
   (/energy prices are changing/i.test(finding.title) || isEnergyPriceChangeText(`${item.title}\n${item.rawText}`));
@@ -95,6 +110,11 @@ const isCareerSupportFinding = (finding: AdminFinding, item: AdminItem) => {
 const isPaymentReminderFinding = (finding: AdminFinding, item: AdminItem) =>
   /^payment reminder to check$/i.test(finding.title) &&
   assessPaymentReminder(item).isPaymentReminder;
+
+const isAccountOutcomeFinding = (finding: AdminFinding, item: AdminItem) =>
+  /^(?:account closure confirmed|account closed - balance needs checking|account closure needs a document|charge removal confirmed)$/i.test(
+    finding.title,
+  ) && assessAccountOutcome(`${item.title}\n${item.rawText}`).isAccountOutcome;
 
 const createEvidence = (
   caseId: string,
@@ -146,12 +166,122 @@ const evidenceForFinding = (
   const broadbandPriceRiseAssessment = assessBroadbandPriceRise(item);
   const delayRepayAssessment = assessUkTrainDelayRefund(item);
 
+  if (finding.generalAdminFallback) {
+    const fallback = finding.generalAdminFallback;
+    const amountLabels: Record<(typeof fallback.amounts)[number]["role"], string> = {
+      amount_demanded: "Amount requested by the source",
+      amount_collected_automatically: "Automatic collection amount",
+      refund_total: "Refund amount mentioned",
+      order_subtotal: "Order subtotal mentioned",
+      postage: "Postage amount mentioned",
+      line_item: "Line-item amount mentioned",
+      recurring_charge: "Recurring charge mentioned",
+      price_old: "Old price",
+      price_new: "New price",
+      price_increase: "Price increase mentioned",
+      total_cost: "Total cost mentioned",
+      recoverable_amount: "Possible recovery mentioned",
+      balance_under_review: "Balance under review",
+      former_balance: "Former balance",
+      amount_received: "Payment recorded as received by the source",
+      future_amount: "Possible future amount",
+      unknown: "Amount mentioned - check its role",
+    };
+
+    return [
+      createEvidence(caseId, "Source statement", fallback.sourceStatement, "user_text"),
+      ...fallback.dates.map((date) =>
+        createEvidence(caseId, `Source date - ${date.role.replaceAll("_", " ")}`, date.sourceQuote, "detected"),
+      ),
+      ...fallback.relativePeriods.map((period) =>
+        createEvidence(caseId, `Source period - ${period.role.replaceAll("_", " ")}`, period.sourceQuote, "detected"),
+      ),
+      ...fallback.amounts.map((amount) =>
+        createEvidence(caseId, amountLabels[amount.role], amount.sourceQuote, "detected"),
+      ),
+      ...fallback.references.map((reference) =>
+        createEvidence(caseId, "Reference", reference.sourceQuote, "detected"),
+      ),
+      ...(fallback.requestedDocument
+        ? [createEvidence(caseId, "Requested document", fallback.requestedDocument, "detected")]
+        : []),
+      ...(fallback.requestedAction
+        ? [createEvidence(caseId, "Requested action", fallback.requestedAction, "detected")]
+        : []),
+      ...(fallback.inconsistency
+        ? [
+            createEvidence(
+              caseId,
+              "Contradictory statements in the message",
+              fallback.inconsistency,
+              "detected",
+            ),
+          ]
+        : []),
+      ...(fallback.dependency
+        ? [createEvidence(caseId, "Open dependency", fallback.dependency, "detected")]
+        : []),
+      ...(fallback.consequence
+        ? [createEvidence(caseId, "Consequence stated by source", fallback.consequence, "detected")]
+        : []),
+      ...(fallback.evidenceToGather ?? []).map((record) =>
+        createEvidence(caseId, "Record worth having to hand", record, "manual"),
+      ),
+      createEvidence(
+        caseId,
+        "Safety boundary",
+        fallback.uncertaintyNote,
+        "manual",
+      ),
+    ];
+  }
+
   if (isSuspiciousEmailFinding(finding, item)) {
     const suspicious = assessEmailSafety(`${item.title}\n${item.rawText}`, item.sourceType);
+    const extraction = extractGeneralAdmin(`${item.title}\n${item.rawText}`);
+    const demandedAmount = extraction.amounts.find((amount) => amount.role === "amount_demanded");
+    // What the message asked for stays visible as a quoted source fact. The
+    // recommended action refuses it; the fact is never restated as a step.
+    const credentialRequest = detectSensitiveInformationRequest(
+      `${item.title}\n${item.rawText}`,
+    );
+    const statedPressure = describeStatedPressure(item.rawText);
 
     return [
       createEvidence(caseId, "Overall result", getEmailSafetyRiskBandLabel(suspicious), "detected"),
       createEvidence(caseId, "Band explanation", getEmailSafetyRiskBandExplanation(suspicious), "detected"),
+      ...(credentialRequest.sourceQuote
+        ? [
+            createEvidence(
+              caseId,
+              SENSITIVE_INFORMATION_REQUEST_EVIDENCE_LABEL,
+              credentialRequest.sourceQuote,
+              "detected",
+            ),
+          ]
+        : []),
+      // The message's own threat and time limit stay visible, quoted and
+      // attributed, so the pressure can be judged rather than obeyed.
+      ...(statedPressure.threatQuote
+        ? [
+            createEvidence(
+              caseId,
+              "Consequence stated by message",
+              statedPressure.threatQuote,
+              "detected",
+            ),
+          ]
+        : []),
+      ...(statedPressure.urgencyQuote
+        ? [
+            createEvidence(
+              caseId,
+              "Time limit stated by message",
+              statedPressure.urgencyQuote,
+              "detected",
+            ),
+          ]
+        : []),
       ...suspicious.riskSignals.map((signal) =>
         createEvidence(caseId, "Risk signal", signal, "detected"),
       ),
@@ -161,6 +291,16 @@ const evidenceForFinding = (
       ...getEmailSafetyOrdinarySignals(suspicious).map((signal) =>
         createEvidence(caseId, "Ordinary or inconclusive detail", signal, "detected"),
       ),
+      ...(demandedAmount
+        ? [
+            createEvidence(
+              caseId,
+              "Amount requested by message",
+              demandedAmount.sourceQuote,
+              "detected",
+            ),
+          ]
+        : []),
       ...(suspicious.senderAddress
         ? [createEvidence(caseId, "Sender address", suspicious.senderAddress)]
         : []),
@@ -221,10 +361,235 @@ const evidenceForFinding = (
       ...(paymentReminder.alternativeEvidenceAction
         ? [createEvidence(caseId, "Alternative evidence action", paymentReminder.alternativeEvidenceAction)]
         : []),
+      ...(paymentReminder.collectionActivityPossible
+        ? [
+            createEvidence(
+              caseId,
+              "Collection warning",
+              "The provider says further collection activity may follow",
+            ),
+          ]
+        : []),
       createEvidence(
         caseId,
         "Payment reminder safety note",
         "Amount being requested only. AdminAvenger has not decided whether it is owed.",
+        "manual",
+      ),
+      createEvidence(caseId, "Source", item.title, "user_text"),
+    ];
+  }
+
+  if (isAccountOutcomeFinding(finding, item)) {
+    const outcome = assessAccountOutcome(`${item.title}\n${item.rawText}`);
+    const amountText = outcome.amount?.sourceQuote;
+
+    return [
+      ...(outcome.accountClosed
+        ? [
+            createEvidence(
+              caseId,
+              "Account status",
+              "The provider says the account has been closed",
+            ),
+          ]
+        : []),
+      ...(outcome.closurePending
+        ? [
+            createEvidence(
+              caseId,
+              "Account status",
+              "The provider says the account closure has not been completed",
+            ),
+          ]
+        : []),
+      ...(outcome.accountRemainsActive
+        ? [
+            createEvidence(
+              caseId,
+              "Account status",
+              "The provider says the account remains active",
+            ),
+          ]
+        : []),
+      ...(outcome.chargesContinue
+        ? [
+            createEvidence(
+              caseId,
+              "Charge status",
+              "The provider says monthly charges will continue",
+            ),
+          ]
+        : []),
+      ...(outcome.chargeRemoved
+        ? [
+            createEvidence(
+              caseId,
+              "Charge outcome",
+              `The provider says the${amountText ? ` ${amountText}` : ""} charge has been removed`,
+            ),
+          ]
+        : []),
+      ...(outcome.balanceStillPayable
+        ? [
+            createEvidence(
+              caseId,
+              "Balance status",
+              `The provider says the${amountText ? ` ${amountText}` : ""} final balance remains payable`,
+            ),
+          ]
+        : []),
+      ...(outcome.waiverUnderReview
+        ? [
+            createEvidence(
+              caseId,
+              "Charge review status",
+              "The provider says the request to remove the charge is still under review",
+            ),
+          ]
+        : []),
+      ...(outcome.noDecisionYet
+        ? [
+            createEvidence(
+              caseId,
+              "Charge review status",
+              "The provider says no waiver decision has been made yet",
+            ),
+          ]
+        : []),
+      ...(outcome.paymentNotRequiredToday
+        ? [
+            createEvidence(
+              caseId,
+              "Payment request",
+              "The provider says payment is not requested today",
+            ),
+          ]
+        : []),
+      ...(outcome.futurePaymentPossible
+        ? [
+            createEvidence(
+              caseId,
+              "Future payment status",
+              "The provider says the balance may become payable after review",
+            ),
+          ]
+        : []),
+      ...(outcome.providerReviewPending
+        ? [
+            createEvidence(
+              caseId,
+              "Provider review status",
+              "The provider says its review is still pending",
+            ),
+          ]
+        : []),
+      ...(outcome.providerWillWriteAgain
+        ? [
+            createEvidence(
+              caseId,
+              "Promised response",
+              "The provider says it will write again with its decision",
+            ),
+          ]
+        : []),
+      ...(outcome.chargeRemovalDenied
+        ? [
+            createEvidence(
+              caseId,
+              "Charge outcome",
+              "The provider says the charge has not been removed",
+            ),
+          ]
+        : []),
+      ...(outcome.noPaymentRequired
+        ? [
+            createEvidence(
+              caseId,
+              "Payment request",
+              "The provider says no payment is required",
+            ),
+          ]
+        : []),
+      ...(outcome.noFurtherBills
+        ? [
+            createEvidence(
+              caseId,
+              "Future bills",
+              "The provider says no further bills should be issued",
+            ),
+          ]
+        : []),
+      ...(outcome.noFurtherDirectDebits
+        ? [
+            createEvidence(
+              caseId,
+              "Future Direct Debits",
+              "The provider says no further Direct Debits should be issued or collected",
+            ),
+          ]
+        : []),
+      ...(outcome.requiredDocument
+        ? [
+            createEvidence(
+              caseId,
+              "Required document",
+              `${outcome.requiredDocument}${outcome.actionDeadline ? ` by ${outcome.actionDeadline}` : ""}`,
+            ),
+          ]
+        : []),
+      ...(outcome.conditionalFollowUp && outcome.followUpPeriod
+        ? [
+            createEvidence(
+              caseId,
+              "Conditional follow-up",
+              `Follow up if no response arrives ${outcome.followUpPeriod}`,
+            ),
+          ]
+        : []),
+      ...(outcome.collectionActivityPossible
+        ? [
+            createEvidence(
+              caseId,
+              "Collection warning",
+              "The provider says further collection activity may follow",
+            ),
+          ]
+        : []),
+      ...(outcome.keepConfirmation
+        ? [
+            createEvidence(
+              caseId,
+              "Record keeping",
+              "The message says to keep this confirmation for the records",
+            ),
+          ]
+        : []),
+      ...(outcome.conditionalDirectDebitFollowUp
+        ? [
+            createEvidence(
+              caseId,
+              "Conditional follow-up",
+              "The message says to contact the provider only if a later Direct Debit is collected",
+            ),
+          ]
+        : []),
+      ...(outcome.finalDirectDebitPending
+        ? [
+            createEvidence(
+              caseId,
+              "Final Direct Debit",
+              "The provider says one final Direct Debit may still be collected",
+            ),
+          ]
+        : []),
+      ...(outcome.reference
+        ? [createEvidence(caseId, "Reference", outcome.reference)]
+        : []),
+      createEvidence(
+        caseId,
+        "Provider-statement boundary",
+        "This records what the provider says. AdminAvenger has not independently verified the account or payment position.",
         "manual",
       ),
       createEvidence(caseId, "Source", item.title, "user_text"),
@@ -367,6 +732,28 @@ const evidenceForFinding = (
     finding.deadline ?? "Date clue not stated",
   );
 
+  if (isPromisedRefundFinding(finding, item)) {
+    const refund = assessRefundState(text);
+    return [
+      ...(refund.amount
+        ? [createEvidence(caseId, "Refund amount", refund.amount.sourceQuote)]
+        : []),
+      ...(refund.relativePeriod
+        ? [createEvidence(caseId, "Promised refund window", refund.relativePeriod.value)]
+        : []),
+      ...(refund.reference
+        ? [createEvidence(caseId, "Reference", refund.reference.value)]
+        : []),
+      createEvidence(
+        caseId,
+        "Refund status",
+        "Promised by the provider, but not confirmed received",
+        "detected",
+      ),
+      createEvidence(caseId, "Source", item.title, "user_text"),
+    ];
+  }
+
   if (isApprovedRefundFinding(finding, item)) {
     const refundAmount = matchFirst(text, moneyPattern);
     const refundWindow = matchFirst(text, refundWindowPattern);
@@ -429,6 +816,67 @@ const evidenceForFinding = (
       ...(travel.suggestedRecipient ? [createEvidence(caseId, "Suggested recipient", travel.suggestedRecipient)] : []),
       ...dedupeNormalised(travel.missingProof).map((missing) =>
         createEvidence(caseId, `Missing proof: ${missing}`, "Needed before sending", "manual"),
+      ),
+      createEvidence(caseId, "Source", item.title, "user_text"),
+    ];
+  }
+
+  if (finding.category === "complaint") {
+    const extraction = extractGeneralAdmin(text);
+    const complaintOpen = /\bcomplaint\b[^.\n]*\b(?:remains? open|under investigation)\b/i.test(text);
+    return [
+      ...(complaintOpen
+        ? [createEvidence(caseId, "Complaint status", "The complaint remains open")]
+        : []),
+      ...extraction.references.map((reference) =>
+        createEvidence(caseId, "Reference", reference.value),
+      ),
+      ...extraction.relativePeriods.map((period) =>
+        createEvidence(caseId, "Expected response period", period.value),
+      ),
+      createEvidence(caseId, "Source", item.title, "user_text"),
+    ];
+  }
+
+  if (
+    finding.category === "important_reply" &&
+    /^(?:Universal Credit appointment|Disciplinary hearing invitation|Possession notice)/i.test(finding.title)
+  ) {
+    const extraction = extractGeneralAdmin(text);
+    const sourceDate = extraction.dates[0]?.value;
+    const isUc = /^Universal Credit appointment/i.test(finding.title);
+    const isDisciplinary = /^Disciplinary hearing invitation/i.test(finding.title);
+    return [
+      createEvidence(
+        caseId,
+        "Message type",
+        isUc
+          ? "Universal Credit appointment or claim action"
+          : isDisciplinary
+            ? "Disciplinary hearing invitation - no outcome stated"
+            : "Possession notice wording - eviction is not confirmed",
+      ),
+      ...(sourceDate
+        ? [createEvidence(caseId, isUc ? "Appointment date" : "Date stated", sourceDate)]
+        : []),
+      createEvidence(
+        caseId,
+        "Preparation needed",
+        isUc
+          ? "Review the official journal or appointment details and prepare what the message asks you to bring"
+          : isDisciplinary
+            ? "Review the invitation and allegations, and gather the attached evidence and relevant records"
+            : "Check the notice urgently and seek independent housing advice",
+      ),
+      createEvidence(
+        caseId,
+        "Decision boundary",
+        isUc
+          ? "AdminAvenger cannot decide benefit entitlement or whether a requirement has been met"
+          : isDisciplinary
+            ? "AdminAvenger cannot decide whether the employer's action is lawful"
+            : "The source says court action may follow; AdminAvenger cannot confirm eviction or the notice's legal effect",
+        "manual",
       ),
       createEvidence(caseId, "Source", item.title, "user_text"),
     ];
@@ -613,12 +1061,44 @@ const evidenceForFinding = (
   ];
 };
 
+const categoryPriority: Record<AdminCase["category"], number> = {
+  bill_increase: 0,
+  refund: 1,
+  subscription: 2,
+  warranty: 3,
+  complaint: 4,
+  important_reply: 5,
+  deadline: 6,
+  job_application: 7,
+  admin_dispute: 8,
+  unknown: 9,
+};
+
+const urgencyPriority: Record<AdminCase["urgency"], number> = {
+  high: 0,
+  medium: 1,
+  low: 2,
+};
+
+export const selectMostImportantCase = (cases: AdminCase[]) =>
+  [...cases].sort((first, second) => {
+    const urgencyDifference =
+      urgencyPriority[first.urgency] - urgencyPriority[second.urgency];
+
+    if (urgencyDifference !== 0) {
+      return urgencyDifference;
+    }
+
+    return categoryPriority[first.category] - categoryPriority[second.category];
+  })[0];
+
 export const createAdminCase = (finding: AdminFinding, item: AdminItem): AdminCase => {
   const now = new Date().toISOString();
   const caseId = `case-${finding.id}`;
   const delayRepayAssessment = assessUkTrainDelayRefund(item);
   const isDelayRepayCase = finding.category === "refund" && delayRepayAssessment.isTrainDelayScenario;
   const isApprovedRefundCase = isApprovedRefundFinding(finding, item);
+  const isPromisedRefundCase = isPromisedRefundFinding(finding, item);
   const isTravelRecoveryCase = isTravelRecoveryFinding(finding, item);
   const isEnergyPriceChangeCase = isEnergyPriceChangeFinding(finding, item);
   const isEmailSafetyCase = isSuspiciousEmailFinding(finding, item);
@@ -635,7 +1115,11 @@ export const createAdminCase = (finding: AdminFinding, item: AdminItem): AdminCa
     finding.deadline ??
     addDays(
       new Date(now),
-      isApprovedRefundCase || isTravelRecoveryCase ? 14 : finding.urgency === "high" ? 3 : 7,
+      isApprovedRefundCase || isPromisedRefundCase || isTravelRecoveryCase
+        ? 14
+        : finding.urgency === "high"
+          ? 3
+          : 7,
     );
   const broadbandPriceRiseAssessment = assessBroadbandPriceRise(item);
   const isBroadbandPriceRiseCase =
@@ -666,6 +1150,8 @@ export const createAdminCase = (finding: AdminFinding, item: AdminItem): AdminCa
       ? broadbandPriceRiseTitle
       : isDelayRepayCase
         ? "UK train delay refund case"
+        : isPromisedRefundCase
+          ? "Refund promised"
         : isApprovedRefundCase
           ? "Refund approved"
           : isEmailSafetyCase
@@ -688,6 +1174,8 @@ export const createAdminCase = (finding: AdminFinding, item: AdminItem): AdminCa
       ? broadbandPriceRiseSummary
       : isDelayRepayCase
         ? "AdminAvenger found a possible UK train delay refund case. This is not an eligibility decision: missing evidence and the operator's current Delay Repay policy still need checking."
+        : isPromisedRefundCase
+          ? "The provider has promised a refund, but the money has not been confirmed received."
         : isApprovedRefundCase
           ? "A refund has been approved and should be returned to the original payment method."
           : isEmailSafetyCase
@@ -733,6 +1221,8 @@ export const createAdminCase = (finding: AdminFinding, item: AdminItem): AdminCa
       ? broadbandPriceRiseNextAction
       : isDelayRepayCase
         ? delayRepayAssessment.recommendedNextStep
+        : isPromisedRefundCase
+          ? finding.suggestedAction
         : isApprovedRefundCase
           ? "Check your original payment method. Chase the provider if the refund has not arrived after 10 working days."
           : isEmailSafetyCase
@@ -754,6 +1244,7 @@ export const createAdminCase = (finding: AdminFinding, item: AdminItem): AdminCa
     emailSafetyAssessment: isEmailSafetyCase ? emailSafetyAssessment : undefined,
     decisionResult: isDecisionEngineCase ? decisionResult : undefined,
     careerSupportPack: isCareerSupportCase ? careerSupportPack : undefined,
+    generalAdminFallback: finding.generalAdminFallback,
     createdAt: finding.createdAt,
     updatedAt: now,
     evidence: evidenceForFinding(caseId, finding, item),

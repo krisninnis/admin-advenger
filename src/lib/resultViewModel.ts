@@ -12,7 +12,9 @@ import {
   FORBIDDEN_OUTCOME_CLAIMS,
   normaliseSafetyText,
 } from "./safetyWording";
-import { isSupportedBySource, normaliseForSupport } from "./sourceSupport";
+import { extractGeneralAdmin } from "./generalAdminExtraction";
+import { SENSITIVE_INFORMATION_REQUEST_EVIDENCE_LABEL } from "./sensitiveInformationRequest";
+import { isSupportedBySource } from "./sourceSupport";
 import type { StrategicNextStepPlan } from "./strategicNextStep";
 import type { WorkplaceSupportPack } from "./workplaceSupportPack";
 
@@ -319,6 +321,19 @@ const fromOpportunityDeadline = (opportunity?: OpportunityCard): ResultDateView 
       }
     : undefined;
 
+const fromGeneralAdminFallbackDate = (
+  date: NonNullable<AdminCase["generalAdminFallback"]>["dates"][number],
+  index: number,
+): ResultDateView => ({
+  id: `general-admin-date-${index + 1}`,
+  label: `Source date - ${date.role.replaceAll("_", " ")}`,
+  value: date.value,
+  caution: RESULT_DATE_CAUTION,
+  userMustCheck: true,
+  source: "main_result",
+  sourceQuote: date.sourceQuote,
+});
+
 const formatMoneyAmountOnly = (money: MoneyImpact) => {
   const amount = money.amount === undefined ? "Check the original document" : `GBP ${money.amount.toFixed(2)}`;
   const frequency =
@@ -421,6 +436,28 @@ const buildBestNextMove = (
 const isPaymentReminderOpportunity = (opportunity?: OpportunityCard, adminCase?: AdminCase) =>
   /^payment reminder to check$/i.test(opportunity?.title ?? adminCase?.title ?? "");
 
+const isAccountOutcomeOpportunity = (opportunity?: OpportunityCard) =>
+  opportunity?.opportunityType === "account_outcome_confirmation";
+
+const buildAccountOutcomeBestNextMove = (
+  opportunity: OpportunityCard,
+): ResultBestNextMoveView => ({
+  label: /account remains open/i.test(opportunity.statusLabel ?? "")
+    ? "Send the required document before the deadline"
+    : /balance still needs checking/i.test(opportunity.statusLabel ?? "")
+      ? "Check the balance and decide whether to pay or query it"
+      : /still (?:under review|pending)/i.test(opportunity.statusLabel ?? "")
+        ? "Wait for the provider's decision and keep the follow-up point"
+        : "Keep the confirmation and monitor the account",
+  description: safeText(
+    opportunity.nextBestAction,
+    "Keep the confirmation with the relevant records and check the relevant bank account for any later collection.",
+  ),
+  whyThisHelps:
+    "This preserves the provider's statement as evidence without treating it as independent verification or counting the removed charge as a saving or recovery.",
+  source: "best_next_move",
+});
+
 const buildPaymentReminderBestNextMove = (
   opportunity?: OpportunityCard,
 ): ResultBestNextMoveView => {
@@ -431,11 +468,106 @@ const buildPaymentReminderBestNextMove = (
   return {
     label: "Check the account, amount, and payment status",
     description:
-      `Check that the account reference belongs to you, whether the amount is correct, and whether it has already been paid. Use an independently verified provider channel rather than links or contact details you have not checked.${deadlineText} Keep proof of payment.`,
+      `Check that the account reference belongs to you, whether the amount is correct, and whether it has already been paid. If it appears correct, pay through a verified channel; if it appears incorrect, query or dispute it through an independently verified provider channel.${deadlineText} Keep proof of payment or contact.`,
     whyThisHelps:
       "This keeps the payment reminder factual without deciding that the amount is valid or legally owed.",
     source: "best_next_move",
   };
+};
+
+const buildStructuredOpportunityBestNextMove = (
+  opportunity?: OpportunityCard,
+): ResultBestNextMoveView | undefined => {
+  if (!opportunity) return undefined;
+
+  const common = {
+    description: safeText(opportunity.nextBestAction, "Check the source details before acting."),
+    source: "best_next_move" as const,
+  };
+
+  if (
+    (opportunity.opportunityType === "needs_human_check" || opportunity.opportunityType === "no_action_needed") &&
+    /preserving what the source says/i.test(opportunity.opportunityNote ?? "")
+  ) {
+    return {
+      ...common,
+      label: opportunity.opportunityType === "no_action_needed"
+        ? "Keep the source confirmation"
+        : "Follow the source-grounded next step",
+      whyThisHelps:
+        "This keeps the extracted facts and open dependency visible without making a specialist, liability, entitlement, or legal decision.",
+    };
+  }
+
+  if (/^refund promised$/i.test(opportunity.title)) {
+    const promisedPeriod = opportunity.evidenceFound
+      .find((entry) => /^Promised refund window:/i.test(entry))
+      ?.replace(/^Promised refund window:\s*(?:within\s+)?/i, "");
+    return {
+      ...common,
+      label: promisedPeriod
+        ? `Monitor the promised refund for ${promisedPeriod}`
+        : "Monitor the promised refund for the stated period",
+      whyThisHelps:
+        "This keeps the provider's promise visible without treating the refund as received or recovered.",
+    };
+  }
+
+  if (opportunity.opportunityType === "suspicious_email_risk") {
+    // When the message asks for a credential, refusing to share it is the
+    // headline move. Everything else keeps the existing payment/link wording.
+    const credentialRequested = opportunity.evidenceFound.some((entry) =>
+      entry.startsWith(`${SENSITIVE_INFORMATION_REQUEST_EVIDENCE_LABEL}:`),
+    );
+
+    return {
+      ...common,
+      label: credentialRequested
+        ? "Do not share the requested code, password, PIN, or card or bank details"
+        : "Avoid making the requested payment or using the message's link",
+      whyThisHelps: credentialRequested
+        ? "A genuine organisation does not need a code, password, PIN, or card or bank details sent back to it, so refusing costs nothing and removes the risk."
+        : "Independent verification avoids acting through contact details controlled by a potentially suspicious sender.",
+    };
+  }
+
+  if (/^complaint opportunity$/i.test(opportunity.title)) {
+    return {
+      ...common,
+      label: "Keep the complaint reference and wait for the response",
+      whyThisHelps:
+        "This keeps the unresolved complaint separate from any account-closure outcome.",
+    };
+  }
+
+  if (/^Universal Credit appointment/i.test(opportunity.title)) {
+    return {
+      ...common,
+      label: "Check the Universal Credit appointment details and prepare to attend",
+      whyThisHelps:
+        "This supports preparation and attendance without making a benefit-entitlement decision.",
+    };
+  }
+
+  if (/^Disciplinary hearing invitation/i.test(opportunity.title)) {
+    return {
+      ...common,
+      label: "Review the disciplinary invitation and gather relevant records",
+      whyThisHelps:
+        "This supports preparation without deciding whether the employer's action is lawful or what the outcome will be.",
+    };
+  }
+
+  if (/^Possession notice/i.test(opportunity.title)) {
+    return {
+      ...common,
+      label: "Check the possession notice urgently and seek independent housing advice",
+      whyThisHelps:
+        "Prompt checking and independent advice preserve uncertainty while court action may still follow.",
+    };
+  }
+
+  return undefined;
 };
 
 const buildCareerBestNextMove = (
@@ -699,9 +831,12 @@ export const buildResultViewModel = ({
       : (careerSupportPack?.educationAndTraining ?? []);
   const bestNextMove = isCareerSupportResult
     ? buildCareerBestNextMove(careerSupportPack)
-    : isPaymentReminderOpportunity(opportunity, adminCase)
-      ? buildPaymentReminderBestNextMove(opportunity)
-      : buildBestNextMove(strategicNextStepPlan);
+    : isAccountOutcomeOpportunity(opportunity)
+      ? buildAccountOutcomeBestNextMove(opportunity!)
+      : isPaymentReminderOpportunity(opportunity, adminCase)
+        ? buildPaymentReminderBestNextMove(opportunity)
+        : buildStructuredOpportunityBestNextMove(opportunity) ??
+          buildBestNextMove(strategicNextStepPlan);
   const title = safeText(
     opportunity?.title ??
       benefitsActionPack?.title ??
@@ -751,6 +886,7 @@ export const buildResultViewModel = ({
     ...(benefitsActionPack?.possibleDatesToCheck.map(fromBenefitsDate) ?? []),
     ...getDateFacts(decisionResult?.sourceFacts ?? []).map(fromDecisionDate),
     ...(decisionResult?.deadlines.map(fromDeadline) ?? []),
+    ...(adminCase?.generalAdminFallback?.dates.map(fromGeneralAdminFallbackDate) ?? []),
     fromOpportunityDeadline(opportunity),
   ].filter((date): date is ResultDateView => Boolean(date)));
   const moneyMentioned = dedupeMoney([
@@ -1425,7 +1561,11 @@ export const validateResultViewModelSafety = (
       return true;
     }
     const digits = amountDigits(amountText);
-    return digits ? normaliseForSupport(sourceText).replace(/,/g, "").includes(digits) : true;
+    if (!digits) return true;
+    const expectedAmount = Number(digits);
+    return extractGeneralAdmin(sourceText).amounts.some(
+      (amount) => amount.amount === expectedAmount,
+    );
   };
   const datesSourceSupported = model.keyDates.every((date) =>
     dateSupported(date.sourceQuote ?? date.value),

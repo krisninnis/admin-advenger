@@ -267,7 +267,7 @@ describe("AdminAvenger deterministic money safety", () => {
     expect(calculateImpactTotals(impacts, [adminCase]).confirmedSavedRecovered).toBe(0);
     expect(draft.messageType).toBe("email_safety_checklist");
     expect(draft.fullText).not.toContain("Hello,");
-    expect(draft.safetyNote).toContain("cannot determine whether this is a scam");
+    expect(draft.safetyNote).toContain("cannot determine whether the message is fraudulent");
   });
 
   it("keeps generic cancelled travel total costs as evidence only", () => {

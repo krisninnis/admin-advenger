@@ -191,6 +191,84 @@ export type HumanReviewAssessment = {
   blockCodes: readonly EligibilityBlockCode[];
 };
 
+export const assessHumanReviewFoundation = (
+  entry: AuthoringKnowledgeEntry,
+  profile: ApprovalProfile,
+  role: ApprovalRole,
+  asOfDate: string,
+  workflow: HumanReviewWorkflowInputs,
+): HumanReviewAssessment => {
+  const codes: EligibilityBlockCode[] = [];
+  const requests = workflow.requests.filter(
+    (candidate) => candidate.exactRevision === entry.exactRevision,
+  );
+  const request = requests.length === 1 ? requests[0] : undefined;
+  if (
+    !request ||
+    request.status === "draft" ||
+    request.status === "withdrawn" ||
+    request.entryId !== entry.entryId ||
+    request.contentDigest !== entry.contentDigest ||
+    request.approvalProfileId !== profile.profileId ||
+    request.intendedConsumptionScope !== entry.approvedConsumptionScope ||
+    !request.requestedRoles.includes(role)
+  ) {
+    codes.push("review_request_missing");
+  }
+
+  const assignments = request
+    ? workflow.assignments.filter(
+        (candidate) =>
+          candidate.requestId === request.requestId &&
+          candidate.role === role &&
+          candidate.status === "accepted",
+      )
+    : [];
+  const assignment = assignments.length === 1 ? assignments[0] : undefined;
+  if (
+    !assignment ||
+    assignment.acceptedAt === null ||
+    assignment.reviewerId.trim().length === 0
+  ) {
+    codes.push("review_assignment_missing");
+  }
+
+  const eligibility = assignment
+    ? workflow.reviewerEligibility.find(
+        (candidate) =>
+          candidate.eligibilityId === assignment.reviewerEligibilityId,
+      )
+    : undefined;
+  if (
+    !eligibility ||
+    eligibility.status !== "eligible" ||
+    eligibility.reviewerId !== assignment?.reviewerId ||
+    eligibility.role !== role ||
+    eligibility.qualificationOrAuthorityBasis.trim().length === 0 ||
+    !eligibility.permittedApprovalProfileIds.includes(profile.profileId) ||
+    !eligibility.permittedConsumptionScopes.includes(
+      entry.approvedConsumptionScope,
+    ) ||
+    eligibility.validFrom > asOfDate ||
+    (eligibility.validUntil !== null && asOfDate > eligibility.validUntil)
+  ) {
+    codes.push("reviewer_ineligible");
+  }
+
+  if (
+    eligibility?.conflictDeclaration.status !== "none_declared" ||
+    eligibility.conflictDeclaration.details !== null
+  ) {
+    codes.push("reviewer_conflict_unresolved");
+  }
+
+  const blockCodes = [...new Set(codes)];
+  return {
+    satisfied: blockCodes.length === 0,
+    blockCodes,
+  };
+};
+
 export const assessHumanReviewEvidence = (
   record: ExternalApprovalEvidence,
   entry: AuthoringKnowledgeEntry,
@@ -199,7 +277,15 @@ export const assessHumanReviewEvidence = (
   asOfDate: string,
   workflow: HumanReviewWorkflowInputs,
 ): HumanReviewAssessment => {
-  const codes: EligibilityBlockCode[] = [];
+  const codes: EligibilityBlockCode[] = [
+    ...assessHumanReviewFoundation(
+      entry,
+      profile,
+      role,
+      asOfDate,
+      workflow,
+    ).blockCodes,
+  ];
 
   if (
     record.entryId !== entry.entryId ||

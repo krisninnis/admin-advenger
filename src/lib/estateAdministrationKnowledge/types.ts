@@ -396,3 +396,273 @@ export type EmergencyRetirementResult = {
   remoteRevocationPerformed: false;
   message: string;
 };
+
+export type ReviewOperationsIssueCode =
+  | "exact_revision_not_found"
+  | "exact_revision_ambiguous"
+  | "conceptual_entry_mismatch"
+  | "approval_profile_missing"
+  | "approval_profile_invalid"
+  | "required_review_role_missing"
+  | "review_request_missing"
+  | "review_request_ambiguous"
+  | "review_request_mismatch"
+  | "review_assignment_missing"
+  | "reviewer_authority_missing"
+  | "reviewer_conflict_unresolved"
+  | "approval_evidence_invalid"
+  | "duplicate_approval_evidence"
+  | "competing_approval_evidence"
+  | "authoring_input_invalid"
+  | "review_workflow_invalid"
+  | "comparison_input_invalid"
+  | "activation_manifest_invalid"
+  | "activation_conflict"
+  | "retirement_target_not_pinned"
+  | "rollback_target_not_previously_valid";
+
+export type ReviewOperationsIssue = {
+  code: ReviewOperationsIssueCode;
+  message: string;
+  path: string;
+};
+
+export type EvidenceRoleSummary = {
+  role: ApprovalRole;
+  evidenceIds: readonly string[];
+  satisfyingEvidenceIds: readonly string[];
+  openConditionIds: readonly string[];
+};
+
+export type KnowledgeReviewPacket = {
+  authority: "operational_report_only";
+  authoringContent: {
+    entry: AuthoringKnowledgeEntry;
+    canonicalContentDigest: string;
+    digestMatchesCanonicalContent: boolean;
+    approvalProfile: ApprovalProfile | null;
+  };
+  externalApprovalEvidence: {
+    records: readonly ExternalApprovalEvidence[];
+    requests: readonly HumanReviewRequest[];
+    reviewerEligibility: readonly ReviewerEligibility[];
+    assignments: readonly HumanReviewAssignment[];
+    evidenceSummary: readonly EvidenceRoleSummary[];
+    openConditions: readonly ReviewCondition[];
+  };
+  activationState: {
+    manifestRevision: string;
+    matchingPins: readonly ActivationPin[];
+    conflictingPins: readonly ActivationPin[];
+  };
+  derivedOperationalReporting: {
+    requiredReviewerRoles: readonly ApprovalRole[];
+    validationIssues: readonly ValidationIssue[];
+    runtimeEligibility: RuntimeEligibility;
+  };
+};
+
+export type KnowledgeReviewPacketResult =
+  | {
+      status: "prepared";
+      packet: KnowledgeReviewPacket;
+    }
+  | {
+      status: "blocked";
+      issues: readonly ReviewOperationsIssue[];
+      packet?: KnowledgeReviewPacket;
+    };
+
+export type ReviewDimensionChecklist = {
+  authority: "human_review_prompt_only";
+  createsApprovalEvidence: false;
+  entryId: string;
+  exactRevision: string;
+  contentDigest: string;
+  approvalProfileId: string;
+  intendedConsumptionScope: ConsumptionScope;
+  role: ApprovalRole;
+  reviewRequestIds: readonly string[];
+  assignmentIds: readonly string[];
+  reviewerEligibilityIds: readonly string[];
+  evidenceReferencesToReview: readonly string[];
+  openConditionIds: readonly string[];
+  currentBlockCodes: readonly EligibilityBlockCode[];
+  reviewMaterials: readonly {
+    field: string;
+    value: unknown;
+  }[];
+  requiresValidUntil: boolean;
+  requiresReviewEvidenceExpiry: boolean;
+  reReviewTriggers: readonly string[];
+  prompts: readonly string[];
+};
+
+export type ReviewerChecklistResult =
+  | {
+      status: "prepared";
+      checklists: readonly ReviewDimensionChecklist[];
+      validationIssues: readonly ValidationIssue[];
+    }
+  | {
+      status: "blocked";
+      issues: readonly ReviewOperationsIssue[];
+      checklists?: readonly ReviewDimensionChecklist[];
+      validationIssues: readonly ValidationIssue[];
+    };
+
+export type EvidenceRecordOperationalReport = {
+  evidenceId: string;
+  role: ApprovalRole;
+  synthetic: boolean;
+  validity: "valid" | "invalid" | "not_applicable";
+  mismatches: readonly string[];
+  shapeIssues: readonly ValidationIssue[];
+  blockCodes: readonly EligibilityBlockCode[];
+  explanations: readonly string[];
+  openConditions: readonly ReviewCondition[];
+  expired: boolean;
+  record: ExternalApprovalEvidence;
+};
+
+export type ApprovalEvidenceValidationReport = {
+  status: "complete" | "blocked";
+  authority: "machine_validation_report_only";
+  exactRevision: string;
+  validRecords: readonly EvidenceRecordOperationalReport[];
+  invalidRecords: readonly EvidenceRecordOperationalReport[];
+  records: readonly EvidenceRecordOperationalReport[];
+  missingRequiredRoles: readonly ApprovalRole[];
+  duplicateEvidenceRoles: readonly ApprovalRole[];
+  competingEvidenceRoles: readonly ApprovalRole[];
+  expiredEvidenceIds: readonly string[];
+  openConditions: readonly ReviewCondition[];
+  blockingIssueCodes: readonly EligibilityBlockCode[];
+  validationIssues: readonly ValidationIssue[];
+  operationIssues: readonly ReviewOperationsIssue[];
+};
+
+export type ApprovalReadinessState =
+  | "not_ready"
+  | "ready_for_human_decision"
+  | "recorded_approval_complete";
+
+export type ApprovalReadinessReport = {
+  state: ApprovalReadinessState;
+  authority: "machine_gate_report_only";
+  exactRevision: string;
+  issues: readonly ReviewOperationsIssue[];
+  validationIssues: readonly ValidationIssue[];
+  evidenceReport: ApprovalEvidenceValidationReport;
+};
+
+export type ActivationCandidateReport = {
+  state: "blocked" | "ready_for_human_manifest_decision";
+  authority: "manual_manifest_decision_required";
+  exactRevision: string;
+  contentDigest: string | null;
+  requestedConsumptionScope: ConsumptionScope;
+  proposedReason: string;
+  currentManifestRevision: string;
+  proposedManifestRevision: string;
+  proposedPin: ActivationPin | null;
+  activeRevisionConflicts: readonly ActivationPin[];
+  currentEligibility: RuntimeEligibility;
+  candidateEligibility: RuntimeEligibility;
+  blockingReasons: readonly EligibilityBlockReason[];
+  validationIssues: readonly ValidationIssue[];
+  operationIssues: readonly ReviewOperationsIssue[];
+};
+
+export type RuntimeBundleBlockedEntry = {
+  exactRevision: string;
+  reasons: readonly EligibilityBlockReason[];
+};
+
+export type RuntimeBundleBlockReasonOccurrence = {
+  exactRevision: string;
+  message: string;
+};
+
+export type RuntimeBundleReport = {
+  authority: "runtime_reporting_only";
+  totalAuthoringEntries: number;
+  evaluatedExactRevisions: readonly string[];
+  usableEntries: readonly string[];
+  blockedEntries: readonly RuntimeBundleBlockedEntry[];
+  notEvaluatedExactRevisions: readonly string[];
+  blockReasonsByCode: Readonly<
+    Partial<
+      Record<
+        EligibilityBlockCode,
+        readonly RuntimeBundleBlockReasonOccurrence[]
+      >
+    >
+  >;
+  scopeBlockReasons: readonly EligibilityBlockReason[];
+  projectedRuntimeReferences: readonly string[];
+  requestedManifestRevision: string;
+  emittedManifestRevision: string;
+  buildDate: string;
+  loaderInvoked: boolean;
+  offlineCapabilities: RuntimeKnowledgeArtifact["offlineCapabilities"];
+  validationIssues: readonly ValidationIssue[];
+  bundle: RuntimeBundleResult;
+};
+
+export type RevisionFieldChange = {
+  field: string;
+  before: unknown;
+  after: unknown;
+};
+
+export type RevisionComparisonReport =
+  | {
+      status: "compared";
+      authority: "comparison_report_only";
+      entryId: string;
+      previousExactRevision: string;
+      currentExactRevision: string;
+      previousContentDigest: string;
+      currentContentDigest: string;
+      changes: readonly RevisionFieldChange[];
+      changedFields: readonly string[];
+      reReviewRequired: boolean;
+      configuredReReviewTriggers: readonly string[];
+      applicableReReviewTriggers: readonly string[];
+    }
+  | {
+      status: "blocked";
+      issues: readonly ReviewOperationsIssue[];
+      validationIssues: readonly ValidationIssue[];
+    };
+
+export type RetirementPreparationReport = {
+  state: "blocked" | "proposal_prepared";
+  authority: "manual_manifest_decision_required";
+  exactRevision: string;
+  currentManifestRevision: string;
+  proposedManifestRevision: string;
+  pinsRemoved: readonly ActivationPin[];
+  pinsRetained: readonly ActivationPin[];
+  proposedManifest: ActivationManifest;
+  expectedNextBuildEffect: string;
+  offlineLimitation: string;
+  validationIssues: readonly ValidationIssue[];
+  issues: readonly ReviewOperationsIssue[];
+};
+
+export type RollbackPreparationReport = {
+  state: "blocked" | "proposal_prepared";
+  authority: "manual_manifest_decision_required";
+  targetExactRevision: string;
+  targetPreviouslyValid: boolean;
+  currentManifestRevision: string;
+  proposedManifestRevision: string;
+  pinsRemovedOrReplaced: readonly ActivationPin[];
+  proposedManifest: ActivationManifest | null;
+  expectedNextBuildEffect: string;
+  offlineLimitation: string;
+  validationIssues: readonly ValidationIssue[];
+  issues: readonly ReviewOperationsIssue[];
+};

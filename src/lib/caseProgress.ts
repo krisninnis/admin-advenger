@@ -70,6 +70,7 @@ export const CASE_PROGRESS_CONTROL_NOTE = "AdminAvenger helps prepare. You stay 
 // feed into any score of how strong, valid, or likely to succeed the case is.
 
 type CaseProgressFamily =
+  | "account_outcome_confirmation"
   | "benefits_decision"
   | "benefits_general"
   | "legal_debt"
@@ -95,10 +96,15 @@ const LEGAL_DEBT_TYPES = new Set<DecisionDocumentType>([
 ]);
 
 const detectFamily = (
+  resultViewModel: ResultViewModel,
   decisionResult?: DecisionResult,
   workplaceSupportPack?: WorkplaceSupportPack,
   communityHelperPack?: CommunityHelperPack,
 ): CaseProgressFamily => {
+  if (/^Provider confirmation\b/i.test(resultViewModel.primaryStatusLabel ?? "")) {
+    return "account_outcome_confirmation";
+  }
+
   if (workplaceSupportPack) {
     return "workplace";
   }
@@ -843,7 +849,48 @@ const buildGenericItems = (input: BuildCaseProgressInput): CaseProgressItem[] =>
   ];
 };
 
+const buildAccountOutcomeItems = (
+  input: BuildCaseProgressInput,
+): CaseProgressItem[] => {
+  const { resultViewModel } = input;
+  const outcomeEvidence = resultViewModel.evidenceFound.filter((item) =>
+    /account status|charge outcome|charge review status|charge status|balance status|payment request|future payment status|future bills|future direct debits|final direct debit|required document|provider review status|promised response|collection warning/i.test(
+      item.label,
+    ),
+  );
+  const monitoringFound = resultViewModel.evidenceFound.some((item) =>
+    /conditional follow-up|final direct debit|charge review status|provider review status|promised response|future payment status/i.test(
+      item.label,
+    ),
+  );
+
+  return [
+    buildOriginalSourceItem("Provider confirmation added"),
+    buildItem(
+      "account-outcome",
+      "Provider outcome captured",
+      outcomeEvidence.length > 0
+        ? `${outcomeEvidence.length} provider-stated outcome detail${outcomeEvidence.length === 1 ? "" : "s"} captured for checking.`
+        : "No explicit closure, charge, or payment outcome was captured.",
+      outcomeEvidence.length > 0 ? "complete" : "missing",
+      "result",
+      "This records what the provider says. AdminAvenger has not independently verified it.",
+    ),
+    buildMoneyOrReferenceItem(resultViewModel, "Former balance or reference checked"),
+    buildItem(
+      "conditional-monitoring",
+      "Conditional monitoring noted",
+      monitoringFound
+        ? "The result records the pending provider response or conditional follow-up that still needs monitoring."
+        : "No later collection or conditional follow-up is stated in this message.",
+      monitoringFound ? "complete" : "not_needed",
+      "result",
+    ),
+  ];
+};
+
 const familyBuilders: Record<CaseProgressFamily, (input: BuildCaseProgressInput) => CaseProgressItem[]> = {
+  account_outcome_confirmation: buildAccountOutcomeItems,
   benefits_decision: buildPipDecisionItems,
   benefits_general: buildBenefitsGeneralItems,
   legal_debt: buildLegalDebtItems,
@@ -856,7 +903,12 @@ const familyBuilders: Record<CaseProgressFamily, (input: BuildCaseProgressInput)
 // --- Public API --------------------------------------------------------------
 
 export const buildCaseProgress = (input: BuildCaseProgressInput): CaseProgressSummary => {
-  const family = detectFamily(input.decisionResult, input.workplaceSupportPack, input.communityHelperPack);
+  const family = detectFamily(
+    input.resultViewModel,
+    input.decisionResult,
+    input.workplaceSupportPack,
+    input.communityHelperPack,
+  );
   const items = familyBuilders[family](input);
 
   const completeCount = items.filter((entry) => entry.status === "complete").length;

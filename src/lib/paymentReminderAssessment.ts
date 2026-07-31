@@ -1,4 +1,5 @@
 import type { AdminItem } from "../types";
+import { extractReferenceNumber } from "./moneyParsers";
 
 export type PaymentReminderAssessment = {
   isPaymentReminder: boolean;
@@ -10,6 +11,7 @@ export type PaymentReminderAssessment = {
   responseDeadline?: string;
   requestedAction?: string;
   alternativeEvidenceAction?: string;
+  collectionActivityPossible: boolean;
 };
 
 const monthNames = [
@@ -125,7 +127,10 @@ const extractAmountDue = (text: string) => {
 };
 
 const extractAccountReference = (text: string) =>
-  firstMatch(text, /\b(?:account reference|account ref|account number|reference|ref)\s*:?\s*([A-Z0-9][A-Z0-9-]{2,})\b/i);
+  firstMatch(
+    text,
+    /\b(?:account reference|account ref|account number)\b\s*:?\s*([A-Z0-9][A-Z0-9-]{2,})\b/i,
+  ) ?? extractReferenceNumber(text);
 
 const attachmentMarkerPattern = /^---\s*Document file(?:\s+\d+)?:\s*.+---$/i;
 
@@ -202,6 +207,7 @@ const negativePatterns = [
 ];
 
 const demandSignalPatterns = [
+  /\bfinal notice\b/i,
   /\bpayment reminder\b/i,
   /\bunpaid balance\b/i,
   /\bamount due\b/i,
@@ -210,6 +216,8 @@ const demandSignalPatterns = [
   /\bpayment was due\b/i,
   /\bplease pay\b/i,
   /\bpay by\b/i,
+  /\bpayment is received by\b/i,
+  /\bcollection activity\b/i,
   /\bcontact us by\b/i,
   /\bproof of payment\b/i,
   /\baccount reference\b/i,
@@ -232,6 +240,7 @@ export const assessPaymentReminder = (item: AdminItem): PaymentReminderAssessmen
   const amountDue = extractAmountDue(text);
   const accountReference = extractAccountReference(text);
   const responseDeadline = findDateAfter(text, [
+    "unless payment is received by",
     "contact us by",
     "respond by",
     "reply by",
@@ -254,6 +263,7 @@ export const assessPaymentReminder = (item: AdminItem): PaymentReminderAssessmen
     /\bpayment was due\b/i,
     /\bplease pay\b/i,
     /\bpay by\b/i,
+    /\bpayment is received by\b/i,
   ]);
   const isPaymentReminder =
     Boolean(amountDue) &&
@@ -268,6 +278,7 @@ export const assessPaymentReminder = (item: AdminItem): PaymentReminderAssessmen
     amountDue,
     paymentDueDate,
     responseDeadline,
+    collectionActivityPossible: /\b(?:further\s+)?collection\s+activity\b/i.test(text),
     alternativeEvidenceAction: /proof of payment/i.test(text)
       ? "If already paid, send proof of payment so the account can be updated."
       : undefined,
@@ -290,5 +301,5 @@ export const buildPaymentReminderSuggestedAction = (assessment: PaymentReminderA
       ? ` after checking the payment due date shown as ${assessment.paymentDueDate}`
       : "";
 
-  return `Check ${referencePart}whether ${amountPart} correct or already paid. If needed, pay through a verified channel or contact the provider${deadlinePart}. Keep proof of payment.`;
+  return `Check ${referencePart}whether ${amountPart} correct or already paid. If needed, pay through a verified channel or contact the provider to dispute or query the balance${deadlinePart}. Keep proof of payment or contact.`;
 };

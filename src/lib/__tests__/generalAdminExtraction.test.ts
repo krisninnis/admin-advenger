@@ -1,5 +1,43 @@
 import { describe, expect, it } from "vitest";
-import { isAppointmentReminderText } from "../generalAdminExtraction";
+import {
+  assessRefundState,
+  extractGeneralAdmin,
+  isAppointmentReminderText,
+} from "../generalAdminExtraction";
+
+describe("general admin governed fact extraction", () => {
+  it("keeps a promised-refund period attached to the refund state", () => {
+    expect(
+      assessRefundState(
+        "We will refund £39 to the original payment method within 10 working days.",
+      ),
+    ).toMatchObject({
+      stage: "promised",
+      amount: { amount: 39, role: "refund_total" },
+      relativePeriod: { role: "refund_window", value: "within 10 working days" },
+    });
+  });
+
+  it("uses the canonical reference representation for an open complaint", () => {
+    expect(
+      extractGeneralAdmin(
+        "Your account is closed. However, your complaint remains open under CMP-505.",
+      ).references,
+    ).toEqual([
+      expect.objectContaining({ value: "CMP-505", sourceQuote: "CMP-505" }),
+    ]);
+  });
+
+  it("classifies pay-before-amount wording as an amount demanded", () => {
+    expect(
+      extractGeneralAdmin(
+        "Urgent: pay £499 today using the link in this message or your account will close.",
+      ).amounts,
+    ).toEqual([
+      expect.objectContaining({ amount: 499, role: "amount_demanded" }),
+    ]);
+  });
+});
 
 describe("general admin appointment reminder detection", () => {
   it.each([

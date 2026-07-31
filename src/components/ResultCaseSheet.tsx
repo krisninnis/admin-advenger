@@ -66,6 +66,11 @@ const hasReferenceSignal = (item: ResultEvidenceView) =>
     `${item.label} ${item.value}`,
   );
 
+const hasExplicitReferenceSignal = (item: ResultEvidenceView) =>
+  /\b(?:reference|ref|claim number|case number)\b/i.test(
+    `${item.label} ${item.value}`,
+  );
+
 const getSectionItems = (model: ResultViewModel, id: string) =>
   model.sections.find((section) => section.id === id)?.items ?? [];
 
@@ -109,10 +114,12 @@ function Section({
   title,
   children,
   tone = "slate",
+  testId,
 }: {
   title: string;
   children: ReactNode;
   tone?: "slate" | "cyan" | "amber" | "emerald";
+  testId?: string;
 }) {
   const toneClasses = {
     slate: "border-white/10 bg-slate-950/55",
@@ -122,7 +129,7 @@ function Section({
   };
 
   return (
-    <section className={`rounded-lg border p-4 sm:p-5 ${toneClasses[tone]}`}>
+    <section data-testid={testId} className={`rounded-lg border p-4 sm:p-5 ${toneClasses[tone]}`}>
       <h3 className="text-base font-bold text-white">{title}</h3>
       <div className="mt-3 text-sm leading-6 text-slate-300">{children}</div>
     </section>
@@ -365,7 +372,13 @@ export function ResultCaseSheet({
   onToggleSupportingDetails,
 }: ResultCaseSheetProps) {
   const references = useMemo(
-    () => model.evidenceFound.filter(hasReferenceSignal).slice(0, 3),
+    () => {
+      const candidates = model.evidenceFound.filter(hasReferenceSignal);
+      return [
+        ...candidates.filter(hasExplicitReferenceSignal),
+        ...candidates.filter((item) => !hasExplicitReferenceSignal(item)),
+      ].slice(0, 3);
+    },
     [model.evidenceFound],
   );
   const isCareerSupportResult = model.resultKind === "career_support";
@@ -416,7 +429,7 @@ export function ResultCaseSheet({
         </p>
         <div className="mt-3 flex flex-wrap items-start justify-between gap-4">
           <div className="max-w-3xl">
-            <h2 className="text-2xl font-black tracking-tight text-white sm:text-3xl">
+            <h2 data-testid="result-title" className="text-2xl font-black tracking-tight text-white sm:text-3xl">
               {model.title}
             </h2>
             {model.directAnswer ? (
@@ -427,7 +440,7 @@ export function ResultCaseSheet({
             <p className="mt-3 text-base leading-7 text-slate-200">{model.summary}</p>
           </div>
           {model.primaryStatusLabel ? (
-            <span className="rounded-full border border-emerald-300/30 bg-slate-950/70 px-3 py-1 text-xs font-bold text-emerald-100">
+            <span data-testid="result-status" className="rounded-full border border-emerald-300/30 bg-slate-950/70 px-3 py-1 text-xs font-bold text-emerald-100">
               {model.primaryStatusLabel}
             </span>
           ) : null}
@@ -440,7 +453,7 @@ export function ResultCaseSheet({
       </header>
 
       <div className="mt-5 grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-        <Section title="Best next move" tone="cyan">
+        <Section title="Best next move" tone="cyan" testId="result-best-next-move">
           {model.bestNextMove ? (
             <div className="space-y-3">
               <p className="text-base font-bold text-white">{model.bestNextMove.label}</p>
@@ -458,7 +471,7 @@ export function ResultCaseSheet({
           )}
         </Section>
 
-        <Section title="What to check first" tone="amber">
+        <Section title="What to check first" tone="amber" testId="result-check-first">
           <ul className="space-y-2">
             {checkFirstItems.map((item) => (
               <li key={item}>{item}</li>
@@ -542,15 +555,15 @@ export function ResultCaseSheet({
         </div>
       ) : (
         <div className="mt-5 grid gap-4 lg:grid-cols-2">
-          <Section title="Dates to check">
+          <Section title="Dates to check" testId="result-dates">
             <DateList dates={model.keyDates} />
           </Section>
 
-          <Section title="Money mentioned">
+          <Section title="Money mentioned" testId="result-money">
             <MoneyList money={model.moneyMentioned} />
           </Section>
 
-          <Section title="Evidence / documents to bring">
+          <Section title="Evidence / documents to bring" testId="result-evidence">
             <EvidenceList found={model.evidenceFound} toGather={model.evidenceToGather} />
           </Section>
 

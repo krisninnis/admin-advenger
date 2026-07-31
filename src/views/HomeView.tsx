@@ -29,6 +29,7 @@ import {
 } from "../lib/adviserExportPack";
 import { downloadAdviserExportMarkdown } from "../lib/adviserExportDownload";
 import { buildBenefitsActionPack } from "../lib/benefitsActionPack";
+import { selectMostImportantCase } from "../lib/caseFactory";
 import { deriveOpportunityCard, describeConfidence } from "../lib/opportunityCards";
 import { buildResultViewModel } from "../lib/resultViewModel";
 import { buildStrategicNextStepPlan } from "../lib/strategicNextStep";
@@ -154,36 +155,6 @@ const categoryLabels: Record<AdminCase["category"], string> = {
   unknown: "Needs review",
 };
 
-const categoryPriority: Record<AdminCase["category"], number> = {
-  bill_increase: 0,
-  refund: 1,
-  subscription: 2,
-  warranty: 3,
-  complaint: 4,
-  important_reply: 5,
-  deadline: 6,
-  job_application: 7,
-  admin_dispute: 8,
-  unknown: 9,
-};
-
-const urgencyPriority: Record<AdminCase["urgency"], number> = {
-  high: 0,
-  medium: 1,
-  low: 2,
-};
-
-const getMostImportantCase = (cases: AdminCase[]) =>
-  [...cases].sort((first, second) => {
-    const urgencyDifference = urgencyPriority[first.urgency] - urgencyPriority[second.urgency];
-
-    if (urgencyDifference !== 0) {
-      return urgencyDifference;
-    }
-
-    return categoryPriority[first.category] - categoryPriority[second.category];
-  })[0];
-
 const getMissingEvidence = (adminCase: AdminCase) =>
   adminCase.broadbandPriceRiseAssessment
     ? (adminCase.broadbandPriceRiseAssessment.evidenceMissing ?? [])
@@ -218,7 +189,10 @@ const isLowActionDeliveryUpdate = (adminCase?: AdminCase) =>
   adminCase?.category === "unknown" && /^delivery update/i.test(adminCase.title);
 
 const isNoActionResult = (adminCase?: AdminCase) =>
-  adminCase?.category === "unknown" && /^No obvious saving or action found/i.test(adminCase.title);
+  adminCase?.category === "unknown" &&
+  /^(?:No obvious saving or action found|Account closure confirmed|Account closed - balance needs checking|Charge removal confirmed)/i.test(
+    adminCase.title,
+  );
 
 const isAppointmentTask = (adminCase?: AdminCase) =>
   Boolean(adminCase && /appointment to rebook|thing to do|rebook/i.test(adminCase.title));
@@ -311,6 +285,7 @@ const getHomePrimaryActionLabel = (opportunityType: string, guidedMode: GuidedCa
 
   if (
     opportunityType === "no_action_needed" ||
+    opportunityType === "account_outcome_confirmation" ||
     opportunityType === "delivery_update" ||
     opportunityType === "receipt_guardian"
   ) {
@@ -572,7 +547,7 @@ export function HomeView({
   const showAttachmentCombinedTextNote =
     rawText.trim().length > 0 && hasReadableAttachedText(attachedFiles);
   const primaryCase = useMemo(
-    () => (result ? getMostImportantCase(result.cases) : undefined),
+    () => (result ? selectMostImportantCase(result.cases) : undefined),
     [result],
   );
   const primaryFinding = result?.findings.find((finding) => finding.id === primaryCase?.findingId);
@@ -630,6 +605,7 @@ export function HomeView({
         isNoActionResult(primaryCase)),
   );
   const hideSaveCase =
+    primaryOpportunity?.opportunityType === "account_outcome_confirmation" ||
     primaryOpportunity?.opportunityType === "no_action_needed" ||
     primaryOpportunity?.opportunityType === "delivery_update" ||
     primaryOpportunity?.opportunityType === "receipt_guardian" ||

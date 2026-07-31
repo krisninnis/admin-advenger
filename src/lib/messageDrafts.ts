@@ -427,7 +427,7 @@ const createEmailSafetyChecklist = (adminCase: AdminCase, opportunity: Opportuni
     fullText,
     opportunity.evidenceFound,
     ["Do not use links in the message", "Verify through the official app/site"],
-    "AdminAvenger cannot determine whether this is a scam. It highlights recognised signals and leaves you in control.",
+    "AdminAvenger cannot determine whether the message is fraudulent. It highlights recognised signals and leaves you in control.",
   );
 };
 

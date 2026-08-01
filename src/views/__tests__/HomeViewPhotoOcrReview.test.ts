@@ -81,17 +81,49 @@ describe("HomeView photo OCR review", () => {
     expect(uploadBlock).toContain("setShowPhotoCapturePanel(true)");
   });
 
-  it("passes userQuestion through the OCR check path to submitAcceptedText", () => {
+  it("submits reviewed OCR text through the shared submission gateway", () => {
     const ocrBlock = sliceBetween(
       homeViewSource,
-      'const handleCheckOcrText = async',
+      "const handleCheckOcrText = async",
       '// "Retake photo"',
     );
 
-    expect(ocrBlock).toContain('submitAcceptedText({');
-    expect(ocrBlock).toContain('sourceTitle: "Photo text (reviewed before checking)"');
+    // Reviewed photo text is a submission like any other. It goes through the
+    // one gateway, so the Front Door decision runs on it, and it must not reach
+    // analysis by itself.
+    expect(ocrBlock).toContain("await submitFrontDoorSource(");
+    expect(ocrBlock).not.toContain("submitAcceptedText(");
+    expect(ocrBlock).not.toContain("runOllamaExtraction(");
+    expect(ocrBlock).not.toContain("isLocalOllamaMode");
+
+    // The source it hands over is unchanged from before the refactor.
     expect(ocrBlock).toContain("acceptedText: cleanedText");
-    expect(ocrBlock).toContain("userQuestion,");
-    expect(ocrBlock).toContain("onCheck,");
+    expect(ocrBlock).toContain('sourceTitle: "Photo text (reviewed before checking)"');
+    expect(ocrBlock).toContain('sourceType: "email"');
+  });
+
+  it("carries userQuestion from the shared gateway into ordinary analysis", () => {
+    const gatewayBlock = sliceBetween(
+      homeViewSource,
+      "const submitFrontDoorSource = async (",
+      '// "Just check this as a message"',
+    );
+
+    // A submission the gateway decides is a document continues to ordinary
+    // analysis with the source it was given, untouched.
+    expect(gatewayBlock).toContain("await runOrdinaryMessageCheck(decision.source)");
+
+    const ordinaryBlock = sliceBetween(
+      homeViewSource,
+      "const runOrdinaryMessageCheck = async (",
+      "// The one submission path.",
+    );
+
+    expect(ordinaryBlock).toContain("submitAcceptedText({");
+    expect(ordinaryBlock).toContain("sourceTitle: source.sourceTitle");
+    expect(ordinaryBlock).toContain("sourceType: source.sourceType");
+    expect(ordinaryBlock).toContain("acceptedText: source.acceptedText");
+    expect(ordinaryBlock).toContain("userQuestion,");
+    expect(ordinaryBlock).toContain("onCheck,");
   });
 });

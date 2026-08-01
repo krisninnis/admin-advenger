@@ -45,19 +45,88 @@ function OriginalInput({ text }: { text: string }) {
 function Exits({
   onBack,
   onCheckAsMessage,
+  backLabel = "Go back",
+  ordinaryCheckLabel = "Just check this as a message",
 }: {
   onBack: () => void;
   onCheckAsMessage: () => void;
+  backLabel?: string;
+  ordinaryCheckLabel?: string;
 }) {
   return (
     <div className="mt-4 flex flex-wrap gap-2">
       <button type="button" onClick={onBack} className={quietButtonClass}>
-        Go back
+        {backLabel}
       </button>
       <button type="button" onClick={onCheckAsMessage} className={quietButtonClass}>
-        Just check this as a message
+        {ordinaryCheckLabel}
       </button>
     </div>
+  );
+}
+
+/**
+ * The orientation page, shown after the one question is answered.
+ *
+ * Four parts and two buttons. Every word comes from
+ * `src/lib/frontDoorIntent/frontDoorOrientationView.ts` and is asserted there,
+ * so this renders and decides nothing.
+ */
+function Orientation({
+  view,
+  onBack,
+  onCheckAsMessage,
+}: {
+  view: Extract<FrontDoorRouteView, { kind: "orientation" }>;
+  onBack: () => void;
+  onCheckAsMessage: () => void;
+}) {
+  return (
+    <section
+      className="rounded-lg border border-cyan-300/25 bg-cyan-300/[0.06] p-4 sm:p-5"
+      aria-label="What this may be about"
+    >
+      <h3 className="text-lg font-bold text-white">{view.heading}</h3>
+      <p className="mt-2 text-sm leading-6 text-slate-200">{view.interpretation}</p>
+
+      <h4 className="mt-4 text-sm font-bold uppercase tracking-widest text-slate-400">
+        {view.nextStepHeading}
+      </h4>
+      <p className="mt-1 text-sm leading-6 text-slate-200">{view.nextStep}</p>
+
+      <h4 className="mt-4 text-sm font-bold uppercase tracking-widest text-slate-400">
+        {view.gatherHeading}
+      </h4>
+      <ul className="mt-1 flex flex-col gap-1">
+        {view.gather.map((item) => (
+          <li key={item} className="text-sm leading-6 text-slate-200">
+            {item}
+          </li>
+        ))}
+      </ul>
+
+      <h4 className="mt-4 text-sm font-bold uppercase tracking-widest text-slate-400">
+        {view.cannotDecideHeading}
+      </h4>
+      <ul className="mt-1 flex flex-col gap-1">
+        {view.cannotDecide.map((item) => (
+          <li key={item} className="text-sm leading-6 text-slate-300">
+            {item}
+          </li>
+        ))}
+      </ul>
+      <p className="mt-2 text-sm leading-6 text-slate-300">
+        {view.cannotContactStatement}
+      </p>
+
+      <OriginalInput text={view.originalInput} />
+      <Exits
+        onBack={onBack}
+        onCheckAsMessage={onCheckAsMessage}
+        backLabel={view.backLabel}
+        ordinaryCheckLabel={view.ordinaryCheckLabel}
+      />
+    </section>
   );
 }
 
@@ -72,6 +141,16 @@ export function FrontDoorConfirmationPanel({
   // existing analysis journey untouched.
   if (view.kind === "document_analysis") {
     return null;
+  }
+
+  if (view.kind === "orientation") {
+    return (
+      <Orientation
+        view={view}
+        onBack={onBack}
+        onCheckAsMessage={onCheckAsMessage}
+      />
+    );
   }
 
   if (view.kind === "urgent_support") {

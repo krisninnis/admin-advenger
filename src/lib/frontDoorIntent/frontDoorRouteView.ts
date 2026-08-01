@@ -13,6 +13,14 @@
 // `false`, so they are unrepresentable rather than merely tested.
 
 import { classifyFrontDoorIntent } from "./classifyFrontDoorIntent";
+import {
+  confirmationShapeOf,
+  frontDoorPersonLabelOf,
+} from "./frontDoorConfirmationShape";
+import {
+  deriveFrontDoorOrientationView,
+  type FrontDoorOrientationView,
+} from "./frontDoorOrientationView";
 import { isSecurityShapedInput } from "./securityShapedInput";
 import type {
   FrontDoorInputSnapshot,
@@ -82,7 +90,24 @@ export type FrontDoorRouteView =
       readonly question: string;
       readonly choices: readonly FrontDoorConfirmationChoice[];
       readonly questionsAskedFirst: 1;
-    });
+    })
+  // The orientation page, shown after the one question is answered. It carries
+  // its own copy of the prohibitions, so it satisfies FrontDoorRouteCommon
+  // without needing to be told to.
+  | (FrontDoorOrientationView & { readonly questionsAskedFirst: 1 });
+
+/**
+ * Everything the router can decide on its own, before anyone has answered
+ * anything.
+ *
+ * Orientation is deliberately excluded. It is only reachable by answering the
+ * question, so a function that classifies text must not be able to return it,
+ * and the compiler now enforces that rather than a comment asking nicely.
+ */
+export type FrontDoorResolvedRouteView = Exclude<
+  FrontDoorRouteView,
+  { readonly kind: "orientation" }
+>;
 
 const COMMON = {
   backAvailable: true,
@@ -92,19 +117,6 @@ const COMMON = {
   caseCreated: false,
   estateRouteOpened: false,
 } as const;
-
-/**
- * Signals that mean the wording is about care, support or a practical need.
- * Money and bereavement are handled separately because they change the question.
- */
-const CARE_SIGNALS: readonly FrontDoorSituationSignal[] = [
-  "possible_person_needing_support",
-  "possible_supporter",
-  "possible_caring_role",
-  "possible_functional_need",
-  "possible_hospital_discharge",
-  "possible_local_service_need",
-];
 
 /**
  * Pronouns are only ever taken from the relationship word the person used. An
@@ -162,14 +174,14 @@ const needsUrgentSupport = (
   classification.urgency === "possible_urgent_practical_support" ||
   has(classification, "possible_urgent_need");
 
-const documentAnalysisView = (originalInput: string): FrontDoorRouteView => ({
+const documentAnalysisView = (originalInput: string): FrontDoorResolvedRouteView => ({
   ...COMMON,
   kind: "document_analysis",
   originalInput,
   questionsAskedFirst: 0,
 });
 
-const urgentSupportView = (originalInput: string): FrontDoorRouteView => ({
+const urgentSupportView = (originalInput: string): FrontDoorResolvedRouteView => ({
   ...COMMON,
   kind: "urgent_support",
   originalInput,
@@ -188,14 +200,6 @@ const urgentSupportView = (originalInput: string): FrontDoorRouteView => ({
   selectedContactOption: undefined,
   questionsAskedFirst: 0,
 });
-
-const personLabelOf = (
-  classification: FrontDoorIntentClassification,
-): string | undefined => {
-  const first = classification.mentionedOtherPeople[0];
-  // Verbatim, always. "Dad" never becomes "father", and "MUM" stays "MUM".
-  return first ? first.personLabel : undefined;
-};
 
 const careChoices = (
   label: string | undefined,
@@ -242,45 +246,43 @@ const generalChoices: readonly FrontDoorConfirmationChoice[] = [
 const confirmationView = (
   classification: FrontDoorIntentClassification,
   originalInput: string,
-): FrontDoorRouteView => {
-  const label = personLabelOf(classification);
+): FrontDoorResolvedRouteView => {
+  const label = frontDoorPersonLabelOf(classification);
   const base = { ...COMMON, kind: "confirmation", originalInput, questionsAskedFirst: 1 } as const;
 
-  // Bereavement is checked first. When someone has told us a person has died,
-  // asking who needs help would be the wrong question in the wrong moment.
-  if (has(classification, "possible_bereavement")) {
-    return {
-      ...base,
-      heading: "This may be about what happens after someone dies",
-      question: "What would help most?",
-      choices: bereavementChoices,
-    };
-  }
+  switch (confirmationShapeOf(classification)) {
+    case "bereavement":
+      return {
+        ...base,
+        heading: "This may be about what happens after someone dies",
+        question: "What would help most?",
+        choices: bereavementChoices,
+      };
 
-  if (has(classification, "possible_money_or_benefits_need")) {
-    return {
-      ...base,
-      heading: "This may be about benefits",
-      question: "Whose benefits are you asking about?",
-      choices: benefitsChoices(label),
-    };
-  }
+    case "benefits":
+      return {
+        ...base,
+        heading: "This may be about benefits",
+        question: "Whose benefits are you asking about?",
+        choices: benefitsChoices(label),
+      };
 
-  if (CARE_SIGNALS.some((signal) => has(classification, signal))) {
-    return {
-      ...base,
-      heading: "This may be about care and support",
-      question: "Who needs help?",
-      choices: careChoices(label),
-    };
-  }
+    case "care":
+      return {
+        ...base,
+        heading: "This may be about care and support",
+        question: "Who needs help?",
+        choices: careChoices(label),
+      };
 
-  return {
-    ...base,
-    heading: "Let us check what this is about",
-    question: "What is this about?",
-    choices: generalChoices,
-  };
+    default:
+      return {
+        ...base,
+        heading: "Let us check what this is about",
+        question: "What is this about?",
+        choices: generalChoices,
+      };
+  }
 };
 
 /**
@@ -292,7 +294,7 @@ const confirmationView = (
 export const deriveFrontDoorRouteView = (
   classification: FrontDoorIntentClassification,
   originalInput: string,
-): FrontDoorRouteView => {
+): FrontDoorResolvedRouteView => {
   if (classification.documentAnalysisSelected) {
     return documentAnalysisView(originalInput);
   }
@@ -323,7 +325,7 @@ export const deriveFrontDoorRouteView = (
  */
 export const resolveFrontDoorRouteView = (
   originalInput: string,
-): FrontDoorRouteView => {
+): FrontDoorResolvedRouteView => {
   if (!originalInput.trim()) {
     return documentAnalysisView(originalInput);
   }
@@ -405,14 +407,38 @@ export const frontDoorRouteReducer = (
 
     case "choice_selected": {
       if (!state.view) return state;
-      // The only choice that changes the screen in this slice is the urgent one.
-      // Every other choice is recorded and nothing is opened, because confirming
-      // a help target belongs to a later, separately approved slice.
-      const view =
-        action.choiceId === "urgent"
-          ? urgentSupportView(state.originalInput)
-          : state.view;
-      return { ...state, view, selectedChoiceId: action.choiceId };
+
+      // Urgency is resolved before routing and keeps its own page, unchanged.
+      if (action.choiceId === "urgent") {
+        return {
+          ...state,
+          view: urgentSupportView(state.originalInput),
+          selectedChoiceId: action.choiceId,
+        };
+      }
+
+      // Orientation only ever follows a question that was actually asked. A
+      // choice arriving against any other view is recorded and changes nothing,
+      // so no screen can be reached without the step before it.
+      if (state.view.kind !== "confirmation") {
+        return { ...state, selectedChoiceId: action.choiceId };
+      }
+
+      // Still no case, no specialist journey, no confirmed help target. The
+      // orientation page carries those prohibitions as literal `false` fields
+      // of its own.
+      return {
+        ...state,
+        view: {
+          ...deriveFrontDoorOrientationView(
+            classifyFrontDoorIntent(state.originalInput),
+            action.choiceId,
+            state.originalInput,
+          ),
+          questionsAskedFirst: 1,
+        },
+        selectedChoiceId: action.choiceId,
+      };
     }
 
     case "go_back": {

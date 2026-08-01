@@ -335,9 +335,13 @@ father* or help *for themselves as the person supporting him*.
 
 ### 6.2 Field rules
 
-- **`mentionedUser`** and **`mentionedOtherPeople`** are observations about the
-  text. They may be recorded freely, because recording who was named asserts
-  nothing about them.
+- **`mentionedUser`** is true only when the user is explicitly part of the
+  situation as an **actor, recipient, supporter or affected person**. A
+  possessive relationship phrase alone — "my father", "my nan" — names somebody
+  else and does not put the user in the situation. In a document, first-person
+  plural is the sender, not the user.
+- **`mentionedOtherPeople`** is an observation about the text and may be
+  recorded freely, because recording who was named asserts nothing about them.
 - **`personLabel`** and **`relationship`** are kept **in the user's own words**.
   AdminAvenger does not normalise "Dad" to "father", and does not infer age,
   condition, capacity or household.
@@ -353,7 +357,7 @@ father* or help *for themselves as the person supporting him*.
 
 | Input | `mentionedUser` | `mentionedOtherPeople` | `helpTarget` | Why |
 |---|---|---|---|---|
-| `my father needs care` | `true` | `[{ father }]` | **`unknown`** | Names the father and implies difficulty. Says nothing about who help is for |
+| `my father needs care` | **`false`** | `[{ father }]` | **`unknown`** | Names the father and implies difficulty. A possessive relationship phrase does not put the user in the situation, and it says nothing about who help is for |
 | `Can Dad claim Attendance Allowance?` | `false` | `[{ Dad }]` | **`one_other_person`** | A direct question about Dad's claim. A clear request about one named person — and **no evidence at all** that the user is a carer |
 | `I care for Dad full-time` | `true` | `[{ Dad }]` | **`unknown`** | States who the user *is*, not who they want help *for*. A full-time carer may want support for themselves, for Dad, or for both |
 | `am I entitled to Carer's Allowance` | `true` | `[]` | **`self`** | An unambiguous first-person request |

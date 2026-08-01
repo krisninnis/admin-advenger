@@ -44,8 +44,16 @@ contract rather than against itself. It is the intent-routing analogue of
 
 ### 1.4 Revision note — what changed in this revision
 
+**Correction round 2 (1 August 2026).** Five internal contradictions were
+resolved on the owner's instruction. The executable corpus, classifier, tests and
+this document now agree on every field, and no exception list remains.
+
 | Change | Reason |
 |---|---|
+| **`mentionedUser` redefined and re-derived for all 90 rows** | Canonical rule: true only when the user is explicitly part of the situation as an actor, recipient, supporter or affected person. A possessive relationship phrase alone, such as "my father" or "my nan", names another person and does not put the user in the situation. 19 rows changed from Y to N; C07, D02 and D06 are now consistent with their families rather than exceptions |
+| **K01 and K02 no longer carry `person_target_unclear`** | `I don't need help but my mum does` and `I'm fine, it's for a friend` state the help target explicitly. A target can be source-grounded without being user-confirmed: `helpTarget` is `one_other_person` while `targetConfirmed` stays `false` |
+| **Person labels held verbatim** | J01 keeps `farther` and J04 keeps `MUM, DAD`. The specification forbids normalising the user's own words; the earlier prose had tidied them |
+| **J07 source text and `mentionedUser` corrected** | The text now reads `my mum needs help. Sent from my iPhone`, with a full stop in place of the em dash. `mentionedUser` is `N`: a mail-client signature is appended by software and does not place the person in their own situation. Signature phrases are removed only inside the participation analysis, so document detection, security detection, signals, shape, urgency and help target are all unaffected |
 | The `self / other / both / unknown` target model was replaced | It conflated *who was mentioned* with *who help is for*. Mentioning Dad is not asking for help for Dad |
 | `both` removed entirely from the scenario table | Invariant 9 previously said `both` could only be reached by explicit selection, while the table assigned it by inference. The table contradicted the invariant |
 | Document parity separated from routing prohibitions | **Verified against `e40285b`: three document controls legitimately produce the strings the old invariants banned outright** (Section 7.2). The old invariants were factually wrong |
@@ -247,16 +255,16 @@ step is shown.
 
 | ID | Source text | Shape | Signals | User | Others | Help target | Urg | CQ | PR | PW | Msg | Spec | Transition | Case |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| A01 | `my father needs care` | OS | PNS, FUN, TGT? | Y | father | **unknown** | none | CQ-CARE | PR-CARE | PW-CARE | Yes | No | awaiting_confirmation | No |
-| A02 | `my sister needs help` | OS | PNS, TGT? | Y | sister | unknown | none | CQ-CARE | PR-CARE | PW-CARE | Yes | No | awaiting_confirmation | No |
-| A03 | `my mother needs looking after` | OS | PNS, FUN, TGT? | Y | mother | unknown | none | CQ-CARE | PR-CARE | PW-CARE | Yes | No | awaiting_confirmation | No |
-| A04 | `my brother needs help with a form` | OS | PNS, SUP, TGT? | Y | brother | unknown | none | CQ-CARE | PR-CARE | PW-CARE | Yes | No | awaiting_confirmation | No |
-| A05 | `my partner is struggling to manage at home` | OS | PNS, FUN, TGT? | Y | partner | unknown | none | CQ-CARE | PR-CARE | PW-CARE | Yes | No | awaiting_confirmation | No |
-| A06 | `my grandmother is not coping on her own` | OS | PNS, FUN, TGT? | Y | grandmother | unknown | none | CQ-CARE | PR-CARE | PW-CARE | Yes | No | awaiting_confirmation | No |
-| A07 | `my aunt has dementia and lives alone` | OS | PNS, FUN, TGT? | Y | aunt | unknown | none | CQ-CARE | PR-CARE | PW-CARE | Yes | No | awaiting_confirmation | No |
-| A08 | `my uncle can't manage his bills any more` | OS | PNS, FUN, MON, TGT? | Y | uncle | unknown | none | CQ-CARE | PR-CARE | PW-CARE | Yes | No | awaiting_confirmation | No |
+| A01 | `my father needs care` | OS | PNS, FUN, TGT? | N | father | **unknown** | none | CQ-CARE | PR-CARE | PW-CARE | Yes | No | awaiting_confirmation | No |
+| A02 | `my sister needs help` | OS | PNS, TGT? | N | sister | unknown | none | CQ-CARE | PR-CARE | PW-CARE | Yes | No | awaiting_confirmation | No |
+| A03 | `my mother needs looking after` | OS | PNS, FUN, TGT? | N | mother | unknown | none | CQ-CARE | PR-CARE | PW-CARE | Yes | No | awaiting_confirmation | No |
+| A04 | `my brother needs help with a form` | OS | PNS, SUP, TGT? | N | brother | unknown | none | CQ-CARE | PR-CARE | PW-CARE | Yes | No | awaiting_confirmation | No |
+| A05 | `my partner is struggling to manage at home` | OS | PNS, FUN, TGT? | N | partner | unknown | none | CQ-CARE | PR-CARE | PW-CARE | Yes | No | awaiting_confirmation | No |
+| A06 | `my grandmother is not coping on her own` | OS | PNS, FUN, TGT? | N | grandmother | unknown | none | CQ-CARE | PR-CARE | PW-CARE | Yes | No | awaiting_confirmation | No |
+| A07 | `my aunt has dementia and lives alone` | OS | PNS, FUN, TGT? | N | aunt | unknown | none | CQ-CARE | PR-CARE | PW-CARE | Yes | No | awaiting_confirmation | No |
+| A08 | `my uncle can't manage his bills any more` | OS | PNS, FUN, MON, TGT? | N | uncle | unknown | none | CQ-CARE | PR-CARE | PW-CARE | Yes | No | awaiting_confirmation | No |
 | A09 | `my son has additional needs and I'm exhausted` | OS | PNS, CAR, SUP, FUN, TGT? | Y | son | unknown | unclear | CQ-CARE | PR-CARE | PW-CARE | Yes | No | awaiting_confirmation | No |
-| A10 | `my daughter needs support at home` | OS | PNS, TGT? | Y | daughter | unknown | none | CQ-CARE | PR-CARE | PW-CARE | Yes | No | awaiting_confirmation | No |
+| A10 | `my daughter needs support at home` | OS | PNS, TGT? | N | daughter | unknown | none | CQ-CARE | PR-CARE | PW-CARE | Yes | No | awaiting_confirmation | No |
 
 **A01.** The permanent regression case. `my father needs care` mentions the father
 and implies difficulty. It does not say whether help is wanted *for him* or *for
@@ -294,11 +302,11 @@ is reachable only by selection.
 
 | ID | Source text | Shape | Signals | User | Others | Help target | Urg | CQ | PR | PW | Msg | Spec | Transition | Case |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| C01 | `my husband cannot wash himself` | OS | PNS, FUN, TGT? | Y | husband | unknown | none | CQ-CARE | PR-CARE | PW-CARE | Yes | No | awaiting_confirmation | No |
+| C01 | `my husband cannot wash himself` | OS | PNS, FUN, TGT? | N | husband | unknown | none | CQ-CARE | PR-CARE | PW-CARE | Yes | No | awaiting_confirmation | No |
 | C02 | `Mum keeps falling` | OS | PNS, FUN, URG, TGT? | N | Mum | unknown | unclear | CQ-URGENT → CQ-CARE | PR-URG, PR-CARE | PW-URG, PW-CARE | Yes | No | urgency_confirmation | No |
 | C03 | `Dad can't manage the stairs any more` | OS | PNS, FUN, TGT? | N | Dad | unknown | none | CQ-CARE | PR-CARE | PW-CARE | Yes | No | awaiting_confirmation | No |
 | C04 | `mum is getting confused about her medication` | OS | PNS, FUN, TGT? | N | mum | unknown | unclear | CQ-URGENT → CQ-CARE | PR-URG, PR-CARE | PW-URG, PW-CARE | Yes | No | urgency_confirmation | No |
-| C05 | `my wife can't cook for herself now` | OS | PNS, FUN, TGT? | Y | wife | unknown | none | CQ-CARE | PR-CARE | PW-CARE | Yes | No | awaiting_confirmation | No |
+| C05 | `my wife can't cook for herself now` | OS | PNS, FUN, TGT? | N | wife | unknown | none | CQ-CARE | PR-CARE | PW-CARE | Yes | No | awaiting_confirmation | No |
 | C06 | `my father is incontinent and I don't know what to do` | OS | PNS, FUN, SUP, TGT? | Y | father | unknown | none | CQ-CARE | PR-CARE | PW-CARE | Yes | No | awaiting_confirmation | No |
 | C07 | `my mother forgets whether she has eaten` | OS | PNS, FUN, TGT? | N | mother | unknown | unclear | CQ-URGENT → CQ-CARE | PR-URG, PR-CARE | PW-URG, PW-CARE | Yes | No | urgency_confirmation | No |
 
@@ -349,12 +357,12 @@ This scenario is the strongest single test of the help-target model.
 
 | ID | Source text | Shape | Signals | User | Others | Help target | Urg | CQ | PR | PW | Msg | Spec | Transition | Case |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| E01 | `my mum died last week` | OS | BER, PNS | Y | mum | unknown | none | CQ-BEREAVEMENT | PR-BER | PW-BER | Yes | No | awaiting_confirmation | No |
+| E01 | `my mum died last week` | OS | BER, PNS | N | mum | unknown | none | CQ-BEREAVEMENT | PR-BER | PW-BER | Yes | No | awaiting_confirmation | No |
 | E02 | `Dad died yesterday and I was his carer` | OS | BER, CAR, SUP | Y | Dad | unknown | none | CQ-BEREAVEMENT | PR-BER, PR-CARE | PW-BER, PW-CARE | Yes | No | awaiting_confirmation | No |
 | E03 | `my husband passed away and I don't know what to sort out` | OS | BER, TGT? | Y | husband | unknown | none | CQ-BEREAVEMENT | PR-BER | PW-BER | Yes | No | awaiting_confirmation | No |
 | E04 | `I cared for my wife for eleven years and she's gone` | OS | BER, CAR, SUP | Y | wife | unknown | none | CQ-BEREAVEMENT | PR-BER, PR-CARE | PW-BER, PW-CARE | Yes | No | awaiting_confirmation | No |
 | E05 | `my Carer's Allowance stopped when mum died` | OS | BER, MON, CAR | Y | mum | **self** | none | CQ-BEREAVEMENT | PR-BER, PR-BEN | PW-BER, PW-BEN | Yes | No | awaiting_confirmation | No |
-| E06 | `my grandad died and there are letters coming for him` | OS | BER, PNS | Y | grandad | unknown | none | CQ-BEREAVEMENT | PR-BER | PW-BER | Yes | No | awaiting_confirmation | No |
+| E06 | `my grandad died and there are letters coming for him` | OS | BER, PNS | N | grandad | unknown | none | CQ-BEREAVEMENT | PR-BER | PW-BER | Yes | No | awaiting_confirmation | No |
 
 **E01.** The second permanent regression case. Must reach a bereavement-shaped
 confirmation containing no financial language, and **must not mention, activate
@@ -380,7 +388,7 @@ useful route.
 | F04 | `there is no food in the house and the heating is off` | OS | URG, MON, LOC | N | — | unknown | **practical** | CQ-URGENT | PR-URG | PW-URG | Yes | No | urgent_support | No |
 | F05 | `they are sending mum home tonight and there is no bed downstairs` | OS | URG, HD, PNS, FUN | N | mum | one_other | **practical** | CQ-URGENT | PR-URG | PW-URG | Yes | No | urgent_support | No |
 | F06 | `I think my brother is going to hurt himself` | OS | URG, PNS | Y | brother | one_other | **danger** | CQ-URGENT | PR-URG | PW-URG | Yes | No | urgent_support | No |
-| F07 | `my neighbour is being threatened by someone for money` | OS | URG, PNS | Y | neighbour | one_other | **danger** | CQ-URGENT | PR-URG | PW-URG | Yes | No | urgent_support | No |
+| F07 | `my neighbour is being threatened by someone for money` | OS | URG, PNS | N | neighbour | one_other | **danger** | CQ-URGENT | PR-URG | PW-URG | Yes | No | urgent_support | No |
 
 **Family F contract.** Urgency is assessed before shape routing; no routing
 question is shown until it is resolved.
@@ -430,8 +438,8 @@ changed by this work.
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | H01 | `Dad is coming home from hospital tomorrow` | OS | HD, PNS, TGT? | N | Dad | unknown | unclear | CQ-URGENT → CQ-CARE | PR-URG, PR-CARE | PW-URG, PW-CARE | Yes | No | urgency_confirmation | No |
 | H02 | `mum is in hospital and they're talking about discharge` | OS | HD, PNS, TGT? | N | mum | unknown | unclear | CQ-URGENT → CQ-CARE | PR-URG, PR-CARE | PW-URG, PW-CARE | Yes | No | urgency_confirmation | No |
-| H03 | `they want to discharge my wife but the house isn't ready` | OS | HD, PNS, FUN, TGT? | Y | wife | unknown | unclear | CQ-URGENT → CQ-CARE | PR-URG, PR-CARE | PW-URG, PW-CARE | Yes | No | urgency_confirmation | No |
-| H04 | `my father was discharged last month and is struggling` | OS | HD, PNS, FUN, TGT? | Y | father | unknown | none | CQ-CARE | PR-CARE | PW-CARE | Yes | No | awaiting_confirmation | No |
+| H03 | `they want to discharge my wife but the house isn't ready` | OS | HD, PNS, FUN, TGT? | N | wife | unknown | unclear | CQ-URGENT → CQ-CARE | PR-URG, PR-CARE | PW-URG, PW-CARE | Yes | No | urgency_confirmation | No |
+| H04 | `my father was discharged last month and is struggling` | OS | HD, PNS, FUN, TGT? | N | father | unknown | none | CQ-CARE | PR-CARE | PW-CARE | Yes | No | awaiting_confirmation | No |
 
 **Family H contract.** Discharge is time-bounded but not an emergency. The
 urgency question is asked because AdminAvenger cannot tell whether arrangements
@@ -471,13 +479,13 @@ circular.
 
 | ID | Source text | Shape | Signals | User | Others | Help target | Urg | CQ | PR | PW | Msg | Spec | Transition | Case |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| J01 | `my farther needs cair` | OS | PNS, FUN, TGT? | Y | father | unknown | none | CQ-CARE | PR-CARE | PW-CARE | Yes | No | awaiting_confirmation | No |
+| J01 | `my farther needs cair` | OS | PNS, FUN, TGT? | N | farther | unknown | none | CQ-CARE | PR-CARE | PW-CARE | Yes | No | awaiting_confirmation | No |
 | J02 | `mum keeps falling over i cant cope` | OS | PNS, FUN, URG, CAR, SUP, TGT? | Y | mum | unknown | unclear | CQ-URGENT → CQ-CARE | PR-URG, PR-CARE | PW-URG, PW-CARE | Yes | No | urgency_confirmation | No |
-| J03 | `atendance allowence for my dad` | DQ | MON, PNS | Y | dad | one_other | none | CQ-BENEFITS | PR-BEN | PW-BEN | Yes | No | awaiting_confirmation | No |
-| J04 | `MUM AND DAD BOTH NEED HELP` | OS | PNS, TGT? | N | mum, dad | unknown | none | CQ-CARE | PR-CARE | PW-CARE | Yes | No | awaiting_confirmation | No |
+| J03 | `atendance allowence for my dad` | DQ | MON, PNS | N | dad | one_other | none | CQ-BENEFITS | PR-BEN | PW-BEN | Yes | No | awaiting_confirmation | No |
+| J04 | `MUM AND DAD BOTH NEED HELP` | OS | PNS, TGT? | N | MUM, DAD | unknown | none | CQ-CARE | PR-CARE | PW-CARE | Yes | No | awaiting_confirmation | No |
 | J05 | `I care for my wife and my mother` | OS | CAR, SUP, PNS, TGT? | Y | wife, mother | unknown | none | CQ-CARE | PR-CARE | PW-CARE | Yes | No | awaiting_confirmation | No |
 | J06 | `CARE NEEDS ASSESSMENT\n\nREF: CNA-4471\nDATE: 12 AUGUST 2026\n\nAn assessment has been arranged.` | DOC | — | N | — | unknown | none | CQ-NONE | PR-DOC | PW-DOC | Yes | No | message_analysis_selected | No |
-| J07 | `my mum needs help — sent from my iPhone` | OS | PNS, TGT? | Y | mum | unknown | none | CQ-CARE | PR-CARE | PW-CARE | Yes | No | awaiting_confirmation | No |
+| J07 | `my mum needs help. Sent from my iPhone` | OS | PNS, TGT? | N | mum | unknown | none | CQ-CARE | PR-CARE | PW-CARE | Yes | No | awaiting_confirmation | No |
 
 **J04.** The word BOTH appears in the source. It still does not set the help
 target: "both need help" describes two people's circumstances, not a request.
@@ -497,11 +505,11 @@ vocabulary.
 
 | ID | Source text | Shape | Signals | User | Others | Help target | Urg | CQ | PR | PW | Msg | Spec | Transition | Case |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| K01 | `I don't need help but my mum does` | OS | PNS, TGT? | Y | mum | **one_other** | none | CQ-CARE | PR-CARE | PW-CARE | Yes | No | awaiting_confirmation | No |
-| K02 | `I'm fine, it's for a friend` | OS | PNS, TGT? | Y | friend | **one_other** | none | CQ-CARE | PR-CARE | PW-CARE | Yes | No | awaiting_confirmation | No |
+| K01 | `I don't need help but my mum does` | OS | PNS | Y | mum | **one_other** | none | CQ-CARE | PR-CARE | PW-CARE | Yes | No | awaiting_confirmation | No |
+| K02 | `I'm fine, it's for a friend` | OS | PNS | Y | friend | **one_other** | none | CQ-CARE | PR-CARE | PW-CARE | Yes | No | awaiting_confirmation | No |
 | K03 | `it's not for me, well partly for me` | OS | TGT?, SUP | Y | — | unknown | none | CQ-CARE | PR-CARE | PW-CARE | Yes | No | awaiting_confirmation | No |
 | K04 | `dad is fine now but last week he fell and I panicked` | OS | PNS, FUN, SUP | Y | dad | unknown | none | CQ-CARE | PR-CARE | PW-CARE | Yes | No | awaiting_confirmation | No |
-| K05 | `my mother is independent but cannot manage forms or money` | OS | PNS, FUN, MON, TGT? | Y | mother | unknown | none | CQ-CARE | PR-CARE | PW-CARE | Yes | No | awaiting_confirmation | No |
+| K05 | `my mother is independent but cannot manage forms or money` | OS | PNS, FUN, MON, TGT? | N | mother | unknown | none | CQ-CARE | PR-CARE | PW-CARE | Yes | No | awaiting_confirmation | No |
 | K06 | `Your father's account has been closed. I look after him and I don't understand this.` | DOC | PNS, CAR, SUP | Y | father | unknown | none | CQ-NONE | PR-DOC | PW-DOC | Yes | No | message_analysis_selected | No |
 
 **K01, K02.** These *are* clear requests for help for a specific other person —
@@ -595,22 +603,22 @@ Captured by running each control through `analyseAdminItem` → `createAdminCase
 
 | ID | Baseline title | Status | Opportunity | Baseline best next move | Next-step kind |
 |---|---|---|---|---|---|
-| L01 | Information-only confirmation | resolved | no_action_needed | Keep the source confirmation | evidence_checklist |
-| L02 | Document request to act on | ready_to_act | needs_human_check | Follow the source-grounded next step | evidence_checklist |
+| L01 | Information-only confirmation | resolved | no_action_needed | N | evidence_checklist |
+| L02 | Document request to act on | ready_to_act | needs_human_check | N | evidence_checklist |
 | **L03** | This needs a careful human review | new | deadline | **Identify the sender, date, reference, and deadline** | draft_message |
-| L04 | Payment or balance issue to review | new | needs_human_check | Follow the source-grounded next step | evidence_checklist |
-| L05 | Price or account change to check | new | needs_human_check | Follow the source-grounded next step | evidence_checklist |
-| L06 | Payment or balance issue to review | new | needs_human_check | Follow the source-grounded next step | evidence_checklist |
-| L07 | Date or deadline to keep | waiting | needs_human_check | Follow the source-grounded next step | evidence_checklist |
-| L08 | Decision or review update | waiting | needs_human_check | Follow the source-grounded next step | evidence_checklist |
-| J06 | Date or deadline to keep | new | needs_human_check | Follow the source-grounded next step | evidence_checklist |
-| K06 | Information-only confirmation | resolved | no_action_needed | Keep the source confirmation | evidence_checklist |
+| L04 | Payment or balance issue to review | new | needs_human_check | N | evidence_checklist |
+| L05 | Price or account change to check | new | needs_human_check | N | evidence_checklist |
+| L06 | Payment or balance issue to review | new | needs_human_check | N | evidence_checklist |
+| L07 | Date or deadline to keep | waiting | needs_human_check | N | evidence_checklist |
+| L08 | Decision or review update | waiting | needs_human_check | N | evidence_checklist |
+| J06 | Date or deadline to keep | new | needs_human_check | N | evidence_checklist |
+| K06 | Information-only confirmation | resolved | no_action_needed | Y | evidence_checklist |
 | **G02** | Important reply needed | new | deadline | **Identify the sender, date, reference, and deadline** | draft_message |
 | **G06** | **No obvious saving or action found** | new | no_action_needed | **Identify the sender, date, reference, and deadline** | draft_message |
-| M01 | Provider update with an open next step | ready_to_act | needs_human_check | Follow the source-grounded next step | evidence_checklist |
-| M02 | Email needs safety check | new | suspicious_email_risk | Do not share the requested code, password, PIN, or card or bank details | draft_message |
-| M03 | Email needs safety check | new | suspicious_email_risk | Avoid making the requested payment or using the message's link | draft_message |
-| M04 | Email needs safety check | new | suspicious_email_risk | Avoid making the requested payment or using the message's link | draft_message |
+| M01 | Provider update with an open next step | ready_to_act | needs_human_check | N | evidence_checklist |
+| M02 | Email needs safety check | new | suspicious_email_risk | N | draft_message |
+| M03 | Email needs safety check | new | suspicious_email_risk | N | draft_message |
+| M04 | Email needs safety check | new | suspicious_email_risk | N | draft_message |
 
 **Why this table matters.** Three document controls — **L03, G02 and G06** —
 legitimately produce the exact phrases the earlier version of this corpus banned

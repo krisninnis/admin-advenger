@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState, type DragEvent } from "react";
+import { useEffect, useMemo, useReducer, useState, type DragEvent } from "react";
 import { EmailSafetyModal } from "../components/EmailSafetyModal";
+import { FrontDoorConfirmationPanel } from "../components/FrontDoorConfirmationPanel";
 import { BenefitsActionPackPanel } from "../components/BenefitsActionPackPanel";
 import { GuidedNextStepPanel } from "../components/GuidedNextStepPanel";
 import { InboxScanPreview } from "../components/InboxScanPreview";
@@ -45,6 +46,20 @@ import {
   getVisibleDocumentQualityWarningMessagesAfterOcr,
 } from "../lib/documentImageQuality";
 import { assessEmailSafety } from "../lib/suspiciousEmail";
+import {
+  frontDoorRouteReducer,
+  initialFrontDoorRouteState,
+  type FrontDoorChoiceId,
+} from "../lib/frontDoorIntent/frontDoorRouteView";
+import {
+  decideFrontDoorSubmission,
+  ordinaryDocumentSubmission,
+} from "../lib/frontDoorIntent/submissionDecision";
+import {
+  frontDoorInputSnapshotsMatch,
+  type FrontDoorInputSnapshot,
+  type FrontDoorSubmissionSource,
+} from "../lib/frontDoorIntent/submissionSource";
 import {
   isCoarsePointerEnvironment,
   shouldSubmitOnEnterKey,
@@ -494,6 +509,13 @@ export function HomeView({
   const [showInboxTools, setShowInboxTools] = useState(false);
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [isDesktopPointer, setIsDesktopPointer] = useState(false);
+  // Front-Door Intent Routing v1, UI wiring slice. This holds the one adaptive
+  // confirmation step. It cannot create a case or open a specialist journey:
+  // those prohibitions are typed as literal `false` in the view model.
+  const [frontDoorRoute, dispatchFrontDoorRoute] = useReducer(
+    frontDoorRouteReducer,
+    initialFrontDoorRouteState,
+  );
   // Document Attachment Intake v1 - files attached beside the paste box
   // (chosen from the device or dropped). Kept as its
   // own small list rather than reusing the single-photo OCR state above, so
@@ -546,6 +568,20 @@ export function HomeView({
   );
   const showAttachmentCombinedTextNote =
     rawText.trim().length > 0 && hasReadableAttachedText(attachedFiles);
+  // Front-Door Intent Routing v1, UI wiring slice. Everything the front door
+  // read the submission from. Comparing this against the snapshot stored with
+  // the current route is what makes a stale question impossible: editing the
+  // paste box, clearing the input, loading a sample, loading a text file,
+  // accepting reviewed photo text, adding or removing an attachment and
+  // switching input mode all change one of these three values.
+  const currentInputSnapshot = useMemo<FrontDoorInputSnapshot>(
+    () => ({
+      inputMode: selectedInput,
+      rawText,
+      attachmentsText: attachmentCombinedText,
+    }),
+    [attachmentCombinedText, rawText, selectedInput],
+  );
   const primaryCase = useMemo(
     () => (result ? selectMostImportantCase(result.cases) : undefined),
     [result],
@@ -739,6 +775,28 @@ export function HomeView({
     setIsDesktopPointer(!isCoarsePointerEnvironment());
   }, []);
 
+  // Front-Door Intent Routing v1, UI wiring slice.
+  //
+  // A question about wording that has since changed is worse than no question,
+  // because the person answers about words that are no longer there. So the
+  // route is invalidated the moment the input it was decided from stops
+  // matching. This single comparison covers every way the input can change,
+  // which is why there is no list of individual handlers to keep in step.
+  //
+  // Going back does not change the input, so back still returns to the same
+  // question about the same words.
+  useEffect(() => {
+    if (!frontDoorRoute.snapshot) {
+      return;
+    }
+
+    if (frontDoorInputSnapshotsMatch(frontDoorRoute.snapshot, currentInputSnapshot)) {
+      return;
+    }
+
+    dispatchFrontDoorRoute({ type: "source_changed" });
+  }, [currentInputSnapshot, frontDoorRoute.snapshot]);
+
   useEffect(() => {
     if (
       showPhotoCapturePanel ||
@@ -838,11 +896,10 @@ export function HomeView({
     setInputMessage("");
   };
 
-  const runOllamaExtraction = async (
-    textOverride?: string,
-    sourceTitle = "Pasted admin text",
-  ) => {
-    const textToExtract = textOverride ?? rawText.trim();
+  // Local extraction. It runs only after a submission has been decided to be a
+  // document, never as a way around that decision.
+  const runOllamaExtraction = async (source: FrontDoorSubmissionSource) => {
+    const { acceptedText: textToExtract, sourceTitle, sourceType } = source;
     setAiStatus("loading");
     setAiError("");
     setAiFallbackHint("");
@@ -868,7 +925,7 @@ export function HomeView({
         sourceTitle: sourceTitle === "Pasted admin text"
           ? "Local AI extracted admin facts"
           : `Local AI extracted admin facts from ${sourceTitle}`,
-        sourceType: "email",
+        sourceType,
         acceptedText: reconstructedText,
         userQuestion,
         onCheck,
@@ -896,7 +953,7 @@ export function HomeView({
 
       await submitAcceptedText({
         sourceTitle,
-        sourceType: "email",
+        sourceType,
         acceptedText: textToExtract,
         userQuestion,
         onCheck,
@@ -904,10 +961,84 @@ export function HomeView({
     }
   };
 
+  const runOrdinaryMessageCheck = async (source: FrontDoorSubmissionSource) => {
+    setInputMessage("");
+    setAiError("");
+    setAiFallbackHint("");
+    const checked = await submitAcceptedText({
+      sourceTitle: source.sourceTitle,
+      sourceType: source.sourceType,
+      acceptedText: source.acceptedText,
+      userQuestion,
+      onCheck,
+    });
+
+    if (!checked) {
+      setAiExtraction(undefined);
+    }
+  };
+
+  // Front-Door Intent Routing v1, UI wiring slice.
+  //
+  // The one submission path. Pasted text, pasted text combined with
+  // attachments, reviewed photo text, a loaded text file and the "check this as
+  // a message" exit all arrive here, so no handler carries a routing rule of
+  // its own and no setting can skip the decision.
+  //
+  // The order below is the approved order and is deliberately not reorderable
+  // by a caller: decide first, then act. Local extraction sits inside the
+  // document branch, after the decision, exactly where ordinary analysis sits.
+  const submitFrontDoorSource = async (
+    source: FrontDoorSubmissionSource,
+    snapshot: FrontDoorInputSnapshot,
+    options: { readonly skipFrontDoor?: boolean } = {},
+  ) => {
+    const decision = options.skipFrontDoor
+      ? ordinaryDocumentSubmission(source)
+      : decideFrontDoorSubmission(source);
+
+    if (decision.kind === "front_door_route") {
+      dispatchFrontDoorRoute({
+        type: "input_received",
+        text: source.acceptedText,
+        sourceTitle: source.sourceTitle,
+        sourceType: source.sourceType,
+        snapshot,
+      });
+      setInputMessage("");
+      setAiError("");
+      setAiFallbackHint("");
+      return;
+    }
+
+    if (isLocalOllamaMode) {
+      await runOllamaExtraction(decision.source);
+      return;
+    }
+
+    await runOrdinaryMessageCheck(decision.source);
+  };
+
+  // "Just check this as a message" keeps the original accepted text, source
+  // title and source type. Relabelling every route as pasted text here would
+  // rename a photo or an attached document on its way to analysis.
+  const handleFrontDoorCheckAsMessage = async () => {
+    const source = frontDoorRoute.source;
+    const snapshot = frontDoorRoute.snapshot ?? currentInputSnapshot;
+    dispatchFrontDoorRoute({ type: "ordinary_check_requested" });
+
+    if (!source || source.acceptedText.trim().length === 0) {
+      return;
+    }
+
+    await submitFrontDoorSource(source, snapshot, { skipFrontDoor: true });
+  };
+
   const handleCheck = async () => {
     setAiExtraction(undefined);
     setShowDetailed(false);
     setShowEmailSafety(false);
+    dispatchFrontDoorRoute({ type: "dismissed" });
     onClearResult();
 
     if (selectedInput === "image" && rawText.trim().length === 0) {
@@ -945,25 +1076,14 @@ export function HomeView({
       return;
     }
 
-    if (isLocalOllamaMode) {
-      await runOllamaExtraction(textToCheck, checkSourceTitle);
-      return;
-    }
-
-    setInputMessage("");
-    setAiError("");
-    setAiFallbackHint("");
-    const checked = await submitAcceptedText({
-      sourceTitle: checkSourceTitle,
-      sourceType: "email",
-      acceptedText: textToCheck,
-      userQuestion,
-      onCheck,
-    });
-
-    if (!checked) {
-      setAiExtraction(undefined);
-    }
+    await submitFrontDoorSource(
+      {
+        acceptedText: textToCheck,
+        sourceTitle: checkSourceTitle,
+        sourceType: "email",
+      },
+      currentInputSnapshot,
+    );
   };
 
   type PhotoOcrReadResult = {
@@ -1272,22 +1392,22 @@ export function HomeView({
     setAiFallbackHint("");
     onClearResult();
 
-    if (isLocalOllamaMode) {
-      await runOllamaExtraction(cleanedText);
-      return;
-    }
-
-    const checked = await submitAcceptedText({
-      sourceTitle: "Photo text (reviewed before checking)",
-      sourceType: "email",
-      acceptedText: cleanedText,
-      userQuestion,
-      onCheck,
-    });
-
-    if (!checked) {
-      setAiExtraction(undefined);
-    }
+    // Reviewed photo text is a submission like any other. It used to go
+    // straight to analysis or straight to local extraction, which meant a
+    // sentence a person had typed over the top of unreadable photo text could
+    // never reach the front door at all.
+    await submitFrontDoorSource(
+      {
+        acceptedText: cleanedText,
+        sourceTitle: "Photo text (reviewed before checking)",
+        sourceType: "email",
+      },
+      {
+        inputMode: "paste",
+        rawText: cleanedText,
+        attachmentsText: attachmentCombinedText,
+      },
+    );
   };
 
   // "Retake photo" - resets the current photo/OCR state and reopens the
@@ -2308,6 +2428,20 @@ export function HomeView({
           </p>
         ) : null}
       </section>
+
+      {frontDoorRoute.view ? (
+        <FrontDoorConfirmationPanel
+          view={frontDoorRoute.view}
+          selectedChoiceId={frontDoorRoute.selectedChoiceId}
+          onChoose={(choiceId: FrontDoorChoiceId) =>
+            dispatchFrontDoorRoute({ type: "choice_selected", choiceId })
+          }
+          onBack={() => dispatchFrontDoorRoute({ type: "go_back" })}
+          onCheckAsMessage={() => {
+            void handleFrontDoorCheckAsMessage();
+          }}
+        />
+      ) : null}
 
       {aiExtraction ? <AiExtractedFactsPanel extraction={aiExtraction} /> : null}
 

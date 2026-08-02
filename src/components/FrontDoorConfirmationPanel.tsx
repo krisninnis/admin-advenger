@@ -1,3 +1,4 @@
+import { CarerNeedsIntakePanel } from "./CarerNeedsIntakePanel";
 import type {
   FrontDoorChoiceId,
   FrontDoorRouteView,
@@ -120,6 +121,22 @@ function Orientation({
       </p>
 
       <OriginalInput text={view.originalInput} />
+
+      {/*
+        The optional needs intake, offered only where this page is about help
+        for one other person. It is never opened automatically: the person has
+        to press the button. Keyed on the wording so a different situation
+        cannot inherit answers about a previous one.
+      */}
+      {view.aboutOneOtherPerson ? (
+        <CarerNeedsIntakePanel
+          key={view.originalInput}
+          personLabel={view.personLabel}
+          originalInput={view.originalInput}
+          onReturnToOriginalMessage={onCheckAsMessage}
+        />
+      ) : null}
+
       <Exits
         onBack={onBack}
         onCheckAsMessage={onCheckAsMessage}

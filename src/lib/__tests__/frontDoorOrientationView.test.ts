@@ -477,6 +477,44 @@ describe("the page never becomes a document result", () => {
   });
 });
 
+describe("the gate on the optional preparation step", () => {
+  // Three conditions, all required: the page is about one other person, the
+  // shape is care, and the source gave a word for who that person is. The
+  // summary the preparation step builds is headed "What your sister finds
+  // difficult day to day". Without a label there is no name to put in it, and
+  // offering to prepare a picture of somebody nobody has named is an offer
+  // about nobody.
+  const CARE_WITHOUT_A_NAMED_PERSON =
+    "I look after him every day and I am struggling.";
+
+  it("opens for the sister, who was named", () => {
+    const view = orientationFor(EXAMPLES.A, "other_person");
+    expect(view.aboutOneOtherPerson).toBe(true);
+    expect(view.personLabel).toBe("sister");
+  });
+
+  it("is closed when the care shape names nobody", () => {
+    const view = orientationFor(CARE_WITHOUT_A_NAMED_PERSON, "other_person");
+    expect(view.personLabel).toBeUndefined();
+    expect(view.aboutOneOtherPerson).toBe(false);
+  });
+
+  it.each([
+    { name: "the supporter's own side", choiceId: "self_supporting" as const },
+    { name: "both people", choiceId: "both" as const },
+    { name: "not sure", choiceId: "unsure" as const },
+  ])("is closed for $name", ({ choiceId }) => {
+    expect(orientationFor(EXAMPLES.A, choiceId).aboutOneOtherPerson).toBe(false);
+  });
+
+  it.each([
+    { name: "benefits", text: EXAMPLES.E, choiceId: "other_person" as const },
+    { name: "bereavement", text: EXAMPLES.F, choiceId: "what_next" as const },
+  ])("is closed for a $name orientation", ({ text, choiceId }) => {
+    expect(orientationFor(text, choiceId).aboutOneOtherPerson).toBe(false);
+  });
+});
+
 describe("the orientation view is deterministic", () => {
   it("returns identical output for identical input", () => {
     for (const text of Object.values(EXAMPLES)) {

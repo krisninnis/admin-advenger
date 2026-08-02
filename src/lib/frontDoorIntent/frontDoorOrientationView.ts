@@ -55,6 +55,22 @@ export type FrontDoorOrientationView = {
   readonly cannotContactStatement: string;
   /** The person's own words, unaltered. */
   readonly originalInput: string;
+  /**
+   * The person's own word for who this is about, where one was given.
+   *
+   * Verbatim. "Dad" is never normalised to "father".
+   */
+  readonly personLabel: string | undefined;
+  /**
+   * True only where this page is about help for one other person, and the
+   * person said so by choosing it.
+   *
+   * This is what gates the optional needs intake. It is deliberately narrow:
+   * somebody who chose "Me because I support them", "Both of us" or "I'm not
+   * sure" has not asked for help for one other person, and a page built to
+   * describe one person's day would be the wrong page for them.
+   */
+  readonly aboutOneOtherPerson: boolean;
   readonly backLabel: string;
   readonly ordinaryCheckLabel: string;
   readonly backAvailable: true;
@@ -363,6 +379,18 @@ export const deriveFrontDoorOrientationView = (
   const label = frontDoorPersonLabelOf(classification);
   const body = bodyFor(shape, choiceId, label);
 
+  // Three conditions, all required. Care-shaped, because benefits, bereavement
+  // and general orientations are a different question. The person chose the
+  // other person, because nobody else has asked for help for one other person.
+  // And the source gave a word for who that person is.
+  //
+  // The last one is easy to miss. A care signal can fire with nobody named at
+  // all: "I look after him every day" describes a caring role and mentions no
+  // relationship word. Offering to prepare a picture of somebody's day when
+  // there is no name to put at the top of it is an offer about nobody.
+  const aboutOneOtherPerson =
+    shape === "care" && choiceId === "other_person" && label !== undefined;
+
   return {
     ...PROHIBITIONS,
     ...HEADINGS,
@@ -374,5 +402,7 @@ export const deriveFrontDoorOrientationView = (
     cannotDecide: CANNOT_DECIDE,
     cannotContactStatement: CANNOT_CONTACT,
     originalInput,
+    personLabel: label,
+    aboutOneOtherPerson,
   };
 };

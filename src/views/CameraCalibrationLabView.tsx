@@ -445,6 +445,15 @@ export function CameraCalibrationLabView({
       stopCurrentStream();
       const nextStream = await requestStream(constraints);
       setStream(nextStream);
+      // Claim the ref in the same tick the camera actually opens, rather than
+      // waiting for the effect on `stream` to commit. Between those two moments
+      // the camera is live while `streamRef.current` still reads null, and
+      // every cleanup path guards on that ref: the popstate and hashchange
+      // handler, and the unmount teardown. A route change landing inside that
+      // window would leave the camera running with nothing left holding a
+      // reference to stop it. The effect still assigns the same value
+      // afterwards, so nothing else changes.
+      streamRef.current = nextStream;
       refreshTrackDetails(nextStream);
       setDevices((await enumerateDevices()).filter((device) => device.kind === "videoinput"));
       setCaptureNotice("Camera opened. No image has been uploaded or saved.");

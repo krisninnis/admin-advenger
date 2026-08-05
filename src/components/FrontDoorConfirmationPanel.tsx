@@ -1,4 +1,5 @@
 import { CarerNeedsIntakePanel } from "./CarerNeedsIntakePanel";
+import { SupporterNeedsIntakePanel } from "./SupporterNeedsIntakePanel";
 import type {
   FrontDoorChoiceId,
   FrontDoorRouteView,
@@ -130,6 +131,15 @@ function Orientation({
       */}
       {view.aboutOneOtherPerson ? (
         <CarerNeedsIntakePanel
+          key={view.originalInput}
+          personLabel={view.personLabel}
+          originalInput={view.originalInput}
+          onReturnToOriginalMessage={onCheckAsMessage}
+        />
+      ) : null}
+
+      {view.aboutSupporterWithNamedPerson ? (
+        <SupporterNeedsIntakePanel
           key={view.originalInput}
           personLabel={view.personLabel}
           originalInput={view.originalInput}

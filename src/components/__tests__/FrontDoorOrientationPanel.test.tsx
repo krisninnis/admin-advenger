@@ -26,6 +26,7 @@ const CARE_SENTENCE = "My sister needs help.";
 
 /** The optional preparation step added by the Wales-first needs intake slice. */
 const PREPARE = "Prepare what is difficult day to day";
+const PREPARE_SUPPORTER = "Prepare how supporting them affects you";
 
 // Wordings that reach an orientation page which must not carry the offer.
 const CARE_WITHOUT_A_NAMED_PERSON = "I look after him every day and I am struggling.";
@@ -205,6 +206,7 @@ describe("the preparation step appears only where all three conditions hold", ()
 
     expect(screen.getByRole("region", { name: "What this may be about" })).toBeTruthy();
     expect(prepareButton()).toBeNull();
+    expect(screen.queryByRole("button", { name: PREPARE_SUPPORTER })).toBeNull();
   });
 
   it("does not appear on the urgent page", () => {
@@ -222,6 +224,7 @@ describe("the preparation step appears only where all three conditions hold", ()
 
     expect(screen.getByRole("region", { name: "Urgent support" })).toBeTruthy();
     expect(prepareButton()).toBeNull();
+    expect(screen.queryByRole("button", { name: PREPARE_SUPPORTER })).toBeNull();
   });
 
   it.each([
@@ -236,8 +239,50 @@ describe("the preparation step appears only where all three conditions hold", ()
     // Document-shaped and security-shaped input renders nothing here, so there
     // is no page for the offer to sit on.
     expect(prepareButton()).toBeNull();
+    expect(screen.queryByRole("button", { name: PREPARE_SUPPORTER })).toBeNull();
     expect(screen.queryByRole("region", { name: "What this may be about" })).toBeNull();
     expect(screen.queryAllByRole("button")).toHaveLength(0);
+  });
+});
+
+describe("the supporter preparation step has its own narrow gate", () => {
+  it("appears closed on a named supporter-focused care orientation", async () => {
+    const view = orientationView(CARE_SENTENCE, "self_supporting");
+    if (view.kind !== "orientation") throw new Error("expected an orientation view");
+
+    expect(view.aboutOneOtherPerson).toBe(false);
+    expect(view.aboutSupporterWithNamedPerson).toBe(true);
+    expect(view.personLabel).toBe("sister");
+
+    renderPanel(view);
+    expect(screen.getByRole("button", { name: PREPARE_SUPPORTER })).toBeTruthy();
+    expect(screen.queryByRole("group", { name: "What help do you provide?" })).toBeNull();
+
+    await userEvent.setup().click(
+      screen.getByRole("button", { name: PREPARE_SUPPORTER }),
+    );
+    expect(screen.getByRole("group", { name: "What help do you provide?" })).toBeTruthy();
+  });
+
+  it("does not appear for the other-person, both-people or not-sure choices", () => {
+    for (const choiceId of ["other_person", "both", "unsure"] as const) {
+      renderPanel(orientationView(CARE_SENTENCE, choiceId));
+      expect(screen.queryByRole("button", { name: PREPARE_SUPPORTER })).toBeNull();
+      cleanup();
+    }
+  });
+
+  it("does not appear when the supporter-focused wording names nobody", () => {
+    const view = orientationView(
+      CARE_WITHOUT_A_NAMED_PERSON,
+      "self_supporting",
+    );
+    if (view.kind !== "orientation") throw new Error("expected an orientation view");
+
+    expect(view.personLabel).toBeUndefined();
+    expect(view.aboutSupporterWithNamedPerson).toBe(false);
+    renderPanel(view);
+    expect(screen.queryByRole("button", { name: PREPARE_SUPPORTER })).toBeNull();
   });
 });
 

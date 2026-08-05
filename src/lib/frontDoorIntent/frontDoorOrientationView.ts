@@ -71,6 +71,11 @@ export type FrontDoorOrientationView = {
    * describe one person's day would be the wrong page for them.
    */
   readonly aboutOneOtherPerson: boolean;
+  /**
+   * True only for a care orientation focused on the person providing support,
+   * where the source wording identifies the other person.
+   */
+  readonly aboutSupporterWithNamedPerson: boolean;
   readonly backLabel: string;
   readonly ordinaryCheckLabel: string;
   readonly backAvailable: true;
@@ -390,6 +395,8 @@ export const deriveFrontDoorOrientationView = (
   // there is no name to put at the top of it is an offer about nobody.
   const aboutOneOtherPerson =
     shape === "care" && choiceId === "other_person" && label !== undefined;
+  const aboutSupporterWithNamedPerson =
+    shape === "care" && choiceId === "self_supporting" && label !== undefined;
 
   return {
     ...PROHIBITIONS,
@@ -404,5 +411,6 @@ export const deriveFrontDoorOrientationView = (
     originalInput,
     personLabel: label,
     aboutOneOtherPerson,
+    aboutSupporterWithNamedPerson,
   };
 };

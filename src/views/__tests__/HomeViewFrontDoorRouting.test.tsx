@@ -152,6 +152,38 @@ describe("J2: an ambiguous request gets a clarification step", () => {
   });
 });
 
+describe("supporter preparation follows the supporter-focused orientation", () => {
+  it("reaches the optional intake only after the supporter choice and offer", async () => {
+    const { user, onCheck } = await check(
+      "I look after my neighbour every day and I am struggling.",
+    );
+
+    expect(screen.queryByText("What help do you provide?")).toBeNull();
+    await user.click(
+      screen.getByRole("button", { name: "Me because I support them" }),
+    );
+
+    expect(
+      screen.getByRole("button", {
+        name: "Prepare how supporting them affects you",
+      }),
+    ).toBeTruthy();
+    expect(screen.queryByText("What help do you provide?")).toBeNull();
+    expect(onCheck).not.toHaveBeenCalled();
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "Prepare how supporting them affects you",
+      }),
+    );
+
+    expect(
+      screen.getByRole("group", { name: "What help do you provide?" }),
+    ).toBeTruthy();
+    expect(onCheck).not.toHaveBeenCalled();
+  });
+});
+
 describe("J3: a benefits question asks whose benefits", () => {
   it("uses the possessive choices", async () => {
     const { onCheck } = await check("Can my father claim Attendance Allowance?");

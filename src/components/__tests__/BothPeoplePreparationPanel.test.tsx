@@ -233,7 +233,7 @@ describe("the combined summary", () => {
 
     expect(screen.getByRole("button", { name: "Back" })).toBeTruthy();
     expect(
-      screen.getByRole("button", { name: "Return to the original message" }),
+      screen.getByRole("button", { name: "Just check this as a message" }),
     ).toBeTruthy();
     expect(screen.getByRole("button", { name: "Copy both summaries" })).toBeTruthy();
   });
@@ -260,7 +260,7 @@ describe("the combined summary", () => {
     expect(onReturnToOriginalMessage).not.toHaveBeenCalled();
 
     await user.click(
-      screen.getByRole("button", { name: "Return to the original message" }),
+      screen.getByRole("button", { name: "Just check this as a message" }),
     );
     expect(onReturnToOriginalMessage).toHaveBeenCalledTimes(1);
   });

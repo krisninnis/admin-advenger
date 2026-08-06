@@ -38,6 +38,7 @@ import {
 // Type-only, so this leaves no runtime edge back to the route view.
 import type { FrontDoorChoiceId } from "./frontDoorRouteView";
 import type { FrontDoorIntentClassification } from "./types";
+import { ORDINARY_MESSAGE_CHECK_LABEL } from "../ordinaryMessageCheck";
 
 export type FrontDoorOrientationView = {
   readonly kind: "orientation";
@@ -101,7 +102,7 @@ const HEADINGS = {
 
 const BUTTONS = {
   backLabel: "Back",
-  ordinaryCheckLabel: "Return to original message",
+  ordinaryCheckLabel: ORDINARY_MESSAGE_CHECK_LABEL,
 } as const;
 
 const PROHIBITIONS = {

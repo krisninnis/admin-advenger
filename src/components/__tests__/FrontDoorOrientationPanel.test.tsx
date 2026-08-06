@@ -105,11 +105,11 @@ describe("the orientation page reaches the screen", () => {
 });
 
 describe("the orientation page offers exactly the approved buttons", () => {
-  it("offers the preparation step, Back and Return to original message, and nothing else", () => {
+  it("offers preparation, Back and honest ordinary message checking, and nothing else", () => {
     renderPanel(orientationView(CARE_SENTENCE, "other_person"));
 
     const labels = screen.getAllByRole("button").map((button) => button.textContent);
-    expect(labels).toEqual([PREPARE, "Back", "Return to original message"]);
+    expect(labels).toEqual([PREPARE, "Back", "Just check this as a message"]);
   });
 
   it("wires Back to going back", async () => {
@@ -121,13 +121,13 @@ describe("the orientation page offers exactly the approved buttons", () => {
     expect(onBack).toHaveBeenCalledTimes(1);
   });
 
-  it("wires Return to original message to ordinary message checking", async () => {
+  it("wires Just check this as a message to ordinary message checking", async () => {
     const { onCheckAsMessage } = renderPanel(
       orientationView(CARE_SENTENCE, "other_person"),
     );
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole("button", { name: "Return to original message" }));
+    await user.click(screen.getByRole("button", { name: "Just check this as a message" }));
 
     expect(onCheckAsMessage).toHaveBeenCalledTimes(1);
   });

@@ -27,13 +27,13 @@ type FrontDoorConfirmationPanelProps = {
 };
 
 const primaryButtonClass =
-  "rounded-lg border border-white/10 bg-slate-950 px-4 py-2.5 text-left text-sm font-bold text-slate-200 transition hover:border-white/20 hover:text-white focus:outline-none focus:ring-2 focus:ring-cyan-300/40";
+  "min-h-11 rounded-lg border border-white/10 bg-slate-950 px-4 py-2.5 text-left text-sm font-bold text-slate-200 transition hover:border-white/20 hover:text-white focus:outline-none focus:ring-2 focus:ring-cyan-300/40";
 
 const selectedButtonClass =
-  "rounded-lg border border-cyan-300/60 bg-cyan-300/10 px-4 py-2.5 text-left text-sm font-bold text-white transition focus:outline-none focus:ring-2 focus:ring-cyan-300/40";
+  "min-h-11 rounded-lg border border-cyan-300/60 bg-cyan-300/10 px-4 py-2.5 text-left text-sm font-bold text-white transition focus:outline-none focus:ring-2 focus:ring-cyan-300/40";
 
 const quietButtonClass =
-  "rounded-lg border border-white/10 bg-transparent px-3 py-2 text-xs font-bold text-slate-300 transition hover:border-white/20 hover:text-white focus:outline-none focus:ring-2 focus:ring-cyan-300/40";
+  "min-h-11 rounded-lg border border-white/10 bg-transparent px-3 py-2 text-xs font-bold text-slate-300 transition hover:border-white/20 hover:text-white focus:outline-none focus:ring-2 focus:ring-cyan-300/40";
 
 function OriginalInput({ text }: { text: string }) {
   return (

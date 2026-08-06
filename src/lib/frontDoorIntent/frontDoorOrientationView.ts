@@ -76,6 +76,11 @@ export type FrontDoorOrientationView = {
    * where the source wording identifies the other person.
    */
   readonly aboutSupporterWithNamedPerson: boolean;
+  /**
+   * True only for a care orientation where the person chose both sides and
+   * named the other person.
+   */
+  readonly aboutBothPeopleWithNamedPerson: boolean;
   readonly backLabel: string;
   readonly ordinaryCheckLabel: string;
   readonly backAvailable: true;
@@ -397,6 +402,8 @@ export const deriveFrontDoorOrientationView = (
     shape === "care" && choiceId === "other_person" && label !== undefined;
   const aboutSupporterWithNamedPerson =
     shape === "care" && choiceId === "self_supporting" && label !== undefined;
+  const aboutBothPeopleWithNamedPerson =
+    shape === "care" && choiceId === "both" && label !== undefined;
 
   return {
     ...PROHIBITIONS,
@@ -412,5 +419,6 @@ export const deriveFrontDoorOrientationView = (
     personLabel: label,
     aboutOneOtherPerson,
     aboutSupporterWithNamedPerson,
+    aboutBothPeopleWithNamedPerson,
   };
 };

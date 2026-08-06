@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { classifyFrontDoorIntent } from "../frontDoorIntent/classifyFrontDoorIntent";
+import { confirmationShapeOf } from "../frontDoorIntent/frontDoorConfirmationShape";
 import {
   deriveFrontDoorOrientationView,
   type FrontDoorOrientationView,
@@ -512,6 +513,50 @@ describe("the gate on the optional preparation step", () => {
     { name: "bereavement", text: EXAMPLES.F, choiceId: "what_next" as const },
   ])("is closed for a $name orientation", ({ text, choiceId }) => {
     expect(orientationFor(text, choiceId).aboutOneOtherPerson).toBe(false);
+  });
+});
+
+describe("the care-only gate on both-people preparation", () => {
+  it.each([
+    "I care for Dad full-time and he needs more help now.",
+    "My sister needs help and supporting her is becoming difficult for me.",
+  ])("opens after the both choice for a named care-shaped orientation: %s", (text) => {
+    const classification = classifyFrontDoorIntent(text);
+    const view = deriveFrontDoorOrientationView(classification, "both", text);
+
+    expect(confirmationShapeOf(classification)).toBe("care");
+    expect(view.personLabel).toBeDefined();
+    expect(view.aboutBothPeopleWithNamedPerson).toBe(true);
+  });
+
+  it("keeps Mum/PIP benefits-shaped and cannot offer both-people care preparation", () => {
+    const text = "Mum gets PIP and I help every day.";
+    const classification = classifyFrontDoorIntent(text);
+    const view = deriveFrontDoorOrientationView(classification, "both", text);
+
+    expect(confirmationShapeOf(classification)).toBe("benefits");
+    expect(view.personLabel).toBe("Mum");
+    expect(view.aboutBothPeopleWithNamedPerson).toBe(false);
+  });
+
+  it.each([
+    { choiceId: "other_person" as const, text: "My sister needs help." },
+    {
+      choiceId: "self_supporting" as const,
+      text: "My sister needs help and supporting her is becoming difficult for me.",
+    },
+    { choiceId: "unsure" as const, text: "My sister needs help." },
+  ])("stays closed for the $choiceId choice", ({ choiceId, text }) => {
+    expect(orientationFor(text, choiceId).aboutBothPeopleWithNamedPerson).toBe(false);
+  });
+
+  it("stays closed when no other person is identifiable", () => {
+    expect(
+      orientationFor(
+        "I provide support every day and it is becoming difficult for me.",
+        "both",
+      ).aboutBothPeopleWithNamedPerson,
+    ).toBe(false);
   });
 });
 

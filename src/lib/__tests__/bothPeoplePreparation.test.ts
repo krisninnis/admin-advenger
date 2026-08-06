@@ -137,6 +137,28 @@ describe("both-people high-level state", () => {
 });
 
 describe("composition of the existing intake reducers", () => {
+  it("does not advance a blank nested supported-person question", () => {
+    const state = started();
+    const unchanged = run(state, {
+      type: "supported_person_event",
+      event: { type: "continue" },
+    });
+
+    expect(unchanged.step).toBe("supported_person_intake");
+    expect(unchanged.supportedPerson.step).toBe("difficulties");
+  });
+
+  it("does not advance a blank nested supporter question", () => {
+    const state = startedWithSupporterFirst();
+    const unchanged = run(state, {
+      type: "supporter_event",
+      event: { type: "continue" },
+    });
+
+    expect(unchanged.step).toBe("supporter_intake");
+    expect(unchanged.supporter.step).toBe("help_provided");
+  });
+
   it("delegates supported-person answers to the existing state shape", () => {
     const state = run(started(), {
       type: "supported_person_event",

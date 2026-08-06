@@ -33,16 +33,16 @@ describe("supported-person summary integration", () => {
     return userEvent.setup();
   };
 
-  it("shows no signposting before completion or for an incomplete summary", async () => {
+  it("shows no signposting before completion or for a blank question", async () => {
     const user = renderPanel();
     expect(screen.queryByRole("button", { name: OFFER })).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "Prepare what is difficult day to day" }));
     await user.click(screen.getByRole("button", { name: "Continue" }));
-    await user.click(screen.getByRole("button", { name: "Continue" }));
-    await user.click(screen.getByRole("button", { name: "Continue" }));
 
-    expect(screen.getByRole("status").textContent).toMatch(/left blank/i);
+    expect(screen.getByRole("status").textContent).toBe(
+      "Choose at least one option, or select ‘I’m not sure’.",
+    );
     expect(screen.queryByRole("button", { name: OFFER })).toBeNull();
   });
 

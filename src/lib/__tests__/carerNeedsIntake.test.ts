@@ -136,6 +136,21 @@ describe("scope: only help for one other person", () => {
 // --- 3: question order --------------------------------------------------------
 
 describe("3: the order is difficulties, change, frequency, summary", () => {
+  it("does not advance any unanswered question", () => {
+    const difficulties = carerNeedsIntakeReducer(start(), { type: "continue" });
+    expect(carerNeedsIntakeReducer(difficulties, { type: "continue" })).toBe(
+      difficulties,
+    );
+
+    const change = { ...difficulties, step: "change" as const };
+    expect(carerNeedsIntakeReducer(change, { type: "continue" })).toBe(change);
+
+    const frequency = { ...difficulties, step: "frequency" as const };
+    expect(carerNeedsIntakeReducer(frequency, { type: "continue" })).toBe(
+      frequency,
+    );
+  });
+
   it("advances one step at a time", () => {
     let state = start();
     expect(state.step).toBe("orientation");
@@ -143,12 +158,24 @@ describe("3: the order is difficulties, change, frequency, summary", () => {
     state = carerNeedsIntakeReducer(state, { type: "continue" });
     expect(state.step).toBe("difficulties");
 
+    state = carerNeedsIntakeReducer(state, {
+      type: "toggle_difficulty",
+      difficultyId: "not_sure",
+    });
     state = carerNeedsIntakeReducer(state, { type: "continue" });
     expect(state.step).toBe("change");
 
+    state = carerNeedsIntakeReducer(state, {
+      type: "choose_change",
+      changeId: "not_sure",
+    });
     state = carerNeedsIntakeReducer(state, { type: "continue" });
     expect(state.step).toBe("frequency");
 
+    state = carerNeedsIntakeReducer(state, {
+      type: "choose_frequency",
+      frequencyId: "not_sure",
+    });
     state = carerNeedsIntakeReducer(state, { type: "continue" });
     expect(state.step).toBe("summary");
   });
@@ -327,7 +354,7 @@ describe("8: the summary keeps the person label from the source", () => {
 
   it("says plainly when a question was left unanswered", () => {
     const summary = buildNeedsIntakeSummary(
-      run(start(), { type: "continue" }, { type: "continue" }, { type: "continue" }, { type: "continue" }),
+      { ...start(), step: "summary" },
     );
     expect(summary.difficulties).toEqual([]);
     expect(summary.change).toBeUndefined();

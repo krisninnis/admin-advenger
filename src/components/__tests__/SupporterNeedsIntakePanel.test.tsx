@@ -93,6 +93,7 @@ describe("SupporterNeedsIntakePanel", () => {
   it("moves focus to the next question context after Continue", async () => {
     const { user } = await openIntake();
 
+    await user.click(screen.getByRole("checkbox", { name: "I'm not sure" }));
     await user.click(screen.getByRole("button", { name: "Continue" }));
 
     const nextLegend = within(
@@ -111,8 +112,10 @@ describe("SupporterNeedsIntakePanel", () => {
     const { user } = await openIntake();
 
     expect(screen.getByRole("checkbox", { name: "I'm not sure" })).toBeTruthy();
+    await user.click(screen.getByRole("checkbox", { name: "I'm not sure" }));
     await user.click(screen.getByRole("button", { name: "Continue" }));
     expect(screen.getByRole("radio", { name: "I'm not sure" })).toBeTruthy();
+    await user.click(screen.getByRole("radio", { name: "I'm not sure" }));
     await user.click(screen.getByRole("button", { name: "Continue" }));
     expect(screen.getByRole("checkbox", { name: "I'm not sure" })).toBeTruthy();
   });
@@ -146,15 +149,16 @@ describe("SupporterNeedsIntakePanel", () => {
     ).toBeTruthy();
   });
 
-  it("announces an incomplete summary accessibly", async () => {
+  it("announces local guidance instead of opening an incomplete summary", async () => {
     const { user } = await openIntake();
-    await user.click(screen.getByRole("button", { name: "Continue" }));
-    await user.click(screen.getByRole("button", { name: "Continue" }));
     await user.click(screen.getByRole("button", { name: "Continue" }));
 
     const status = screen.getByRole("status");
     expect(status.getAttribute("aria-live")).toBe("polite");
-    expect(status.textContent).toMatch(/left blank/i);
+    expect(status.textContent).toBe(
+      "Choose at least one option, or select ‘I’m not sure’.",
+    );
+    expect(screen.queryByRole("region", { name: SUMMARY })).toBeNull();
   });
 
   it("Back preserves answers and returns one step at a time", async () => {
@@ -179,8 +183,11 @@ describe("SupporterNeedsIntakePanel", () => {
 
   it("returns to the original message only when asked", async () => {
     const { user, onReturnToOriginalMessage } = await openIntake();
+    await user.click(screen.getByRole("checkbox", { name: "I'm not sure" }));
     await user.click(screen.getByRole("button", { name: "Continue" }));
+    await user.click(screen.getByRole("radio", { name: "I'm not sure" }));
     await user.click(screen.getByRole("button", { name: "Continue" }));
+    await user.click(screen.getByRole("checkbox", { name: "I'm not sure" }));
     await user.click(screen.getByRole("button", { name: "Continue" }));
 
     expect(onReturnToOriginalMessage).not.toHaveBeenCalled();
@@ -192,8 +199,11 @@ describe("SupporterNeedsIntakePanel", () => {
 
   it("renders no case, save, send, contact, referral, apply, claim, phone number or link", async () => {
     const { user } = await openIntake();
+    await user.click(screen.getByRole("checkbox", { name: "I'm not sure" }));
     await user.click(screen.getByRole("button", { name: "Continue" }));
+    await user.click(screen.getByRole("radio", { name: "I'm not sure" }));
     await user.click(screen.getByRole("button", { name: "Continue" }));
+    await user.click(screen.getByRole("checkbox", { name: "I'm not sure" }));
     await user.click(screen.getByRole("button", { name: "Continue" }));
 
     for (const name of [/save/i, /case/i, /send/i, /contact/i, /referral/i, /apply/i, /claim/i]) {

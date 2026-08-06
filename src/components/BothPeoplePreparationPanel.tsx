@@ -1,5 +1,6 @@
 import { useReducer } from "react";
 import { CopyButton } from "./CopyButton";
+import { TrustedWalesSignpostingPanel } from "./TrustedWalesSignpostingPanel";
 import {
   CHANGE_OPTIONS,
   DIFFICULTY_OPTIONS,
@@ -403,6 +404,10 @@ export function BothPeoplePreparationPanel({
           className={quietButtonClass}
         />
       </div>
+
+      {supported.nothingChosenStatement || supporter.nothingChosenStatement ? null : (
+        <TrustedWalesSignpostingPanel />
+      )}
     </section>
   );
 }

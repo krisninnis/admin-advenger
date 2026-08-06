@@ -387,7 +387,7 @@ export const deriveFrontDoorOrientationView = (
   originalInput: string,
 ): FrontDoorOrientationView => {
   const shape = confirmationShapeOf(classification);
-  const label = frontDoorPersonLabelOf(classification);
+  const label = frontDoorPersonLabelOf(classification, originalInput);
   const body = bodyFor(shape, choiceId, label);
 
   // Three conditions, all required. Care-shaped, because benefits, bereavement

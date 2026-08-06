@@ -152,6 +152,56 @@ describe("J2: an ambiguous request gets a clarification step", () => {
   });
 });
 
+describe("compound relationship accuracy", () => {
+  it.each([
+    {
+      text: "My stepmother's neighbour needs help.",
+      inaccurateLabel: "My neighbour",
+    },
+    {
+      text: "My partner's mum needs support.",
+      inaccurateLabel: "My partner",
+    },
+  ])(
+    "uses the neutral care path for $text",
+    async ({ text, inaccurateLabel }) => {
+      const { user, onCheck } = await check(text);
+
+      expect(screen.getByRole("button", { name: "Someone else" })).toBeTruthy();
+      expect(
+        screen.queryByRole("button", { name: inaccurateLabel }),
+      ).toBeNull();
+
+      await user.click(screen.getByRole("button", { name: "Someone else" }));
+
+      expect(
+        screen.getAllByText(/the person you mentioned/i).length,
+      ).toBeGreaterThan(0);
+      expect(
+        screen.queryByText(
+          new RegExp(`your ${inaccurateLabel.slice(3)}`, "i"),
+        ),
+      ).toBeNull();
+      expect(
+        screen.queryByRole("button", {
+          name: "Prepare what is difficult day to day",
+        }),
+      ).toBeNull();
+      expect(
+        screen.queryByRole("button", {
+          name: "Prepare how supporting them affects you",
+        }),
+      ).toBeNull();
+      expect(
+        screen.queryByRole("button", {
+          name: "Prepare both sides separately",
+        }),
+      ).toBeNull();
+      expect(onCheck).not.toHaveBeenCalled();
+    },
+  );
+});
+
 describe("supporter preparation follows the supporter-focused orientation", () => {
   it("reaches the optional intake only after the supporter choice and offer", async () => {
     const { user, onCheck } = await check(

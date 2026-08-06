@@ -247,7 +247,7 @@ const confirmationView = (
   classification: FrontDoorIntentClassification,
   originalInput: string,
 ): FrontDoorResolvedRouteView => {
-  const label = frontDoorPersonLabelOf(classification);
+  const label = frontDoorPersonLabelOf(classification, originalInput);
   const base = { ...COMMON, kind: "confirmation", originalInput, questionsAskedFirst: 1 } as const;
 
   switch (confirmationShapeOf(classification)) {

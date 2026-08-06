@@ -5,6 +5,7 @@ import type {
   FrontDoorChoiceId,
   FrontDoorRouteView,
 } from "../lib/frontDoorIntent/frontDoorRouteView";
+import { ORDINARY_MESSAGE_CHECK_LABEL } from "../lib/ordinaryMessageCheck";
 
 // Front-Door Intent Routing v1, UI wiring slice.
 //
@@ -49,7 +50,7 @@ function Exits({
   onBack,
   onCheckAsMessage,
   backLabel = "Go back",
-  ordinaryCheckLabel = "Just check this as a message",
+  ordinaryCheckLabel = ORDINARY_MESSAGE_CHECK_LABEL,
 }: {
   onBack: () => void;
   onCheckAsMessage: () => void;

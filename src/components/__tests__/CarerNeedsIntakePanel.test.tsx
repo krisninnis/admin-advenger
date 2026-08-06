@@ -264,7 +264,7 @@ describe("the summary", () => {
 
     const labels = screen.getAllByRole("button").map((button) => button.textContent);
     expect(labels).toContain("Back");
-    expect(labels).toContain("Return to the original message");
+    expect(labels).toContain("Just check this as a message");
     expect(labels.join(" ")).toMatch(/Copy/);
     expect(labels.join(" ")).not.toMatch(/\bSave\b|\bDownload\b|\bSend\b|\bSubmit\b/i);
   });
@@ -272,7 +272,7 @@ describe("the summary", () => {
   it("hands back to the original message without saving anything", async () => {
     const { user, onReturnToOriginalMessage } = await reachSummary();
 
-    await user.click(screen.getByRole("button", { name: "Return to the original message" }));
+    await user.click(screen.getByRole("button", { name: "Just check this as a message" }));
 
     expect(onReturnToOriginalMessage).toHaveBeenCalledTimes(1);
   });

@@ -115,7 +115,7 @@ describe("the page has the four required parts and nothing else", () => {
     const view = orientationFor(EXAMPLES.A, "other_person");
 
     expect(view.backLabel).toBe("Back");
-    expect(view.ordinaryCheckLabel).toBe("Return to original message");
+    expect(view.ordinaryCheckLabel).toBe("Just check this as a message");
     expect(view.backAvailable).toBe(true);
     expect(view.ordinaryCheckAvailable).toBe(true);
   });

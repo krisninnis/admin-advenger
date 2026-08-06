@@ -29,6 +29,8 @@
 // there. The statute is why the two people are kept separate. It is not
 // something to quote at somebody.
 
+import { ORDINARY_MESSAGE_CHECK_LABEL } from "../ordinaryMessageCheck";
+
 /** The one flow, one step at a time. */
 export type CarerNeedsIntakeStep =
   | "orientation"
@@ -122,7 +124,7 @@ export const NEEDS_INTAKE_COPY = {
   summaryHeading: "Your preparation summary",
   continueLabel: "Continue",
   backLabel: "Back",
-  returnLabel: "Return to the original message",
+  returnLabel: ORDINARY_MESSAGE_CHECK_LABEL,
 } as const;
 
 export type CarerNeedsIntakeState = {

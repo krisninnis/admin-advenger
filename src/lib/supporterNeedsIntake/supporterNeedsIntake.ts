@@ -5,6 +5,8 @@
 // else affects their own life. It never turns the supported person's needs
 // into the supporter's needs and never makes an assessment or decision.
 
+import { ORDINARY_MESSAGE_CHECK_LABEL } from "../ordinaryMessageCheck";
+
 export type SupporterNeedsIntakeStep =
   | "orientation"
   | "help_provided"
@@ -106,7 +108,7 @@ export const SUPPORTER_NEEDS_INTAKE_COPY = {
   summaryHeading: "Your preparation summary",
   continueLabel: "Continue",
   backLabel: "Back",
-  returnLabel: "Return to the original message",
+  returnLabel: ORDINARY_MESSAGE_CHECK_LABEL,
   incompleteStatement:
     "Some questions were left blank. That is fine, and you can go back and add to this at any time.",
 } as const;

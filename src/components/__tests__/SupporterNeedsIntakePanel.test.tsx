@@ -192,7 +192,7 @@ describe("SupporterNeedsIntakePanel", () => {
 
     expect(onReturnToOriginalMessage).not.toHaveBeenCalled();
     await user.click(
-      screen.getByRole("button", { name: "Return to the original message" }),
+      screen.getByRole("button", { name: "Just check this as a message" }),
     );
     expect(onReturnToOriginalMessage).toHaveBeenCalledTimes(1);
   });

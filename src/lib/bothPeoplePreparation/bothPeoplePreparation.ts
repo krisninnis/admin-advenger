@@ -16,6 +16,7 @@ import {
   type SupporterNeedsIntakeState,
   type SupporterNeedsIntakeSummary,
 } from "../supporterNeedsIntake/supporterNeedsIntake";
+import { ORDINARY_MESSAGE_CHECK_LABEL } from "../ordinaryMessageCheck";
 
 export type BothPeoplePreparationStep =
   | "orientation"
@@ -45,7 +46,7 @@ export const BOTH_PEOPLE_PREPARATION_COPY = {
   chooseFirstMissing: "Choose a side before continuing. You can choose I'm not sure.",
   continueLabel: "Continue",
   backLabel: "Back",
-  returnLabel: "Return to the original message",
+  returnLabel: ORDINARY_MESSAGE_CHECK_LABEL,
   summaryHeading: "Your preparation summary",
 } as const;
 

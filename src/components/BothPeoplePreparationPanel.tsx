@@ -1,12 +1,17 @@
 import { useReducer } from "react";
 import { CopyButton } from "./CopyButton";
 import { TrustedWalesSignpostingPanel } from "./TrustedWalesSignpostingPanel";
+import {
+  type CarePathChoiceType,
+  useCarePathIncompleteGuidance,
+} from "./useCarePathIncompleteGuidance";
 import { useCarePathStepFocus } from "./useCarePathStepFocus";
 import {
   CHANGE_OPTIONS,
   DIFFICULTY_OPTIONS,
   FREQUENCY_OPTIONS,
   NEEDS_INTAKE_COPY,
+  canContinueCarerNeedsIntake,
   type ChangeId,
   type DifficultyId,
   type FrequencyId,
@@ -25,6 +30,7 @@ import {
   IMPACT_OPTIONS,
   SUPPORT_FREQUENCY_OPTIONS,
   SUPPORTER_NEEDS_INTAKE_COPY,
+  canContinueSupporterNeedsIntake,
   type HelpProvidedId,
   type SupportFrequencyId,
   type SupportImpactId,
@@ -60,6 +66,8 @@ function ChoiceGroup<Id extends string>({
   isSelected,
   onSelect,
   focusTargetRef,
+  guidance,
+  guidanceId,
 }: {
   legend: string;
   instruction?: string;
@@ -69,9 +77,14 @@ function ChoiceGroup<Id extends string>({
   isSelected: (id: Id) => boolean;
   onSelect: (id: Id) => void;
   focusTargetRef: (element: HTMLElement | null) => void;
+  guidance: string | undefined;
+  guidanceId: string;
 }) {
   return (
-    <fieldset className="border-0 p-0">
+    <fieldset
+      className="border-0 p-0"
+      aria-describedby={guidance ? guidanceId : undefined}
+    >
       <legend
         ref={focusTargetRef}
         tabIndex={-1}
@@ -98,6 +111,17 @@ function ChoiceGroup<Id extends string>({
           </label>
         ))}
       </div>
+      {guidance ? (
+        <p
+          id={guidanceId}
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          className="mt-3 text-sm leading-6 text-amber-100"
+        >
+          {guidance}
+        </p>
+      ) : null}
     </fieldset>
   );
 }
@@ -158,9 +182,33 @@ export function BothPeoplePreparationPanel({
       : state.step === "supporter_intake"
         ? `${state.step}:${state.supporter.step}`
         : state.step;
-  const focusTargetRef = useCarePathStepFocus(focusStepKey);
+  const { focusTargetRef, focusCurrentStep } =
+    useCarePathStepFocus(focusStepKey);
+  const { guidance, guidanceId, showGuidance, clearGuidance } =
+    useCarePathIncompleteGuidance(focusStepKey);
 
-  const goBack = () => dispatch({ type: "back" });
+  const goBack = () => {
+    clearGuidance();
+    dispatch({ type: "back" });
+  };
+  const select = (action: Parameters<typeof dispatch>[0]) => {
+    clearGuidance();
+    dispatch(action);
+  };
+  const continueQuestion = (
+    choiceType: CarePathChoiceType,
+    canContinue: boolean,
+    action: Parameters<typeof dispatch>[0],
+  ) => {
+    if (!canContinue) {
+      showGuidance(choiceType);
+      focusCurrentStep();
+      dispatch(action);
+      return;
+    }
+    clearGuidance();
+    dispatch(action);
+  };
 
   if (state.step === "orientation") {
     return (
@@ -186,23 +234,21 @@ export function BothPeoplePreparationPanel({
           name="both-people-first-side"
           isSelected={(id: BothPeopleFirstSideChoice) => state.firstSideChoice === id}
           onSelect={(side: BothPeopleFirstSideChoice) =>
-            dispatch({ type: "choose_first_side", side })
+            select({ type: "choose_first_side", side })
           }
           focusTargetRef={focusTargetRef}
+          guidance={guidance}
+          guidanceId={guidanceId}
         />
-        {state.chooseFirstAttempted ? (
-          <p
-            role="status"
-            aria-live="polite"
-            aria-atomic="true"
-            className="mt-3 text-sm leading-6 text-amber-100"
-          >
-            {BOTH_PEOPLE_PREPARATION_COPY.chooseFirstMissing}
-          </p>
-        ) : null}
         <StepButtons
           onBack={goBack}
-          onContinue={() => dispatch({ type: "continue" })}
+          onContinue={() =>
+            continueQuestion(
+              "radio",
+              state.firstSideChoice !== undefined,
+              { type: "continue" },
+            )
+          }
         />
       </section>
     );
@@ -210,8 +256,12 @@ export function BothPeoplePreparationPanel({
 
   if (state.step === "supported_person_intake") {
     const nested = state.supportedPerson;
-    const nestedContinue = () =>
-      dispatch({ type: "supported_person_event", event: { type: "continue" } });
+    const nestedContinue = (choiceType: CarePathChoiceType) =>
+      continueQuestion(
+        choiceType,
+        canContinueCarerNeedsIntake(nested),
+        { type: "supported_person_event", event: { type: "continue" } },
+      );
 
     if (nested.step === "difficulties") {
       return (
@@ -224,14 +274,16 @@ export function BothPeoplePreparationPanel({
             name="both-supported-difficulty"
             isSelected={(id: DifficultyId) => nested.difficulties.includes(id)}
             onSelect={(difficultyId: DifficultyId) =>
-              dispatch({
+              select({
                 type: "supported_person_event",
                 event: { type: "toggle_difficulty", difficultyId },
               })
             }
             focusTargetRef={focusTargetRef}
+            guidance={guidance}
+            guidanceId={guidanceId}
           />
-          <StepButtons onBack={goBack} onContinue={nestedContinue} />
+          <StepButtons onBack={goBack} onContinue={() => nestedContinue("checkbox")} />
         </section>
       );
     }
@@ -246,14 +298,16 @@ export function BothPeoplePreparationPanel({
             name="both-supported-change"
             isSelected={(id: ChangeId) => nested.change === id}
             onSelect={(changeId: ChangeId) =>
-              dispatch({
+              select({
                 type: "supported_person_event",
                 event: { type: "choose_change", changeId },
               })
             }
             focusTargetRef={focusTargetRef}
+            guidance={guidance}
+            guidanceId={guidanceId}
           />
-          <StepButtons onBack={goBack} onContinue={nestedContinue} />
+          <StepButtons onBack={goBack} onContinue={() => nestedContinue("radio")} />
         </section>
       );
     }
@@ -268,14 +322,16 @@ export function BothPeoplePreparationPanel({
             name="both-supported-frequency"
             isSelected={(id: FrequencyId) => nested.frequency === id}
             onSelect={(frequencyId: FrequencyId) =>
-              dispatch({
+              select({
                 type: "supported_person_event",
                 event: { type: "choose_frequency", frequencyId },
               })
             }
             focusTargetRef={focusTargetRef}
+            guidance={guidance}
+            guidanceId={guidanceId}
           />
-          <StepButtons onBack={goBack} onContinue={nestedContinue} />
+          <StepButtons onBack={goBack} onContinue={() => nestedContinue("radio")} />
         </section>
       );
     }
@@ -283,8 +339,12 @@ export function BothPeoplePreparationPanel({
 
   if (state.step === "supporter_intake") {
     const nested = state.supporter;
-    const nestedContinue = () =>
-      dispatch({ type: "supporter_event", event: { type: "continue" } });
+    const nestedContinue = (choiceType: CarePathChoiceType) =>
+      continueQuestion(
+        choiceType,
+        canContinueSupporterNeedsIntake(nested),
+        { type: "supporter_event", event: { type: "continue" } },
+      );
 
     if (nested.step === "help_provided") {
       return (
@@ -297,14 +357,16 @@ export function BothPeoplePreparationPanel({
             name="both-supporter-help"
             isSelected={(id: HelpProvidedId) => nested.helpProvided.includes(id)}
             onSelect={(helpId: HelpProvidedId) =>
-              dispatch({
+              select({
                 type: "supporter_event",
                 event: { type: "toggle_help", helpId },
               })
             }
             focusTargetRef={focusTargetRef}
+            guidance={guidance}
+            guidanceId={guidanceId}
           />
-          <StepButtons onBack={goBack} onContinue={nestedContinue} />
+          <StepButtons onBack={goBack} onContinue={() => nestedContinue("checkbox")} />
         </section>
       );
     }
@@ -319,14 +381,16 @@ export function BothPeoplePreparationPanel({
             name="both-supporter-frequency"
             isSelected={(id: SupportFrequencyId) => nested.frequency === id}
             onSelect={(frequencyId: SupportFrequencyId) =>
-              dispatch({
+              select({
                 type: "supporter_event",
                 event: { type: "choose_frequency", frequencyId },
               })
             }
             focusTargetRef={focusTargetRef}
+            guidance={guidance}
+            guidanceId={guidanceId}
           />
-          <StepButtons onBack={goBack} onContinue={nestedContinue} />
+          <StepButtons onBack={goBack} onContinue={() => nestedContinue("radio")} />
         </section>
       );
     }
@@ -342,14 +406,16 @@ export function BothPeoplePreparationPanel({
             name="both-supporter-impact"
             isSelected={(id: SupportImpactId) => nested.impact.includes(id)}
             onSelect={(impactId: SupportImpactId) =>
-              dispatch({
+              select({
                 type: "supporter_event",
                 event: { type: "toggle_impact", impactId },
               })
             }
             focusTargetRef={focusTargetRef}
+            guidance={guidance}
+            guidanceId={guidanceId}
           />
-          <StepButtons onBack={goBack} onContinue={nestedContinue} />
+          <StepButtons onBack={goBack} onContinue={() => nestedContinue("checkbox")} />
         </section>
       );
     }

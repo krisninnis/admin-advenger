@@ -76,19 +76,49 @@ describe("supporter intake eligibility", () => {
 });
 
 describe("supporter needs intake state", () => {
+  it("does not advance any unanswered question", () => {
+    const helpProvided = supporterNeedsIntakeReducer(stateFor(), {
+      type: "continue",
+    });
+    expect(
+      supporterNeedsIntakeReducer(helpProvided, { type: "continue" }),
+    ).toBe(helpProvided);
+
+    const frequency = { ...helpProvided, step: "frequency" as const };
+    expect(
+      supporterNeedsIntakeReducer(frequency, { type: "continue" }),
+    ).toBe(frequency);
+
+    const impact = { ...helpProvided, step: "impact" as const };
+    expect(supporterNeedsIntakeReducer(impact, { type: "continue" })).toBe(
+      impact,
+    );
+  });
+
   it("uses the exact question order and never opens automatically", () => {
     let state = stateFor();
     expect(state.step).toBe("orientation");
 
-    for (const expected of [
-      "help_provided",
-      "frequency",
-      "impact",
-      "summary",
-    ] as const) {
-      state = supporterNeedsIntakeReducer(state, { type: "continue" });
-      expect(state.step).toBe(expected);
-    }
+    state = supporterNeedsIntakeReducer(state, { type: "continue" });
+    expect(state.step).toBe("help_provided");
+    state = supporterNeedsIntakeReducer(state, {
+      type: "toggle_help",
+      helpId: "not_sure",
+    });
+    state = supporterNeedsIntakeReducer(state, { type: "continue" });
+    expect(state.step).toBe("frequency");
+    state = supporterNeedsIntakeReducer(state, {
+      type: "choose_frequency",
+      frequencyId: "not_sure",
+    });
+    state = supporterNeedsIntakeReducer(state, { type: "continue" });
+    expect(state.step).toBe("impact");
+    state = supporterNeedsIntakeReducer(state, {
+      type: "toggle_impact",
+      impactId: "not_sure",
+    });
+    state = supporterNeedsIntakeReducer(state, { type: "continue" });
+    expect(state.step).toBe("summary");
   });
 
   it("allows multiple help types and keeps them in display order", () => {

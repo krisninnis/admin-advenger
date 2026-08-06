@@ -185,6 +185,15 @@ const stepAfter = (step: CarerNeedsIntakeStep): CarerNeedsIntakeStep =>
 const stepBefore = (step: CarerNeedsIntakeStep): CarerNeedsIntakeStep =>
   STEP_ORDER[Math.max(STEP_ORDER.indexOf(step) - 1, 0)];
 
+export const canContinueCarerNeedsIntake = (
+  state: CarerNeedsIntakeState,
+): boolean => {
+  if (state.step === "difficulties") return state.difficulties.length > 0;
+  if (state.step === "change") return state.change !== undefined;
+  if (state.step === "frequency") return state.frequency !== undefined;
+  return true;
+};
+
 /**
  * Selected difficulties, always in the order they are shown on screen.
  *
@@ -205,7 +214,9 @@ export const carerNeedsIntakeReducer = (
 ): CarerNeedsIntakeState => {
   switch (action.type) {
     case "continue":
-      return { ...state, step: stepAfter(state.step) };
+      return canContinueCarerNeedsIntake(state)
+        ? { ...state, step: stepAfter(state.step) }
+        : state;
 
     case "back":
       return { ...state, step: stepBefore(state.step) };

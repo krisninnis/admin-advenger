@@ -166,6 +166,15 @@ const stepAfter = (step: SupporterNeedsIntakeStep): SupporterNeedsIntakeStep =>
 const stepBefore = (step: SupporterNeedsIntakeStep): SupporterNeedsIntakeStep =>
   STEP_ORDER[Math.max(STEP_ORDER.indexOf(step) - 1, 0)];
 
+export const canContinueSupporterNeedsIntake = (
+  state: SupporterNeedsIntakeState,
+): boolean => {
+  if (state.step === "help_provided") return state.helpProvided.length > 0;
+  if (state.step === "frequency") return state.frequency !== undefined;
+  if (state.step === "impact") return state.impact.length > 0;
+  return true;
+};
+
 const selectedInDisplayOrder = <Id extends string>(
   options: readonly SupporterIntakeOption<Id>[],
   selected: readonly Id[],
@@ -198,7 +207,9 @@ export const supporterNeedsIntakeReducer = (
 ): SupporterNeedsIntakeState => {
   switch (action.type) {
     case "continue":
-      return { ...state, step: stepAfter(state.step) };
+      return canContinueSupporterNeedsIntake(state)
+        ? { ...state, step: stepAfter(state.step) }
+        : state;
     case "back":
       return { ...state, step: stepBefore(state.step) };
     case "toggle_help":

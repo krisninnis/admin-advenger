@@ -2,7 +2,12 @@ import { useCallback, useEffect, useRef } from "react";
 
 type FocusTargetRef = (element: HTMLElement | null) => void;
 
-export function useCarePathStepFocus(stepKey: string): FocusTargetRef {
+type CarePathStepFocus = {
+  readonly focusTargetRef: FocusTargetRef;
+  readonly focusCurrentStep: () => void;
+};
+
+export function useCarePathStepFocus(stepKey: string): CarePathStepFocus {
   const focusTargetRef = useRef<HTMLElement | null>(null);
   const previousStepKeyRef = useRef(stepKey);
 
@@ -15,7 +20,13 @@ export function useCarePathStepFocus(stepKey: string): FocusTargetRef {
     }
   }, [stepKey]);
 
-  return useCallback((element: HTMLElement | null) => {
+  const setFocusTarget = useCallback((element: HTMLElement | null) => {
     focusTargetRef.current = element;
   }, []);
+
+  const focusCurrentStep = useCallback(() => {
+    focusTargetRef.current?.focus();
+  }, []);
+
+  return { focusTargetRef: setFocusTarget, focusCurrentStep };
 }

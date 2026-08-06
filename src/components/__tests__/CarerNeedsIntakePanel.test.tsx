@@ -77,6 +77,7 @@ describe("one question at a time, each in a real fieldset", () => {
 
   it("uses radios for what has changed, because only one applies", async () => {
     const { user } = await openIntake();
+    await user.click(screen.getByRole("checkbox", { name: "I'm not sure" }));
     await user.click(screen.getByRole("button", { name: "Continue" }));
 
     const group = within(screen.getByRole("group", { name: "What has changed?" }));
@@ -86,7 +87,9 @@ describe("one question at a time, each in a real fieldset", () => {
 
   it("uses radios for how often help is needed", async () => {
     const { user } = await openIntake();
+    await user.click(screen.getByRole("checkbox", { name: "I'm not sure" }));
     await user.click(screen.getByRole("button", { name: "Continue" }));
+    await user.click(screen.getByRole("radio", { name: "I'm not sure" }));
     await user.click(screen.getByRole("button", { name: "Continue" }));
 
     const group = within(screen.getByRole("group", { name: "How often is help needed?" }));
@@ -97,6 +100,7 @@ describe("one question at a time, each in a real fieldset", () => {
     const { user } = await openIntake();
     expect(screen.getAllByRole("group")).toHaveLength(1);
 
+    await user.click(screen.getByRole("checkbox", { name: "I'm not sure" }));
     await user.click(screen.getByRole("button", { name: "Continue" }));
     expect(screen.getAllByRole("group")).toHaveLength(1);
   });
@@ -105,9 +109,11 @@ describe("one question at a time, each in a real fieldset", () => {
     const { user } = await openIntake();
     expect(screen.getByRole("checkbox", { name: "I'm not sure" })).toBeTruthy();
 
+    await user.click(screen.getByRole("checkbox", { name: "I'm not sure" }));
     await user.click(screen.getByRole("button", { name: "Continue" }));
     expect(screen.getByRole("radio", { name: "I'm not sure" })).toBeTruthy();
 
+    await user.click(screen.getByRole("radio", { name: "I'm not sure" }));
     await user.click(screen.getByRole("button", { name: "Continue" }));
     expect(screen.getByRole("radio", { name: "I'm not sure" })).toBeTruthy();
   });
@@ -125,6 +131,7 @@ describe("nothing moves on its own", () => {
 
   it("does not advance when a radio is chosen", async () => {
     const { user } = await openIntake();
+    await user.click(screen.getByRole("checkbox", { name: "I'm not sure" }));
     await user.click(screen.getByRole("button", { name: "Continue" }));
 
     await user.click(screen.getByRole("radio", { name: "This is new" }));
@@ -162,6 +169,7 @@ describe("keyboard reachability", () => {
   it("moves focus to the next question context after Continue", async () => {
     const { user } = await openIntake();
 
+    await user.click(screen.getByRole("checkbox", { name: "I'm not sure" }));
     await user.click(screen.getByRole("button", { name: "Continue" }));
 
     const nextLegend = within(
@@ -179,10 +187,15 @@ describe("keyboard reachability", () => {
   it("offers Back and Continue as real buttons on every question", async () => {
     const { user } = await openIntake();
 
-    for (const step of ["What is difficult day to day?", "What has changed?", "How often is help needed?"]) {
+    for (const [step, role] of [
+      ["What is difficult day to day?", "checkbox"],
+      ["What has changed?", "radio"],
+      ["How often is help needed?", "radio"],
+    ] as const) {
       expect(screen.getByRole("group", { name: step })).toBeTruthy();
       expect(screen.getByRole("button", { name: "Continue" })).toBeTruthy();
       expect(screen.getByRole("button", { name: "Back" })).toBeTruthy();
+      await user.click(screen.getByRole(role, { name: "I'm not sure" }));
       await user.click(screen.getByRole("button", { name: "Continue" }));
     }
   });
@@ -264,14 +277,15 @@ describe("the summary", () => {
     expect(onReturnToOriginalMessage).toHaveBeenCalledTimes(1);
   });
 
-  it("announces an incomplete summary accessibly", async () => {
+  it("announces local guidance instead of opening an incomplete summary", async () => {
     const { user } = await openIntake();
-    await user.click(screen.getByRole("button", { name: "Continue" }));
-    await user.click(screen.getByRole("button", { name: "Continue" }));
     await user.click(screen.getByRole("button", { name: "Continue" }));
 
     const status = screen.getByRole("status");
-    expect(status.textContent).toMatch(/left blank/i);
+    expect(status.textContent).toBe(
+      "Choose at least one option, or select ‘I’m not sure’.",
+    );
+    expect(screen.queryByRole("region", { name: "Your preparation summary" })).toBeNull();
   });
 
   it("does not re-run intake focus when signposting opens", async () => {

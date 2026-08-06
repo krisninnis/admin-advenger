@@ -1,6 +1,10 @@
 import { useReducer } from "react";
 import { CopyButton } from "./CopyButton";
 import { TrustedWalesSignpostingPanel } from "./TrustedWalesSignpostingPanel";
+import {
+  type CarePathChoiceType,
+  useCarePathIncompleteGuidance,
+} from "./useCarePathIncompleteGuidance";
 import { useCarePathStepFocus } from "./useCarePathStepFocus";
 import {
   HELP_PROVIDED_OPTIONS,
@@ -8,6 +12,7 @@ import {
   SUPPORT_FREQUENCY_OPTIONS,
   SUPPORTER_NEEDS_INTAKE_COPY,
   buildSupporterNeedsIntakeSummary,
+  canContinueSupporterNeedsIntake,
   initialSupporterNeedsIntakeState,
   supporterNeedsIntakeReducer,
   supporterNeedsIntakeSummaryText,
@@ -50,6 +55,8 @@ function ChoiceGroup<Id extends string>({
   isSelected,
   onSelect,
   focusTargetRef,
+  guidance,
+  guidanceId,
 }: {
   legend: string;
   instruction?: string;
@@ -59,9 +66,14 @@ function ChoiceGroup<Id extends string>({
   isSelected: (id: Id) => boolean;
   onSelect: (id: Id) => void;
   focusTargetRef: (element: HTMLElement | null) => void;
+  guidance: string | undefined;
+  guidanceId: string;
 }) {
   return (
-    <fieldset className="border-0 p-0">
+    <fieldset
+      className="border-0 p-0"
+      aria-describedby={guidance ? guidanceId : undefined}
+    >
       <legend
         ref={focusTargetRef}
         tabIndex={-1}
@@ -88,6 +100,17 @@ function ChoiceGroup<Id extends string>({
           </label>
         ))}
       </div>
+      {guidance ? (
+        <p
+          id={guidanceId}
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          className="mt-3 text-sm leading-6 text-amber-100"
+        >
+          {guidance}
+        </p>
+      ) : null}
     </fieldset>
   );
 }
@@ -152,10 +175,27 @@ export function SupporterNeedsIntakePanel({
       originalInput: seed.originalInput,
     }),
   );
-  const focusTargetRef = useCarePathStepFocus(state.step);
+  const { focusTargetRef, focusCurrentStep } = useCarePathStepFocus(state.step);
+  const { guidance, guidanceId, showGuidance, clearGuidance } =
+    useCarePathIncompleteGuidance(state.step);
 
-  const goBack = () => dispatch({ type: "back" });
-  const goOn = () => dispatch({ type: "continue" });
+  const goBack = () => {
+    clearGuidance();
+    dispatch({ type: "back" });
+  };
+  const goOn = (choiceType?: CarePathChoiceType) => {
+    if (choiceType && !canContinueSupporterNeedsIntake(state)) {
+      showGuidance(choiceType);
+      focusCurrentStep();
+      return;
+    }
+    clearGuidance();
+    dispatch({ type: "continue" });
+  };
+  const select = (action: Parameters<typeof dispatch>[0]) => {
+    clearGuidance();
+    dispatch(action);
+  };
   const returnToOriginal = () => {
     dispatch({ type: "return_to_original" });
     onReturnToOriginalMessage();
@@ -164,7 +204,7 @@ export function SupporterNeedsIntakePanel({
   if (state.step === "orientation") {
     return (
       <div className="mt-4">
-        <button type="button" onClick={goOn} className={primaryButtonClass}>
+        <button type="button" onClick={() => goOn()} className={primaryButtonClass}>
           {SUPPORTER_NEEDS_INTAKE_COPY.offerLabel}
         </button>
       </div>
@@ -185,11 +225,13 @@ export function SupporterNeedsIntakePanel({
           name="supporter-needs-help"
           isSelected={(id: HelpProvidedId) => state.helpProvided.includes(id)}
           onSelect={(helpId: HelpProvidedId) =>
-            dispatch({ type: "toggle_help", helpId })
+            select({ type: "toggle_help", helpId })
           }
           focusTargetRef={focusTargetRef}
+          guidance={guidance}
+          guidanceId={guidanceId}
         />
-        <StepButtons onBack={goBack} onContinue={goOn} />
+        <StepButtons onBack={goBack} onContinue={() => goOn("checkbox")} />
       </section>
     );
   }
@@ -207,11 +249,13 @@ export function SupporterNeedsIntakePanel({
           name="supporter-needs-frequency"
           isSelected={(id: SupportFrequencyId) => state.frequency === id}
           onSelect={(frequencyId: SupportFrequencyId) =>
-            dispatch({ type: "choose_frequency", frequencyId })
+            select({ type: "choose_frequency", frequencyId })
           }
           focusTargetRef={focusTargetRef}
+          guidance={guidance}
+          guidanceId={guidanceId}
         />
-        <StepButtons onBack={goBack} onContinue={goOn} />
+        <StepButtons onBack={goBack} onContinue={() => goOn("radio")} />
       </section>
     );
   }
@@ -230,11 +274,13 @@ export function SupporterNeedsIntakePanel({
           name="supporter-needs-impact"
           isSelected={(id: SupportImpactId) => state.impact.includes(id)}
           onSelect={(impactId: SupportImpactId) =>
-            dispatch({ type: "toggle_impact", impactId })
+            select({ type: "toggle_impact", impactId })
           }
           focusTargetRef={focusTargetRef}
+          guidance={guidance}
+          guidanceId={guidanceId}
         />
-        <StepButtons onBack={goBack} onContinue={goOn} />
+        <StepButtons onBack={goBack} onContinue={() => goOn("checkbox")} />
       </section>
     );
   }

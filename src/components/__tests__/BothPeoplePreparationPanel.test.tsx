@@ -90,9 +90,15 @@ describe("the optional both-people offer", () => {
 
     const status = screen.getByRole("status");
     expect(status.getAttribute("aria-live")).toBe("polite");
-    expect(status.textContent).toMatch(/choose a side/i);
+    expect(status.textContent).toBe(
+      "Choose one option, or select ‘I’m not sure’.",
+    );
     expect(screen.getByRole("group", { name: CHOOSE_FIRST })).toBeTruthy();
-    expect(document.activeElement).toBe(continueButton);
+    expect(document.activeElement).toBe(
+      within(screen.getByRole("group", { name: CHOOSE_FIRST })).getByText(
+        CHOOSE_FIRST,
+      ),
+    );
   });
 
   it("supports keyboard selection without moving to the next screen", async () => {

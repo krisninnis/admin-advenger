@@ -1,6 +1,7 @@
 import { useReducer } from "react";
 import { CopyButton } from "./CopyButton";
 import { TrustedWalesSignpostingPanel } from "./TrustedWalesSignpostingPanel";
+import { useCarePathStepFocus } from "./useCarePathStepFocus";
 import {
   CHANGE_OPTIONS,
   DIFFICULTY_OPTIONS,
@@ -58,6 +59,7 @@ function ChoiceGroup<Id extends string>({
   name,
   isSelected,
   onSelect,
+  focusTargetRef,
 }: {
   legend: string;
   instruction?: string;
@@ -66,10 +68,18 @@ function ChoiceGroup<Id extends string>({
   name: string;
   isSelected: (id: Id) => boolean;
   onSelect: (id: Id) => void;
+  focusTargetRef: (element: HTMLElement | null) => void;
 }) {
   return (
     <fieldset className="border-0 p-0">
-      <legend className={legendClass}>{legend}</legend>
+      <legend
+        ref={focusTargetRef}
+        tabIndex={-1}
+        data-care-path-focus-target="true"
+        className={legendClass}
+      >
+        {legend}
+      </legend>
       {instruction ? (
         <p className="mt-2 text-sm leading-6 text-slate-300">{instruction}</p>
       ) : null}
@@ -142,6 +152,13 @@ export function BothPeoplePreparationPanel({
     { personLabel, originalInput },
     (seed) => createBothPeoplePreparationState(seed.personLabel, seed.originalInput),
   );
+  const focusStepKey =
+    state.step === "supported_person_intake"
+      ? `${state.step}:${state.supportedPerson.step}`
+      : state.step === "supporter_intake"
+        ? `${state.step}:${state.supporter.step}`
+        : state.step;
+  const focusTargetRef = useCarePathStepFocus(focusStepKey);
 
   const goBack = () => dispatch({ type: "back" });
 
@@ -171,6 +188,7 @@ export function BothPeoplePreparationPanel({
           onSelect={(side: BothPeopleFirstSideChoice) =>
             dispatch({ type: "choose_first_side", side })
           }
+          focusTargetRef={focusTargetRef}
         />
         {state.chooseFirstAttempted ? (
           <p
@@ -211,6 +229,7 @@ export function BothPeoplePreparationPanel({
                 event: { type: "toggle_difficulty", difficultyId },
               })
             }
+            focusTargetRef={focusTargetRef}
           />
           <StepButtons onBack={goBack} onContinue={nestedContinue} />
         </section>
@@ -232,6 +251,7 @@ export function BothPeoplePreparationPanel({
                 event: { type: "choose_change", changeId },
               })
             }
+            focusTargetRef={focusTargetRef}
           />
           <StepButtons onBack={goBack} onContinue={nestedContinue} />
         </section>
@@ -253,6 +273,7 @@ export function BothPeoplePreparationPanel({
                 event: { type: "choose_frequency", frequencyId },
               })
             }
+            focusTargetRef={focusTargetRef}
           />
           <StepButtons onBack={goBack} onContinue={nestedContinue} />
         </section>
@@ -281,6 +302,7 @@ export function BothPeoplePreparationPanel({
                 event: { type: "toggle_help", helpId },
               })
             }
+            focusTargetRef={focusTargetRef}
           />
           <StepButtons onBack={goBack} onContinue={nestedContinue} />
         </section>
@@ -302,6 +324,7 @@ export function BothPeoplePreparationPanel({
                 event: { type: "choose_frequency", frequencyId },
               })
             }
+            focusTargetRef={focusTargetRef}
           />
           <StepButtons onBack={goBack} onContinue={nestedContinue} />
         </section>
@@ -324,6 +347,7 @@ export function BothPeoplePreparationPanel({
                 event: { type: "toggle_impact", impactId },
               })
             }
+            focusTargetRef={focusTargetRef}
           />
           <StepButtons onBack={goBack} onContinue={nestedContinue} />
         </section>
@@ -334,7 +358,14 @@ export function BothPeoplePreparationPanel({
   if (state.step !== "combined_summary") {
     return (
       <section className={sectionClass} aria-label="Completed preparation side">
-        <h3 className={legendClass}>This side is prepared</h3>
+        <h3
+          ref={focusTargetRef}
+          tabIndex={-1}
+          data-care-path-focus-target="true"
+          className={legendClass}
+        >
+          This side is prepared
+        </h3>
         <p className="mt-2 text-sm leading-6 text-slate-300">
           Continue to the other side, or go back to review these answers.
         </p>
@@ -356,7 +387,14 @@ export function BothPeoplePreparationPanel({
 
   return (
     <section className={sectionClass} aria-label={summary.heading}>
-      <h3 className={legendClass}>{summary.heading}</h3>
+      <h3
+        ref={focusTargetRef}
+        tabIndex={-1}
+        data-care-path-focus-target="true"
+        className={legendClass}
+      >
+        {summary.heading}
+      </h3>
 
       <section className="mt-4 border-t border-white/10 pt-4" aria-labelledby="both-supported-heading">
         <h4 id="both-supported-heading" className="text-base font-bold text-white">

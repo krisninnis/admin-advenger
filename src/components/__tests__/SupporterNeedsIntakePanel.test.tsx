@@ -64,6 +64,7 @@ describe("SupporterNeedsIntakePanel", () => {
     await user.keyboard(" ");
 
     expect((checkbox as HTMLInputElement).checked).toBe(true);
+    expect(document.activeElement).toBe(checkbox);
     expect(screen.getByRole("group", { name: HELP })).toBeTruthy();
     expect(screen.queryByRole("group", { name: FREQUENCY })).toBeNull();
   });
@@ -82,8 +83,28 @@ describe("SupporterNeedsIntakePanel", () => {
       within(group).getByRole("radio", { name: "Every day" }),
     ).toBeTruthy();
     await user.click(within(group).getByRole("radio", { name: "Every day" }));
+    expect(document.activeElement).toBe(
+      within(group).getByRole("radio", { name: "Every day" }),
+    );
     expect(screen.getByRole("group", { name: FREQUENCY })).toBeTruthy();
     expect(screen.queryByRole("group", { name: IMPACT })).toBeNull();
+  });
+
+  it("moves focus to the next question context after Continue", async () => {
+    const { user } = await openIntake();
+
+    await user.click(screen.getByRole("button", { name: "Continue" }));
+
+    const nextLegend = within(
+      screen.getByRole("group", { name: FREQUENCY }),
+    ).getByText(FREQUENCY);
+    expect(nextLegend.getAttribute("tabindex")).toBe("-1");
+    expect(document.activeElement).toBe(nextLegend);
+
+    await user.tab();
+    expect(document.activeElement).toBe(
+      screen.getByRole("radio", { name: "Most of the time" }),
+    );
   });
 
   it("offers I'm not sure on every question", async () => {
@@ -151,6 +172,9 @@ describe("SupporterNeedsIntakePanel", () => {
         name: "Shopping or household tasks",
       }) as HTMLInputElement).checked,
     ).toBe(true);
+    expect(document.activeElement).toBe(
+      within(screen.getByRole("group", { name: HELP })).getByText(HELP),
+    );
   });
 
   it("returns to the original message only when asked", async () => {

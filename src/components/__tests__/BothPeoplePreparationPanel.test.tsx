@@ -85,11 +85,14 @@ describe("the optional both-people offer", () => {
 
   it("announces a missing choose-first selection accessibly", async () => {
     const { user } = await openChooser();
-    await user.click(screen.getByRole("button", { name: "Continue" }));
+    const continueButton = screen.getByRole("button", { name: "Continue" });
+    await user.click(continueButton);
 
     const status = screen.getByRole("status");
     expect(status.getAttribute("aria-live")).toBe("polite");
     expect(status.textContent).toMatch(/choose a side/i);
+    expect(screen.getByRole("group", { name: CHOOSE_FIRST })).toBeTruthy();
+    expect(document.activeElement).toBe(continueButton);
   });
 
   it("supports keyboard selection without moving to the next screen", async () => {
@@ -99,6 +102,7 @@ describe("the optional both-people offer", () => {
     await user.keyboard(" ");
 
     expect((radio as HTMLInputElement).checked).toBe(true);
+    expect(document.activeElement).toBe(radio);
     expect(screen.getByRole("group", { name: CHOOSE_FIRST })).toBeTruthy();
   });
 });
@@ -107,9 +111,13 @@ describe("the two composed intakes", () => {
   it("can show the supported-person intake first", async () => {
     await chooseSupportedPersonFirst();
 
-    expect(
-      screen.getByRole("group", { name: "What is difficult day to day?" }),
-    ).toBeTruthy();
+    const group = screen.getByRole("group", {
+      name: "What is difficult day to day?",
+    });
+    expect(group).toBeTruthy();
+    expect(document.activeElement).toBe(
+      within(group).getByText("What is difficult day to day?"),
+    );
   });
 
   it("can show the supporter intake first", async () => {
@@ -136,9 +144,11 @@ describe("the two composed intakes", () => {
     const { user } = await chooseSupportedPersonFirst();
     await completeSupportedPerson(user);
 
-    expect(
-      screen.getByRole("group", { name: "What help do you provide?" }),
-    ).toBeTruthy();
+    const group = screen.getByRole("group", { name: "What help do you provide?" });
+    expect(group).toBeTruthy();
+    expect(document.activeElement).toBe(
+      within(group).getByText("What help do you provide?"),
+    );
   });
 
   it("Back preserves first-side answers", async () => {
@@ -152,6 +162,11 @@ describe("the two composed intakes", () => {
         name: "Washing or dressing",
       }) as HTMLInputElement).checked,
     ).toBe(true);
+    expect(document.activeElement).toBe(
+      within(
+        screen.getByRole("group", { name: "What is difficult day to day?" }),
+      ).getByText("What is difficult day to day?"),
+    );
   });
 });
 
@@ -166,7 +181,10 @@ describe("the combined summary", () => {
   it("renders two distinct accessible summary regions", async () => {
     await reachSummary();
 
-    expect(screen.getByRole("heading", { name: "Your preparation summary" })).toBeTruthy();
+    const heading = screen.getByRole("heading", { name: "Your preparation summary" });
+    expect(heading).toBeTruthy();
+    expect(heading.getAttribute("tabindex")).toBe("-1");
+    expect(document.activeElement).toBe(heading);
     expect(screen.getByRole("region", { name: "Support needed by Dad" })).toBeTruthy();
     expect(
       screen.getByRole("region", { name: "How supporting Dad affects you" }),

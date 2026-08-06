@@ -1,5 +1,12 @@
 @import "tailwindcss";
 
+:root {
+  /* 0.5rem top padding + 3.5rem control + 0.5rem bottom padding + 1px border. */
+  --mobile-navigation-clearance: calc(
+    4.5rem + 1px + env(safe-area-inset-bottom)
+  );
+}
+
 html,
 body,
 #root {
@@ -14,4 +21,15 @@ body {
 
 * {
   overflow-wrap: anywhere;
+}
+
+@media (max-width: 47.999rem) {
+  html {
+    scroll-padding-block-end: var(--mobile-navigation-clearance);
+  }
+
+  [data-mobile-nav-scroll-clearance]
+    :where(a, button, input, select, textarea, [tabindex]):focus {
+    scroll-margin-block-end: var(--mobile-navigation-clearance);
+  }
 }

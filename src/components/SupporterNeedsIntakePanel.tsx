@@ -1,6 +1,7 @@
 import { useReducer } from "react";
 import { CopyButton } from "./CopyButton";
 import { TrustedWalesSignpostingPanel } from "./TrustedWalesSignpostingPanel";
+import { useCarePathStepFocus } from "./useCarePathStepFocus";
 import {
   HELP_PROVIDED_OPTIONS,
   IMPACT_OPTIONS,
@@ -48,6 +49,7 @@ function ChoiceGroup<Id extends string>({
   name,
   isSelected,
   onSelect,
+  focusTargetRef,
 }: {
   legend: string;
   instruction?: string;
@@ -56,10 +58,18 @@ function ChoiceGroup<Id extends string>({
   name: string;
   isSelected: (id: Id) => boolean;
   onSelect: (id: Id) => void;
+  focusTargetRef: (element: HTMLElement | null) => void;
 }) {
   return (
     <fieldset className="border-0 p-0">
-      <legend className={legendClass}>{legend}</legend>
+      <legend
+        ref={focusTargetRef}
+        tabIndex={-1}
+        data-care-path-focus-target="true"
+        className={legendClass}
+      >
+        {legend}
+      </legend>
       {instruction ? (
         <p className="mt-2 text-sm leading-6 text-slate-300">{instruction}</p>
       ) : null}
@@ -142,6 +152,7 @@ export function SupporterNeedsIntakePanel({
       originalInput: seed.originalInput,
     }),
   );
+  const focusTargetRef = useCarePathStepFocus(state.step);
 
   const goBack = () => dispatch({ type: "back" });
   const goOn = () => dispatch({ type: "continue" });
@@ -176,6 +187,7 @@ export function SupporterNeedsIntakePanel({
           onSelect={(helpId: HelpProvidedId) =>
             dispatch({ type: "toggle_help", helpId })
           }
+          focusTargetRef={focusTargetRef}
         />
         <StepButtons onBack={goBack} onContinue={goOn} />
       </section>
@@ -197,6 +209,7 @@ export function SupporterNeedsIntakePanel({
           onSelect={(frequencyId: SupportFrequencyId) =>
             dispatch({ type: "choose_frequency", frequencyId })
           }
+          focusTargetRef={focusTargetRef}
         />
         <StepButtons onBack={goBack} onContinue={goOn} />
       </section>
@@ -219,6 +232,7 @@ export function SupporterNeedsIntakePanel({
           onSelect={(impactId: SupportImpactId) =>
             dispatch({ type: "toggle_impact", impactId })
           }
+          focusTargetRef={focusTargetRef}
         />
         <StepButtons onBack={goBack} onContinue={goOn} />
       </section>
@@ -229,7 +243,14 @@ export function SupporterNeedsIntakePanel({
 
   return (
     <section className={sectionClass} aria-label={summary.heading}>
-      <h3 className={legendClass}>{summary.heading}</h3>
+      <h3
+        ref={focusTargetRef}
+        tabIndex={-1}
+        data-care-path-focus-target="true"
+        className={legendClass}
+      >
+        {summary.heading}
+      </h3>
 
       <h4 className="mt-4 text-sm font-bold uppercase tracking-widest text-slate-400">
         {summary.whoHeading}

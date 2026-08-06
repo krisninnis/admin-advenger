@@ -130,6 +130,9 @@ describe("nothing moves on its own", () => {
     await user.click(screen.getByRole("radio", { name: "This is new" }));
 
     expect(screen.getByRole("group", { name: "What has changed?" })).toBeTruthy();
+    expect(document.activeElement).toBe(
+      screen.getByRole("radio", { name: "This is new" }),
+    );
   });
 
   it("lets several difficulties be chosen together", async () => {
@@ -153,6 +156,24 @@ describe("keyboard reachability", () => {
 
     await user.keyboard(" ");
     expect(isChecked(firstCheckbox)).toBe(true);
+    expect(document.activeElement).toBe(firstCheckbox);
+  });
+
+  it("moves focus to the next question context after Continue", async () => {
+    const { user } = await openIntake();
+
+    await user.click(screen.getByRole("button", { name: "Continue" }));
+
+    const nextLegend = within(
+      screen.getByRole("group", { name: "What has changed?" }),
+    ).getByText("What has changed?");
+    expect(nextLegend.getAttribute("tabindex")).toBe("-1");
+    expect(document.activeElement).toBe(nextLegend);
+
+    await user.tab();
+    expect(document.activeElement).toBe(
+      screen.getByRole("radio", { name: "This is new" }),
+    );
   });
 
   it("offers Back and Continue as real buttons on every question", async () => {
@@ -177,6 +198,11 @@ describe("back keeps earlier answers", () => {
     await user.click(screen.getByRole("button", { name: "Back" }));
 
     expect(isChecked(screen.getByRole("checkbox", { name: "Using the toilet" }))).toBe(true);
+    expect(document.activeElement).toBe(
+      within(
+        screen.getByRole("group", { name: "What is difficult day to day?" }),
+      ).getByText("What is difficult day to day?"),
+    );
 
     await user.click(screen.getByRole("button", { name: "Continue" }));
     expect(isChecked(screen.getByRole("radio", { name: "This is new" }))).toBe(true);
@@ -246,5 +272,19 @@ describe("the summary", () => {
 
     const status = screen.getByRole("status");
     expect(status.textContent).toMatch(/left blank/i);
+  });
+
+  it("does not re-run intake focus when signposting opens", async () => {
+    const { user } = await reachSummary();
+    const disclosure = screen.getByRole("button", {
+      name: "Find trusted support in Wales",
+    });
+    disclosure.focus();
+
+    await user.keyboard("{Enter}");
+
+    expect(document.activeElement).not.toBe(
+      screen.getByRole("heading", { name: "Your preparation summary" }),
+    );
   });
 });

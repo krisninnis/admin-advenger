@@ -59,14 +59,18 @@ export function AppShell({
                 Settings
               </button>
             </div>
-            <div className="mx-auto max-w-[1920px] px-4 pb-32 pt-5 sm:px-5 md:px-6 md:py-6 lg:px-8 lg:py-8">
+            <div
+              data-mobile-nav-scroll-clearance="true"
+              className="mx-auto max-w-[1920px] px-4 pb-32 pt-5 sm:px-5 md:px-6 md:py-6 lg:px-8 lg:py-8"
+            >
               {children}
             </div>
           </div>
         </div>
         <nav
           aria-label="Mobile navigation"
-          className="fixed inset-x-0 bottom-0 z-50 border-t border-white/10 bg-slate-950/95 px-2 pt-2 shadow-2xl shadow-slate-950/70 backdrop-blur md:hidden"
+          data-mobile-navigation-clearance="true"
+          className="fixed inset-x-0 bottom-0 z-50 min-h-[var(--mobile-navigation-clearance)] border-t border-white/10 bg-slate-950/95 px-2 pt-2 shadow-2xl shadow-slate-950/70 backdrop-blur md:hidden"
         >
           <div className="grid grid-cols-3 gap-1 pb-[calc(env(safe-area-inset-bottom)+0.5rem)]">
             {mobileNavItems.map((item) => {

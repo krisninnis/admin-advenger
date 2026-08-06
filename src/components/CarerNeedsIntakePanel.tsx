@@ -1,6 +1,7 @@
 import { useReducer } from "react";
 import { CopyButton } from "./CopyButton";
 import { TrustedWalesSignpostingPanel } from "./TrustedWalesSignpostingPanel";
+import { useCarePathStepFocus } from "./useCarePathStepFocus";
 import {
   CHANGE_OPTIONS,
   DIFFICULTY_OPTIONS,
@@ -61,6 +62,7 @@ function ChoiceGroup<Id extends string>({
   name,
   isSelected,
   onSelect,
+  focusTargetRef,
 }: {
   legend: string;
   instruction?: string;
@@ -69,10 +71,18 @@ function ChoiceGroup<Id extends string>({
   name: string;
   isSelected: (id: Id) => boolean;
   onSelect: (id: Id) => void;
+  focusTargetRef: (element: HTMLElement | null) => void;
 }) {
   return (
     <fieldset className="border-0 p-0">
-      <legend className={legendClass}>{legend}</legend>
+      <legend
+        ref={focusTargetRef}
+        tabIndex={-1}
+        data-care-path-focus-target="true"
+        className={legendClass}
+      >
+        {legend}
+      </legend>
       {instruction ? (
         <p className="mt-2 text-sm leading-6 text-slate-300">{instruction}</p>
       ) : null}
@@ -149,6 +159,7 @@ export function CarerNeedsIntakePanel({
       originalInput: seed.originalInput,
     }),
   );
+  const focusTargetRef = useCarePathStepFocus(state.step);
 
   const goBack = () => dispatch({ type: "back" });
   const goOn = () => dispatch({ type: "continue" });
@@ -183,6 +194,7 @@ export function CarerNeedsIntakePanel({
           onSelect={(difficultyId: DifficultyId) =>
             dispatch({ type: "toggle_difficulty", difficultyId })
           }
+          focusTargetRef={focusTargetRef}
         />
         <StepButtons onBack={goBack} onContinue={goOn} />
       </section>
@@ -199,6 +211,7 @@ export function CarerNeedsIntakePanel({
           name="carer-needs-change"
           isSelected={(id: ChangeId) => state.change === id}
           onSelect={(changeId: ChangeId) => dispatch({ type: "choose_change", changeId })}
+          focusTargetRef={focusTargetRef}
         />
         <StepButtons onBack={goBack} onContinue={goOn} />
       </section>
@@ -217,6 +230,7 @@ export function CarerNeedsIntakePanel({
           onSelect={(frequencyId: FrequencyId) =>
             dispatch({ type: "choose_frequency", frequencyId })
           }
+          focusTargetRef={focusTargetRef}
         />
         <StepButtons onBack={goBack} onContinue={goOn} />
       </section>
@@ -227,7 +241,14 @@ export function CarerNeedsIntakePanel({
 
   return (
     <section className={sectionClass} aria-label={summary.heading}>
-      <h3 className={legendClass}>{summary.heading}</h3>
+      <h3
+        ref={focusTargetRef}
+        tabIndex={-1}
+        data-care-path-focus-target="true"
+        className={legendClass}
+      >
+        {summary.heading}
+      </h3>
       <p className="mt-2 text-sm leading-6 text-slate-200">{summary.aboutLine}</p>
 
       <SummaryList heading={summary.difficultiesHeading} items={summary.difficulties} />

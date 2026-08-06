@@ -221,22 +221,28 @@ export function FrontDoorConfirmationPanel({
       aria-label="One quick question"
     >
       <h3 className="text-lg font-bold text-white">{view.heading}</h3>
-      <p className="mt-2 text-sm leading-6 text-slate-200">{view.question}</p>
-      <div className="mt-3 flex flex-col gap-2">
-        {view.choices.map((choice) => (
-          <button
-            key={choice.id}
-            type="button"
-            onClick={() => onChoose(choice.id)}
-            aria-pressed={selectedChoiceId === choice.id}
-            className={
-              selectedChoiceId === choice.id ? selectedButtonClass : primaryButtonClass
-            }
-          >
-            {choice.label}
-          </button>
-        ))}
-      </div>
+      <fieldset className="min-w-0 border-0 p-0">
+        <legend className="mt-2 text-sm leading-6 text-slate-200">
+          {view.question}
+        </legend>
+        <div className="mt-3 flex flex-col gap-2">
+          {view.choices.map((choice) => (
+            <button
+              key={choice.id}
+              type="button"
+              onClick={() => onChoose(choice.id)}
+              aria-pressed={selectedChoiceId === choice.id}
+              className={
+                selectedChoiceId === choice.id
+                  ? selectedButtonClass
+                  : primaryButtonClass
+              }
+            >
+              {choice.label}
+            </button>
+          ))}
+        </div>
+      </fieldset>
       <OriginalInput text={view.originalInput} />
       <Exits onBack={onBack} onCheckAsMessage={onCheckAsMessage} />
     </section>

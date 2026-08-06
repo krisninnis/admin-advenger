@@ -14,7 +14,6 @@
 import type {
   FrontDoorIntentClassification,
   FrontDoorSituationSignal,
-  MentionedPerson,
 } from "./types";
 
 /**
@@ -53,13 +52,30 @@ export const confirmationShapeOf = (
 };
 
 /**
- * The first other person named, in the person's own word.
+ * One safely direct other person, in the person's own word.
  *
  * Verbatim, always. "Dad" never becomes "father", and "MUM" stays "MUM".
+ * Multiple relationships and possessive chains are deliberately unavailable:
+ * shortening either could attach the person to the user inaccurately.
  */
 export const frontDoorPersonLabelOf = (
   classification: FrontDoorIntentClassification,
+  originalInput: string,
 ): string | undefined => {
-  const first: MentionedPerson | undefined = classification.mentionedOtherPeople[0];
-  return first ? first.personLabel : undefined;
+  if (classification.mentionedOtherPeople.length !== 1) return undefined;
+
+  const label = classification.mentionedOtherPeople[0]?.personLabel;
+  if (!label) return undefined;
+
+  const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const labelIsPossessor = new RegExp(
+    `\\b${escapedLabel}['\\u2019]s\\b`,
+    "i",
+  ).test(originalInput);
+  const labelBelongsToAnotherPossessor = new RegExp(
+    `\\b(?:my|our)\\s+[\\p{L}][\\p{L}-]*['\\u2019]s\\s+${escapedLabel}\\b`,
+    "iu",
+  ).test(originalInput);
+
+  return labelIsPossessor || labelBelongsToAnotherPossessor ? undefined : label;
 };

@@ -184,6 +184,52 @@ describe("supporter preparation follows the supporter-focused orientation", () =
   });
 });
 
+describe("both-people preparation follows only a care-shaped both choice", () => {
+  it.each([
+    "I care for Dad full-time and he needs more help now.",
+    "My sister needs help and supporting her is becoming difficult for me.",
+  ])("opens for the qualifying care journey: %s", async (text) => {
+    const { user, onCheck } = await check(text);
+
+    await user.click(screen.getByRole("button", { name: "Both of us" }));
+    expect(
+      screen.getByRole("button", { name: "Prepare both sides separately" }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("group", {
+        name: "Which side would you like to prepare first?",
+      }),
+    ).toBeNull();
+
+    await user.click(
+      screen.getByRole("button", { name: "Prepare both sides separately" }),
+    );
+    expect(
+      screen.getByRole("group", {
+        name: "Which side would you like to prepare first?",
+      }),
+    ).toBeTruthy();
+    expect(onCheck).not.toHaveBeenCalled();
+  });
+
+  it("keeps Mum/PIP on the benefits orientation and cannot open the care flow", async () => {
+    const { user, onCheck } = await check("Mum gets PIP and I help every day.");
+
+    expect(screen.getByText("Whose benefits are you asking about?")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Both" }));
+
+    expect(
+      screen.queryByRole("button", { name: "Prepare both sides separately" }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("group", {
+        name: "Which side would you like to prepare first?",
+      }),
+    ).toBeNull();
+    expect(onCheck).not.toHaveBeenCalled();
+  });
+});
+
 describe("J3: a benefits question asks whose benefits", () => {
   it("uses the possessive choices", async () => {
     const { onCheck } = await check("Can my father claim Attendance Allowance?");

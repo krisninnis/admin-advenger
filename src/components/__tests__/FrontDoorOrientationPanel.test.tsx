@@ -27,6 +27,7 @@ const CARE_SENTENCE = "My sister needs help.";
 /** The optional preparation step added by the Wales-first needs intake slice. */
 const PREPARE = "Prepare what is difficult day to day";
 const PREPARE_SUPPORTER = "Prepare how supporting them affects you";
+const PREPARE_BOTH = "Prepare both sides separately";
 
 // Wordings that reach an orientation page which must not carry the offer.
 const CARE_WITHOUT_A_NAMED_PERSON = "I look after him every day and I am struggling.";
@@ -283,6 +284,47 @@ describe("the supporter preparation step has its own narrow gate", () => {
     expect(view.aboutSupporterWithNamedPerson).toBe(false);
     renderPanel(view);
     expect(screen.queryByRole("button", { name: PREPARE_SUPPORTER })).toBeNull();
+  });
+});
+
+describe("the both-people preparation step has a care-only gate", () => {
+  it.each([
+    "I care for Dad full-time and he needs more help now.",
+    "My sister needs help and supporting her is becoming difficult for me.",
+  ])("appears closed after the both choice for care-shaped wording: %s", (text) => {
+    const view = orientationView(text, "both");
+    if (view.kind !== "orientation") throw new Error("expected an orientation view");
+
+    expect(view.aboutBothPeopleWithNamedPerson).toBe(true);
+    renderPanel(view);
+    expect(screen.getByRole("button", { name: PREPARE_BOTH })).toBeTruthy();
+    expect(screen.queryByRole("group", { name: "Which side would you like to prepare first?" })).toBeNull();
+  });
+
+  it("keeps Mum/PIP benefits-shaped and does not render the offer", () => {
+    const text = "Mum gets PIP and I help every day.";
+    const view = orientationView(text, "both");
+    if (view.kind !== "orientation") throw new Error("expected an orientation view");
+
+    expect(view.aboutBothPeopleWithNamedPerson).toBe(false);
+    renderPanel(view);
+    expect(screen.queryByRole("button", { name: PREPARE_BOTH })).toBeNull();
+  });
+
+  it("opens only after its explicit offer is pressed", async () => {
+    renderPanel(
+      orientationView(
+        "I care for Dad full-time and he needs more help now.",
+        "both",
+      ),
+    );
+
+    await userEvent.setup().click(screen.getByRole("button", { name: PREPARE_BOTH }));
+    expect(
+      screen.getByRole("group", {
+        name: "Which side would you like to prepare first?",
+      }),
+    ).toBeTruthy();
   });
 });
 

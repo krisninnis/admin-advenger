@@ -23,6 +23,7 @@ import {
   annualiseMonthlyAmount,
   extractEnergyAnnualCosts,
   extractMonthlyAmount,
+  extractStatedAnnualAmount,
   extractRecoverableAmount,
   extractReferenceNumber,
   extractRefundWindow,
@@ -262,7 +263,10 @@ const getReceiptEvidence = (item?: AdminItem) => {
 const getSubscriptionEvidence = (adminCase: AdminCase, item?: AdminItem) => {
   const text = `${item?.title ?? ""}\n${item?.rawText ?? ""}`;
   const monthlyAmount = extractMonthlyAmount(text);
-  const annualAmount = annualiseMonthlyAmount(monthlyAmount);
+  // Annualise a monthly amount, or use the yearly amount the source itself
+  // stated. Never multiply an amount the source already described as yearly.
+  const annualAmount =
+    annualiseMonthlyAmount(monthlyAmount) ?? extractStatedAnnualAmount(text);
   const autoRenewStatus =
     getEvidenceValue(adminCase, /renewal\/auto-renew status/i) ??
     text.match(/auto-renewing|auto renewing|charged automatically until cancelled|charged automatically until canceled|until cancelled|until canceled|renews|recurring/i)?.[0];
@@ -1037,8 +1041,13 @@ export const deriveOpportunityCard = (
         "annual",
         "potential",
       ),
+      // A yearly subscription has no monthly charge to show. Printing an empty
+      // "Monthly charge ... / month" row implied a monthly cost the source never
+      // mentioned.
       moneyImpactRows: [
-        moneyImpact("Monthly charge", subscription.monthlyAmount, "monthly", "potential"),
+        ...(subscription.monthlyAmount === undefined
+          ? []
+          : [moneyImpact("Monthly charge", subscription.monthlyAmount, "monthly", "potential")]),
         moneyImpact("Annual impact if unchanged", subscription.annualAmount, "annual", "potential"),
       ],
       providerOrRetailer: /google play/i.test(text) ? "Google Play / Google Commerce Limited" : undefined,

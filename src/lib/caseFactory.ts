@@ -13,6 +13,7 @@ import { assessUkTrainDelayRefund } from "./delayRepayAssessment";
 import { analyseDecisionProblem } from "./decisionEngine/decisionEngine";
 import {
   extractEnergyAnnualCosts,
+  extractStatedAnnualAmount,
   extractTotalCostMention,
   extractTravelRecoveryDetails,
   formatAnnualImpact,
@@ -20,6 +21,7 @@ import {
   isEnergyPriceChangeText,
   isTravelDisruptionRecoveryText,
   parseMoneyAmount,
+  statesAnnualCadence,
 } from "./moneyParsers";
 import { assessPaymentReminder } from "./paymentReminderAssessment";
 import {
@@ -967,9 +969,20 @@ const evidenceForFinding = (
   }
 
   if (finding.category === "subscription") {
-    const monthlyAmount = matchFirst(text, monthlyMoneyPattern) ?? money;
+    // A source that states a yearly cadence must not have its amount treated as
+    // monthly and multiplied by twelve. "Your annual subscription renews for
+    // £79.99" produced an estimated annual cost of £959.88, which the source
+    // never said and which is twelve times the real figure.
+    const statesAnnual = statesAnnualCadence(text);
+    const monthlyAmount = statesAnnual
+      ? undefined
+      : (matchFirst(text, monthlyMoneyPattern) ?? money);
     const monthlyValue = toMoneyNumber(monthlyAmount);
-    const annualValue = monthlyValue === undefined ? undefined : monthlyValue * 12;
+    const annualValue = statesAnnual
+      ? extractStatedAnnualAmount(text)
+      : monthlyValue === undefined
+        ? undefined
+        : monthlyValue * 12;
     const autoRenewStatus = getEvidenceValue(
       text,
       /auto-renewing|auto renewing|charged automatically until cancelled|charged automatically until canceled|until cancelled|until canceled|renews|recurring/i,
@@ -980,10 +993,21 @@ const evidenceForFinding = (
       createEvidence(
         caseId,
         "Monthly amount",
-        monthlyAmount === "Amount not stated" ? "Monthly cost not stated" : monthlyAmount,
+        monthlyAmount === undefined || monthlyAmount === "Amount not stated"
+          ? "Monthly cost not stated"
+          : monthlyAmount,
       ),
       ...(annualValue !== undefined
-        ? [createEvidence(caseId, "Estimated annual cost", `${formatPounds(annualValue)}/year`)]
+        ? [
+            createEvidence(
+              caseId,
+              statesAnnual ? "Annual amount" : "Estimated annual cost",
+              `${formatPounds(annualValue)}/year`,
+              "detected",
+              // A stated yearly figure is a source fact; a x12 estimate is not.
+              statesAnnual ? "source_fact" : "derived",
+            ),
+          ]
         : []),
       createEvidence(caseId, "Renewal/auto-renew status", autoRenewStatus),
       createEvidence(

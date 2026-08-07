@@ -119,6 +119,113 @@ describe("refund state does not overmatch", () => {
   });
 });
 
+// --- C2: a refusal written with the determiner "no" -------------------------
+//
+// The pilot-readiness recheck found the last hole in this family. The negation
+// guard recognised `not`, `never` and `no longer`, which are adverbs sitting
+// before the verb. It did not recognise `no` as a determiner governing the noun,
+// so "No refund has been approved for £68.40." reported `approved` and rendered
+// as "Refund approved" with an action telling the person to keep an approval that
+// does not exist. That is a false reassurance about money, which is why it
+// blocked the supervised pilot.
+//
+// The guard has to stay locally connected: an unrelated "No delay occurred." in
+// another sentence must not suppress a genuine approval.
+
+const SUCCESS_STAGES = ["approved", "issued", "received", "promised"];
+
+describe("refusals written with the determiner no", () => {
+  it.each([
+    ["approval", "No refund has been approved for £68.40."],
+    ["issue", "After review, no refund will be issued."],
+    ["receipt", "No refund has been received."],
+    ["issue, inverted clause", "There will be no refund issued."],
+    ["payment", "No refund will be paid to your account."],
+    ["approval with a following sentence", "No refund has been approved. Your complaint remains open."],
+  ])("never reports a success stage for a denied %s", (_name, message) => {
+    expect(SUCCESS_STAGES).not.toContain(assessRefundState(message).stage);
+  });
+
+  it.each([
+    ["no further refund", "No further refund will be issued for this order."],
+    ["no partial refund", "No partial refund has been approved."],
+  ])("also covers %s", (_name, message) => {
+    expect(SUCCESS_STAGES).not.toContain(assessRefundState(message).stage);
+  });
+});
+
+describe("future-tense negation stays safe", () => {
+  it.each([
+    "Your refund will not be issued.",
+    "Your refund will not be approved.",
+    "Your refund will not be paid.",
+  ])("never reports a success stage for %s", (message) => {
+    expect(SUCCESS_STAGES).not.toContain(assessRefundState(message).stage);
+  });
+});
+
+describe("the determiner guard does not overmatch", () => {
+  it("keeps an approval when an unrelated sentence starts with No", () => {
+    expect(
+      assessRefundState("No delay occurred. Your refund has been approved.").stage,
+    ).toBe("approved");
+  });
+
+  it.each([
+    ["approved", "Your refund has been approved.", "approved"],
+    ["issued", "Your refund will be issued within 5 working days.", "issued"],
+    ["received", "Your refund has been received.", "received"],
+    ["approved with pence", "Your refund of £68.40 has been approved.", "approved"],
+  ])("still reads %s", (_name, message, expected) => {
+    expect(assessRefundState(message).stage).toBe(expected);
+  });
+});
+
+describe("a denied refund is safe all the way to the visible result", () => {
+  const DENIED = "No refund has been approved for £68.40.";
+
+  it("does not title the result as an approved refund", () => {
+    const journey = run("denied", DENIED);
+
+    expect(journey.resultViewModel.title).not.toMatch(/refund approved/i);
+  });
+
+  it("does not claim a pending recovery on the strength of an approval", () => {
+    const journey = run("denied-status", DENIED);
+
+    expect(journey.resultViewModel.primaryStatusLabel ?? "").not.toMatch(
+      /pending recovery/i,
+    );
+  });
+
+  it("does not tell the person to keep or check an approval that does not exist", () => {
+    const { primaryLabel, primaryText } = actionView("denied-action", DENIED);
+
+    expect(primaryLabel).not.toMatch(/keep the approval|refund window/i);
+    expect(primaryText).not.toMatch(/the provider stated/i);
+  });
+
+  it("does not present the amount as confirmed incoming refund money", () => {
+    const journey = run("denied-money", DENIED);
+
+    // The amount stays visible and source-grounded, but nothing may describe it
+    // as money that is on its way. Every money line stays out of the tracker, and
+    // no amount may be attached to a recovery or approval claim.
+    for (const line of journey.resultViewModel.moneyMentioned) {
+      expect(line.countedInMoneyTracker).toBe(false);
+
+      if (/recovery|refund/i.test(line.label)) {
+        expect(line.amountText).not.toMatch(/\d/);
+      }
+    }
+
+    expect(journey.visibleText).not.toMatch(
+      /refund (?:has been|is|was) (?:approved|issued|processed)/i,
+    );
+    expect(journey.visibleText).not.toMatch(/pending recovery\s*-\s*not confirmed/i);
+  });
+});
+
 // --- D: conditional boilerplate is not present failure ----------------------
 
 const CONDITIONAL_BOILERPLATE =

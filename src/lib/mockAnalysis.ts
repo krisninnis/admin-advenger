@@ -46,6 +46,7 @@ import {
   isSecurityAlertText,
   getStructuredGeneralAdminFallbackTitle,
   selectRefundTotal,
+  type RefundStage,
   type StructuredGeneralAdminFallback,
 } from "./generalAdminExtraction";
 
@@ -208,6 +209,17 @@ const isApprovedRefund = (text: string) =>
   containsAny(text, approvedRefundSignals) ||
   (/refund\s+of\s+(?:£|Â£|GBP\s*|\?\s*)\d+(?:,\d{3})*(?:\.\d{1,2})?/i.test(text) &&
     /approved|issued|processed|returned|will be returned/i.test(text));
+
+/**
+ * Stages that mean the provider has actually committed to a refund. Used to stop
+ * a keyword read from titling a refusal as an approval.
+ */
+const REFUND_SUCCESS_STAGES = new Set<RefundStage>([
+  "approved",
+  "issued",
+  "promised",
+  "received",
+]);
 
 const recurringBillingSignals = [
   "/month",
@@ -1181,8 +1193,15 @@ export const analyseAdminItem = (
     !highRiskEmailFinding && refundState.stage === "promised"
       ? createPromisedRefundFinding(item)
       : undefined;
+  // isApprovedRefund is a keyword read with no sense of negation, so "No refund
+  // has been approved for £68.40." satisfied it and the result was titled "Refund
+  // approved". The shared refund state is negation-aware, so it decides whether
+  // there is an approval to describe at all; the keyword read still decides
+  // whether this is the right kind of refund finding.
   const approvedRefundFinding =
-    !promisedRefundFinding && isApprovedRefund(text)
+    !promisedRefundFinding &&
+    isApprovedRefund(text) &&
+    REFUND_SUCCESS_STAGES.has(refundState.stage)
       ? createApprovedRefundFinding(item)
       : undefined;
   const travelRecoveryFinding = isTravelDisruptionRecoveryText(`${item.title}\n${item.rawText}`)

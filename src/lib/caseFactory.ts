@@ -26,6 +26,7 @@ import {
   assessAccountOutcome,
   assessRefundState,
   extractGeneralAdmin,
+  type RefundStage,
 } from "./generalAdminExtraction";
 import {
   assessEmailSafety,
@@ -80,8 +81,20 @@ const toMoneyNumber = (value?: string) => {
 
 const formatPounds = (value: number) => formatCurrency(value);
 
+// The keyword half of this read has no sense of negation: "No refund has been
+// approved for £68.40." satisfied it, and the case was retitled "Refund
+// approved" even though the finding said otherwise. The shared refund state is
+// negation-aware, so it decides whether an approval exists at all.
+const REFUND_SUCCESS_STAGES = new Set<RefundStage>([
+  "approved",
+  "issued",
+  "promised",
+  "received",
+]);
+
 const isApprovedRefundFinding = (finding: AdminFinding, item: AdminItem) =>
   finding.category === "refund" &&
+  REFUND_SUCCESS_STAGES.has(assessRefundState(`${item.title}\n${item.rawText}`).stage) &&
   (/^refund approved$/i.test(finding.title) ||
     /refund (?:has been )?approved|refund will be returned|returned to your original payment method|refund processed|refund issued/i.test(
       `${item.title} ${item.rawText}`,

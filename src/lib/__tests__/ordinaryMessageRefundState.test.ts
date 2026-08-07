@@ -181,6 +181,64 @@ describe("the determiner guard does not overmatch", () => {
   });
 });
 
+describe("amount-interposed determiner negation", () => {
+  it.each([
+    ["GBP receipt", "No GBP 68.40 refund has been received."],
+    ["sterling receipt", "No \u00a368.40 refund has been received."],
+    ["GBP approval", "No GBP 68.40 refund has been approved."],
+    ["inverted GBP issue", "There will be no GBP 68.40 refund issued."],
+    ["further GBP approval", "No further GBP 68.40 refund has been approved."],
+    ["partial GBP issue", "No partial GBP 68.40 refund has been issued."],
+    ["amount-only receipt", "No 68.40 refund has been received."],
+    ["currency-token approval", "No GBP refund has been approved."],
+    ["modifier after amount", "No GBP 68.40 partial refund has been issued."],
+    ["plain receipt", "No refund has been received."],
+    ["plain approval", "No refund has been approved."],
+    ["not received", "Your refund has not been received."],
+    ["not approved", "Your refund has not been approved."],
+    ["will not be issued", "Your refund will not be issued."],
+    ["refused", "Your refund was refused."],
+    ["declined", "Your refund was declined."],
+    ["rejected", "Your refund was rejected."],
+  ])("never reports a success stage for %s", (_name, message) => {
+    expect(SUCCESS_STAGES).not.toContain(assessRefundState(message).stage);
+  });
+
+  it.each([
+    ["GBP receipt", "Your GBP 68.40 refund has been received.", "received"],
+    ["sterling approval", "Your \u00a368.40 refund has been approved.", "approved"],
+    ["GBP issue", "Your GBP 68.40 refund will be issued.", "issued"],
+    ["refund of GBP", "Your refund of GBP 68.40 has been received.", "received"],
+    ["refund of sterling", "Your refund of \u00a368.40 has been approved.", "approved"],
+  ])("keeps the genuine positive state for %s", (_name, message, expected) => {
+    expect(assessRefundState(message).stage).toBe(expected);
+  });
+
+  it("does not carry determiner negation into another sentence", () => {
+    expect(
+      assessRefundState("No delay occurred. Your GBP 68.40 refund has been approved.").stage,
+    ).toBe("approved");
+  });
+
+  it.each([
+    ["received", "No GBP 68.40 refund has been received."],
+    ["approved", "No GBP 68.40 refund has been approved."],
+    ["issued", "There will be no GBP 68.40 refund issued."],
+  ])("does not expose a false %s result downstream", (state, message) => {
+    const { journey, primaryLabel, primaryText, visible } = actionView(
+      `amount-interposed-${state}`,
+      message,
+    );
+
+    expect(journey.resultViewModel.title).not.toMatch(/refund approved|confirmed as received/i);
+    expect(journey.resultViewModel.primaryStatusLabel ?? "").not.toMatch(/pending recovery/i);
+    expect(`${primaryLabel}\n${primaryText}`).not.toMatch(
+      /keep (?:the )?(?:approval|confirmation)|refund window/i,
+    );
+    expect(visible).not.toMatch(/refund (?:has been|is|was) (?:approved|issued|received)/i);
+  });
+});
+
 describe("a denied refund is safe all the way to the visible result", () => {
   const DENIED = "No refund has been approved for £68.40.";
 

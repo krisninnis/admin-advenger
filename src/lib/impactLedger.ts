@@ -118,9 +118,10 @@ export const deriveImpactFromCase = (
   }
 
   if (
-    card.opportunityType === "money_back" ||
-    card.opportunityType === "refund_expected" ||
-    card.opportunityType === "travel_extra_cost_recovery"
+    !card.outcomeConfirmed &&
+    (card.opportunityType === "money_back" ||
+      card.opportunityType === "refund_expected" ||
+      card.opportunityType === "travel_extra_cost_recovery")
   ) {
     return [
       makeEntry(

@@ -855,6 +855,63 @@ export const deriveOpportunityCard = (
   const isEnergyPriceChange = opportunityType === "energy_price_change";
   const isTravelRecovery = opportunityType === "travel_extra_cost_recovery";
 
+  // A refund the source says has already arrived is finished business. It used to
+  // reach the generic money-back card below, which titled it "Money back to
+  // chase", put the amount under "Pending recovery" with a "Chase if not received
+  // by" label, and offered a complaint draft. Somebody telling AdminAvenger their
+  // money had come back was being advised to complain about it.
+  //
+  // The stage comes from the shared refund state, so only the received state is
+  // affected: refused, not-approved, negated receipt and approved-but-waiting all
+  // keep the behaviour they had. Nothing is counted as recovered here either;
+  // confirming money is a separate, explicit user action.
+  if ((isRefund || isRefundExpected) && assessRefundState(text).stage === "received") {
+    const refund = assessRefundState(text);
+
+    return {
+      id: `opportunity-${adminCase.id}`,
+      caseId: adminCase.id,
+      opportunityType,
+      title: "Refund confirmed as received",
+      plainEnglishSummary:
+        "This message says the refund has already reached the account. AdminAvenger has not added the money to any total: only you can confirm that.",
+      moneyAtStake:
+        refund.amount?.amount === undefined
+          ? undefined
+          : moneyImpact("Refund amount mentioned", refund.amount.amount, "one_off", "confirmed"),
+      outcomeConfirmed: true,
+      deadline: undefined,
+      deadlineLabel: undefined,
+      statusLabel: "Source confirms the refund arrived",
+      // The generic refund evidence template does not carry a reference, so the
+      // amount and reference come from the shared extraction rather than being
+      // lost on the way to a completed result.
+      evidenceFound: [
+        ...new Set(
+          [
+            refund.amount ? `Refund amount: ${refund.amount.sourceQuote}` : undefined,
+            refund.reference ? `Reference: ${refund.reference.value}` : undefined,
+            "The message states the refund has reached the account",
+            ...baseEvidence,
+          ].filter((entry): entry is string => Boolean(entry)),
+        ),
+      ],
+      missingInformation: [],
+      nextBestAction:
+        "Keep this confirmation with your records. Check your own account or statement if you want to be sure.",
+      recommendedPathSteps: [
+        "Keep the confirmation and any reference with your records.",
+        "Check your own bank or card statement if you want to confirm the amount yourself.",
+        "Nothing further is needed while the source says the money arrived.",
+      ],
+      riskLevel: "low",
+      confidenceLabel: adminCase.confidence,
+      sourceCaseType: adminCase.category,
+      createdAt,
+      updatedAt,
+    };
+  }
+
   if (isRefundExpected && /^refund promised$/i.test(adminCase.title)) {
     const refund = assessRefundState(text);
 

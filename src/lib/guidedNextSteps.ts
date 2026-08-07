@@ -200,6 +200,33 @@ const buildQuestionsAction = (
  * waiting, and telling somebody to complain because the provider omitted a
  * timescale was the same defect wearing a different hat.
  */
+/**
+ * True when the source itself says the refund has already reached the account.
+ *
+ * Security comes first, exactly as it does for the waiting-refund branch: a scam
+ * that mentions a refund arriving must keep the safety checklist rather than a
+ * calm "keep confirmation" action.
+ */
+const refundConfirmedReceived = (
+  adminCase: AdminCase,
+  item?: AdminItem,
+  finding?: AdminFinding,
+): boolean => {
+  if (adminCase.securityPrecedence || finding?.securityPrecedence) {
+    return false;
+  }
+
+  const text = `${item?.title ?? ""}\n${item?.rawText ?? ""}`.trim();
+
+  if (!text) {
+    return false;
+  }
+
+  const refund = assessRefundState(text);
+
+  return refund.isRefund && refund.stage === "received";
+};
+
 const refundWaitingOnProvider = (
   adminCase: AdminCase,
   item?: AdminItem,
@@ -376,6 +403,22 @@ const deriveFromOpportunity = (
       primaryAction: {
         kind: "evidence_checklist",
         label: "Review confirmation steps",
+        title: opportunity.title,
+        evidenceNeeded: dedupe(opportunity.recommendedPathSteps),
+      },
+      secondaryActions: [],
+    };
+  }
+
+  // A refund the source confirms has arrived needs no draft at all. This sits
+  // ahead of the draft-producing paths below so a completed refund can never be
+  // handed a chase or complaint message, and it reuses the existing "Keep
+  // confirmation" wording rather than inventing a new action.
+  if (refundConfirmedReceived(adminCase, item, finding)) {
+    return {
+      primaryAction: {
+        kind: "evidence_checklist",
+        label: "Keep confirmation",
         title: opportunity.title,
         evidenceNeeded: dedupe(opportunity.recommendedPathSteps),
       },

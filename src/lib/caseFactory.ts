@@ -957,6 +957,25 @@ const evidenceForFinding = (
   }
 
   if (finding.category === "refund") {
+    const refundState = assessRefundState(text);
+
+    // A refund the source says has arrived is a completed record, so the evidence
+    // is the amount, the reference and the stated outcome. The generic template
+    // below carries neither amount nor reference, which meant a confirmed refund
+    // lost its reference on the way to the result.
+    if (refundState.stage === "received") {
+      return [
+        ...(refundState.amount
+          ? [createEvidence(caseId, "Refund amount", refundState.amount.sourceQuote)]
+          : []),
+        ...refundState.reference
+          ? [createEvidence(caseId, "Reference", refundState.reference.value)]
+          : [],
+        createEvidence(caseId, "Refund status", "The message says the refund reached the account"),
+        createEvidence(caseId, "Source", item.title, "user_text"),
+      ];
+    }
+
     return [
       createEvidence(caseId, "Potential value", finding.estimatedValue ?? money),
       createEvidence(

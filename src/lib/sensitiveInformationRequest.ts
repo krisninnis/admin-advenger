@@ -25,7 +25,7 @@ export type SensitiveInformationRequest = {
 // "text" and "email" are deliberately absent: they are common nouns as well as
 // verbs, and an ordinary phrase ending in one of them would otherwise chain into
 // the next line's wording. "send" already covers the intended meaning.
-const REQUEST_VERB = String.raw`(?:send|share|give|provide|supply|enter|input|type|forward|reply[ \t]+with|respond[ \t]+with|tell|confirm|verify|validate|update|read[ \t]+out|disclose|need|require|asks?[ \t]+(?:you[ \t]+)?for|asking[ \t]+for)`;
+const REQUEST_VERB = String.raw`(?:send|share|give|provide|supply|enter|input|type|forward|reply[ \t]+to[ \t]+(?:this|the)[ \t]+(?:message|email)[ \t]+with|reply[ \t]+with|respond[ \t]+with|tell|confirm|verify|validate|update|read[ \t]+out|disclose|need|require|asks?[ \t]+(?:you[ \t]+)?for|asking[ \t]+for)`;
 
 // A closed list of determiners, pronouns and numeric modifiers may sit between
 // the verb and the credential noun ("send us the six-digit verification code").

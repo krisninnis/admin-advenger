@@ -657,11 +657,16 @@ const negated = (state: string) =>
 // rendered as "Refund approved" and told the person to keep an approval that did
 // not exist.
 //
-// The guard is scoped to one sentence and requires the determiner to be attached
-// to `refund` itself, so an unrelated "No delay occurred." in a neighbouring
-// sentence cannot suppress a genuine approval.
-const NO_REFUND_DETERMINER =
-  /\bno\s+(?:further\s+|additional\s+|partial\s+|full\s+)?refund\b/i;
+// The guard is scoped to one sentence and only permits known refund modifiers or
+// a source-shaped money token between the determiner and `refund`. That keeps the
+// noun binding intact for "No GBP 68.40 refund" without turning this into a free
+// text gap, so an unrelated "No delay occurred." cannot suppress a genuine
+// approval in a neighbouring sentence.
+const NO_REFUND_GAP_TOKEN = String.raw`(?:further|additional|partial|full|(?:(?:GBP|\u00a3)\s*)?\d+(?:,\d{3})*(?:\.\d{1,2})?|GBP|\u00a3)`;
+const NO_REFUND_DETERMINER = new RegExp(
+  String.raw`\bno(?:\s+${NO_REFUND_GAP_TOKEN}){0,3}\s+refund\b`,
+  "i",
+);
 
 const sentencesOf = (text: string): string[] => text.split(/(?<=[.;!?])\s+|\n+/);
 

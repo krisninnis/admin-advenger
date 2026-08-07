@@ -166,6 +166,17 @@ export type OpportunityCard = {
   title: string;
   plainEnglishSummary: string;
   moneyAtStake?: MoneyImpact;
+  /**
+   * Set when the source itself states that the outcome has already happened, for
+   * example a refund it says has reached the account.
+   *
+   * The impact ledger logs a pending recovery for every money-back card, with the
+   * words "User has not confirmed receipt yet". On a message saying the money
+   * arrived that is simply untrue, so this flag lets the ledger stay quiet. It
+   * never means AdminAvenger has counted the money: confirming a recovery remains
+   * an explicit user action.
+   */
+  outcomeConfirmed?: true;
   potentialSaving?: MoneyImpact;
   potentialRecovery?: MoneyImpact;
   confirmedSaving?: MoneyImpact;

@@ -44,6 +44,13 @@ const moneyDemandPattern =
 const unusualPaymentPattern =
   /\b(?:send payment|pay now|bank transfer|gift cards?|crypto|bitcoin|voucher|guaranteed investment return|double (?:it|your money)|avoid arrest)\b/i;
 const changedBankDetailsPattern = /\bbank details (?:have|has) changed\b/i;
+const verificationPaymentActionPattern = /\b(?:send|transfer|make)\b/i;
+const verificationPaymentPurposePattern =
+  /\b(?:to\s+verify|for\s+verification|verification\s+payment|verify(?:ing)?\s+(?:your|the)\s+details)\b/i;
+const newBankDestinationPattern =
+  /\b(?:(?:our|the|their)\s+)?(?:new|replacement)\s+(?:bank\s+account|account|bank\s+details|payment\s+details)\b/i;
+const describedVerificationPaymentPattern =
+  /\b(?:small|test|verification)\s+(?:verification\s+)?payment\b/i;
 const attachmentPattern = /\b(?:open|download)\s+(?:the\s+)?attach(?:ment|ed file)|\benable (?:editing|macros|content)\b/gi;
 const activeAttachmentPattern = /\b(?:enable (?:editing|macros|content)|run the attached)\b/i;
 const impersonationPattern = /\b(?:this is|we are)\s+(?:the\s+)?(?:tax office|hmrc|police|your bank)|\byour manager\b/i;
@@ -93,6 +100,16 @@ const hasCardDetailRequest = (text: string) =>
 const hasSuppliedActionLink = (text: string) =>
   hasUnnegatedMatch(text, verificationLinkPattern) || hasUnnegatedMatch(text, suppliedUrlPattern);
 const hasMoneyDemand = (text: string) => hasUnnegatedMatch(text, moneyDemandPattern);
+const hasNewBankVerificationPayment = (text: string) =>
+  text
+    .split(/\n+|(?<=[.!?])\s+(?!\d)/)
+    .some(
+      (sentence) =>
+        verificationPaymentActionPattern.test(sentence) &&
+        verificationPaymentPurposePattern.test(sentence) &&
+        newBankDestinationPattern.test(sentence) &&
+        (hasMoneyDemand(sentence) || describedVerificationPaymentPattern.test(sentence)),
+    );
 const hasUnexpectedAttachmentAction = (text: string) =>
   hasUnnegatedMatch(text, attachmentPattern);
 
@@ -259,6 +276,7 @@ export const assessEmailSafety = (
   const changedBankPaymentInstruction =
     changedBankDetailsPattern.test(text) &&
     (moneyDemand || /\b(?:send|make|redirect)\s+(?:the\s+|an?\s+)?(?:invoice\s+)?payment\b/i.test(text));
+  const newBankVerificationPayment = hasNewBankVerificationPayment(text);
 
   const threatSignals = [
     accountThreatPattern.test(text) ? "Account locked or suspension threat" : undefined,
@@ -266,6 +284,7 @@ export const assessEmailSafety = (
     loginDetailRequest ? "Asks for login details or one-time code" : undefined,
     cardDetailRequest ? "Asks for card details" : undefined,
     changedBankPaymentInstruction ? "Changed bank details with payment instruction" : undefined,
+    newBankVerificationPayment ? "Verification payment to new bank details" : undefined,
     suspiciousSenderDomain ? "Suspicious sender domain" : undefined,
     replyToMismatch ? "Reply-to mismatch" : undefined,
     senderDoesNotMatchClaim ? "Sender does not match claimed organisation" : undefined,
@@ -360,6 +379,7 @@ export const shouldPrioritiseEmailSafety = (
   const changedBankPayment =
     changedBankDetailsPattern.test(text) &&
     (moneyDemand || /\b(?:send|make|redirect)\s+(?:the\s+|an?\s+)?(?:invoice\s+)?payment\b/i.test(text));
+  const newBankVerificationPayment = hasNewBankVerificationPayment(text);
   const impersonationAction =
     impersonationPattern.test(text) && (moneyDemand || actionLink || sensitiveRequest);
   const activeAttachment =
@@ -373,6 +393,7 @@ export const shouldPrioritiseEmailSafety = (
   return (
     sensitiveRequest ||
     changedBankPayment ||
+    newBankVerificationPayment ||
     (actionLink && (urgent || moneyDemand || threat)) ||
     impersonationAction ||
     unrealisticReturnPattern.test(text) ||

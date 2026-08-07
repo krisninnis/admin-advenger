@@ -267,3 +267,92 @@ describe("P0 existing security coverage", () => {
     expect(visible).toMatch(/cannot confirm/i);
   });
 });
+
+// --- P0-3 lifecycle combinations and credential variants -------------------
+
+const VERIFICATION_CODE_REQUESTS = [
+  "Reply with the six-digit verification code we sent you.",
+  "Send us the six digit verification code.",
+  "Tell us the verification code you just received.",
+  "Reply with your security code.",
+  "Send your one-time passcode.",
+  "Send your OTP.",
+  "Tell us the login code we sent you.",
+] as const;
+
+const PAYMENT_CONFIRMATION_SECURITY_REQUESTS = [
+  "Thank you for your payment of £46.20. Reply with the six-digit verification code we sent you.",
+  "Your balance is £0.00. Send us your one-time passcode to confirm your identity.",
+  "No further payment is due. Tell us your verification code.",
+  "Thank you for your payment of £46.20. To secure your account, reply to this message with the six-digit verification code we have just sent you.",
+] as const;
+
+const REFUND_SECURITY_REQUESTS = [
+  "Your £68.40 refund has been approved. Tell us your full card number and security code.",
+  "Your refund has been sent. Reply with your OTP to confirm receipt.",
+  "Your refund is complete. Send us your PIN to verify the account.",
+] as const;
+
+const NEW_BANK_VERIFICATION_PAYMENTS = [
+  "Your subscription has been cancelled. Send £1 to our new bank account to verify your details.",
+  "Your membership is cancelled. Transfer £1 to the new account below for verification.",
+  "No further subscription payments are due. Send a small verification payment to our replacement bank details.",
+] as const;
+
+describe("P0-3 credential-request variants", () => {
+  it.each(VERIFICATION_CODE_REQUESTS)("routes security-first: %s", (message) => {
+    const view = securityView(`credential-${message}`, message);
+
+    expect(view.caseTitle).toBe("Email needs safety check");
+    expect(view.primaryLabel).toMatch(/safety checklist/i);
+  });
+});
+
+describe("P0-3 benign lifecycle wording cannot suppress security", () => {
+  it.each(PAYMENT_CONFIRMATION_SECURITY_REQUESTS)("overrides payment confirmation: %s", (message) => {
+    const view = securityView(`payment-security-${message}`, message);
+
+    expect(view.caseTitle).toBe("Email needs safety check");
+    expect(view.primaryLabel).toMatch(/safety checklist/i);
+  });
+
+  it.each(REFUND_SECURITY_REQUESTS)("overrides refund status: %s", (message) => {
+    const view = securityView(`refund-security-${message}`, message);
+
+    expect(view.caseTitle).toBe("Email needs safety check");
+    expect(view.primaryLabel).toMatch(/safety checklist/i);
+  });
+
+  it.each(NEW_BANK_VERIFICATION_PAYMENTS)("overrides subscription status: %s", (message) => {
+    const view = securityView(`subscription-security-${message}`, message);
+
+    expect(view.caseTitle).toBe("Email needs safety check");
+    expect(view.primaryLabel).toMatch(/safety checklist/i);
+    expect(view.journey.adminCase.category).not.toBe("subscription");
+  });
+});
+
+describe("P0-3 benign and protective boundaries", () => {
+  it.each([
+    "Your payment of £46.20 has been received. No action is needed.",
+    "Your subscription has been cancelled successfully. No further payment is due.",
+    "Your refund has been approved and will arrive within 5 working days.",
+    "Your bank details have been updated successfully.",
+    "Your verification was successful. No code is required.",
+  ])("leaves a benign message off the security route: %s", (message) => {
+    const view = securityView(`benign-${message}`, message);
+
+    expect(view.isSecurityCase).toBe(false);
+    expect(view.primaryLabel).not.toMatch(/safety checklist/i);
+  });
+
+  it("treats advice not to share credentials as protective wording", () => {
+    const view = securityView(
+      "protective-security-advice",
+      "Your refund has arrived. Never share your password, PIN or verification code with anyone.",
+    );
+
+    expect(view.isSecurityCase).toBe(false);
+    expect(view.primaryLabel).not.toMatch(/safety checklist/i);
+  });
+});

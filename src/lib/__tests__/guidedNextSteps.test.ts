@@ -181,7 +181,11 @@ Your payment this month: £813.45`;
       expect(guided.primaryAction.label).toBe("Create complaint draft");
     });
 
-    it("consumer/refund complaint (opportunity-based approved refund) also shows a supported draft action", () => {
+    // W4 action calibration: an approved refund still inside the window the
+    // provider itself stated is not a complaint, so escalation moves from the
+    // primary action to a supported secondary one. The draft must still exist -
+    // that is what this case has always been here to prove.
+    it("consumer/refund complaint (opportunity-based approved refund) keeps a supported draft action, but not as the immediate step", () => {
       const text =
         "Your refund of £42.99 has been approved and will be returned to your original payment method within 5 to 10 working days. Reference RF12345.";
       const { item, finding, adminCase } = firstCase(makeItem("Refund approved", text));
@@ -190,10 +194,16 @@ Your payment this month: £813.45`;
 
       const guided = deriveGuidedNextStep(adminCase, item, finding);
 
-      expect(guided.primaryAction.kind).toBe("draft_message");
-      expect(guided.primaryAction.label).toBe("Create complaint draft");
-      if (guided.primaryAction.kind === "draft_message") {
-        expect(guided.primaryAction.body).toContain("refund");
+      expect(guided.primaryAction.kind).toBe("deadline_checklist");
+      expect(guided.primaryAction.label).not.toMatch(/complaint/i);
+      if (guided.primaryAction.kind === "deadline_checklist") {
+        expect(guided.primaryAction.deadlineText).toContain("5 to 10 working days");
+      }
+
+      const draft = guided.secondaryActions.find((action) => action.kind === "draft_message");
+      expect(draft).toBeDefined();
+      if (draft?.kind === "draft_message") {
+        expect(draft.body).toContain("refund");
       }
     });
 

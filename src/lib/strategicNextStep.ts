@@ -1,6 +1,7 @@
 import type { AdminCase, OpportunityCard } from "../types";
 import type { BenefitsActionPack } from "./benefitsActionPack";
 import type { DecisionDocumentType, DecisionResult } from "./decisionEngine/types";
+import { isSourceFactEvidence } from "./evidenceKind";
 
 export type StrategicActor = {
   label: string;
@@ -216,12 +217,82 @@ const getDefaultOtherSafeMoves = (): StrategicMove[] => [
   ),
 ];
 
+// "Do not rely on OCR without checking the original letter." used to live here,
+// which meant every result carried it, including text the person had pasted
+// straight into the box. OCR advice belongs to journeys where OCR actually ran,
+// and those already carry their own cautions from the photo and attachment
+// pipelines (see photoOcr, photoIntake, ocrKeyDetails and
+// documentAttachmentIntake). Nothing is lost by removing it from the shared set.
 const genericMovesToAvoid = [
   "Do not send an angry message.",
   "Do not submit a form automatically.",
-  "Do not rely on OCR without checking the original letter.",
   "Do not count money mentioned in the document as saved or recovered.",
 ];
+
+/**
+ * How strongly a message needs to be warned about, decided from evidence rather
+ * than from its category.
+ *
+ * Every result used to receive the same six lines, so an approved refund was
+ * warned exactly as sternly as a credential-harvesting email. That is not a
+ * calibration problem at the edges: it means the strong wording carried no
+ * information at all.
+ */
+export type StrategicCautionLevel = "routine" | "elevated" | "security";
+
+const ROUTINE_MOVES_TO_AVOID = [
+  // Kept for every message: proportionate, and it is the one instruction that
+  // protects a person who does not yet know what they are looking at.
+  "Do not reply, pay, click, or submit anything before checking what the document is.",
+  // Required by the money-safety posture whenever an amount is on screen.
+  "Do not count money mentioned in the document as saved or recovered.",
+];
+
+const ELEVATED_MOVES_TO_AVOID = [
+  "Do not reply, pay, click, or submit anything before checking what the document is.",
+  "Do not assume a scary-looking message is correct or safe.",
+  ...genericMovesToAvoid,
+];
+
+export const strategicCautionLevelFor = ({
+  decisionResult,
+  benefitsActionPack,
+  opportunity,
+  adminCase,
+}: BuildStrategicNextStepPlanInput): StrategicCautionLevel => {
+  // Security is evidence-led: the email-safety read found signals, or the
+  // message was routed as a suspicious-email risk.
+  const emailSafety = adminCase?.emailSafetyAssessment;
+
+  if (
+    opportunity?.opportunityType === "suspicious_email_risk" ||
+    (emailSafety && emailSafety.riskBand !== "lower_risk_verify") ||
+    (emailSafety?.riskSignals.length ?? 0) > 0
+  ) {
+    return "security";
+  }
+
+  // Elevated is for a stated demand for money, a document family the product
+  // already treats as high stakes, or a message the analysis layer read as one
+  // that asks the person to reply or act by a date. That last signal is what
+  // carries possession notices, payment reminders and appointment letters, none
+  // of which reach a typed plan.
+  //
+  // `urgency` is deliberately not used. A price rise is marked high urgency and
+  // is not a dangerous message, so urgency would keep exactly the wrong things
+  // loud.
+  const documentType = decisionResult?.documentType ?? benefitsActionPack?.documentType;
+
+  if (
+    decisionResult?.amountTreatment === "amount_being_demanded" ||
+    (documentType ? highStakesTypes.has(documentType) : false) ||
+    adminCase?.category === "important_reply"
+  ) {
+    return "elevated";
+  }
+
+  return "routine";
+};
 
 const genericAdviceTriggers = [
   "Get advice if the letter mentions court, enforcement, eviction, sanctions, stopped payments, or an urgent deadline.",
@@ -230,6 +301,11 @@ const genericAdviceTriggers = [
 
 const getPlanForDocumentType = (
   documentType: DecisionDocumentType | undefined,
+  // Only the untyped default plan is calibrated. Every typed branch below is a
+  // high-stakes family that keeps its existing wording, so this change cannot
+  // quietly soften benefits, debt, HMRC or enforcement guidance.
+  cautionLevel: StrategicCautionLevel = "elevated",
+  known: { everythingIdentified: boolean } = { everythingIdentified: false },
 ): Pick<StrategicNextStepPlan, "userGoal" | "safestMove" | "otherSafeMoves" | "movesToAvoid" | "whenToGetAdvice"> => {
   if (documentType === "benefits_uc_statement") {
     return {
@@ -481,19 +557,88 @@ const getPlanForDocumentType = (
 
   return {
     userGoal: "Identify what the message is asking for before acting.",
-    safestMove: move(
-      "Identify the sender, date, reference, and deadline",
-      "Find who sent it, when, any reference number, what they want, and whether a date is mentioned.",
-      "It avoids a rushed response and helps you decide whether this needs action, saving, or advice.",
-    ),
+    // Telling somebody to go and find a reference AdminAvenger has already read
+    // makes it look as though nothing was understood. When the key facts are in
+    // hand, the safest move is to check them rather than hunt for them.
+    safestMove: known.everythingIdentified
+      ? move(
+          "Check the details already found against the original",
+          "Compare the reference, dates, and amounts shown here with the message you received, then decide whether anything needs doing.",
+          "It confirms AdminAvenger read the message correctly before you rely on it.",
+        )
+      : move(
+          "Identify the sender, date, reference, and deadline",
+          "Find who sent it, when, any reference number, what they want, and whether a date is mentioned.",
+          "It avoids a rushed response and helps you decide whether this needs action, saving, or advice.",
+        ),
     otherSafeMoves: getDefaultOtherSafeMoves(),
-    movesToAvoid: [
-      "Do not reply, pay, click, or submit anything before checking what the document is.",
-      "Do not assume a scary-looking message is correct or safe.",
-      ...genericMovesToAvoid,
-    ],
+    movesToAvoid:
+      cautionLevel === "routine" ? ROUTINE_MOVES_TO_AVOID : ELEVATED_MOVES_TO_AVOID,
     whenToGetAdvice: genericAdviceTriggers,
   };
+};
+
+/**
+ * What the product already knows, read from the structures W1 to W3 put on the
+ * case. Nothing here parses the person's text again.
+ *
+ * The labels matched below are the ones AdminAvenger's own templates emit, not
+ * wording from the source, so this is a contract with earlier layers rather than
+ * a guess about English. Timing comes from W3's roles, which need no matching at
+ * all.
+ */
+const REFERENCE_EVIDENCE_LABELS = new Set(["Reference", "Booking reference", "Account reference"]);
+const SENDER_EVIDENCE_LABELS = new Set([
+  "Provider",
+  "Sender/provider clue",
+  "Airline involved",
+  "Travel company involved",
+  "Employer or recruiter clue",
+]);
+
+type KnownFacts = {
+  reference: boolean;
+  sender: boolean;
+  date: boolean;
+  period: boolean;
+};
+
+const knownFactsOf = (adminCase?: AdminCase): KnownFacts => {
+  const sourceFacts = (adminCase?.evidence ?? []).filter(isSourceFactEvidence);
+
+  return {
+    reference: sourceFacts.some((entry) => REFERENCE_EVIDENCE_LABELS.has(entry.label)),
+    sender: sourceFacts.some((entry) => SENDER_EVIDENCE_LABELS.has(entry.label)),
+    date: (adminCase?.timingFacts?.dates.length ?? 0) > 0,
+    period: (adminCase?.timingFacts?.relativePeriods.length ?? 0) > 0,
+  };
+};
+
+/**
+ * The old fallback asked for the sender, date, reference, requested action and
+ * deadline in one sentence, whatever the product already had. A delivery message
+ * whose reference, expected date and update window had all been read correctly
+ * was still told to go and find them.
+ *
+ * This asks only for what is genuinely absent, and says nothing at all when
+ * everything it would have asked for is already known.
+ */
+const unresolvedFactRequests = (known: KnownFacts): string[] => {
+  const requests: string[] = [];
+
+  if (!known.sender) {
+    requests.push("Who sent this, if the message does not name the organisation.");
+  }
+
+  if (!known.reference) {
+    requests.push("Any reference or account number shown on the original.");
+  }
+
+  if (!known.date && !known.period) {
+    requests.push("Any date or time limit shown on the original.");
+  }
+
+  return requests;
 };
 
 export const buildStrategicNextStepPlan = ({
@@ -503,7 +648,16 @@ export const buildStrategicNextStepPlan = ({
   adminCase,
 }: BuildStrategicNextStepPlanInput): StrategicNextStepPlan => {
   const documentType = decisionResult?.documentType ?? benefitsActionPack?.documentType;
-  const typedPlan = getPlanForDocumentType(documentType);
+  const cautionLevel = strategicCautionLevelFor({
+    decisionResult,
+    benefitsActionPack,
+    opportunity,
+    adminCase,
+  });
+  const known = knownFactsOf(adminCase);
+  const typedPlan = getPlanForDocumentType(documentType, cautionLevel, {
+    everythingIdentified: known.reference && (known.date || known.period),
+  });
   const title = "Best next move";
   const isHighStakes = documentType ? highStakesTypes.has(documentType) : false;
   const missingInformation = unique([
@@ -539,9 +693,7 @@ export const buildStrategicNextStepPlan = ({
     actors: getBaseActors(documentType, opportunity),
     userGoal: typedPlan.userGoal,
     missingInformation:
-      missingInformation.length > 0
-        ? missingInformation
-        : ["Sender, date, reference, requested action, and any deadline shown on the document."],
+      missingInformation.length > 0 ? missingInformation : unresolvedFactRequests(known),
     safestMove: typedPlan.safestMove,
     otherSafeMoves: typedPlan.otherSafeMoves,
     movesToAvoid: unique(typedPlan.movesToAvoid).slice(0, 8),

@@ -5,6 +5,7 @@ import type {
   OpportunityCard,
   PreparedMessageDraft,
 } from "../types";
+import { assessRefundState } from "./generalAdminExtraction";
 import {
   annualiseMonthlyAmount,
   extractEnergyAnnualCosts,
@@ -219,9 +220,32 @@ const createRefundMessage = (
   const refundWindow =
     evidenceValue(adminCase, /refund window|expected refund window/i) ??
     text.match(/(?:within\s+)?\d+\s*(?:to|-)\s*\d+\s+working days|within\s+\d+\s+working days/i)?.[0];
+  // This is text the person may send. It used to open "I'm following up on my
+  // approved refund" whatever the source said, so a refused refund, and even a
+  // delivery delay with no refund in it, invited the user to claim an approval
+  // they had never been given. The shared refund state already knows the
+  // difference, so the opening describes only what the source supports.
+  // Read the submitted text only. rawTextFor mixes the source with AdminAvenger's
+  // own evidence wording, and that wording contains phrases such as "Refund clue:
+  // Refund or compensation wording found", so testing it would let the product's
+  // own words justify a claim the person never received.
+  const sourceOnly = `${item?.title ?? ""}\n${item?.rawText ?? ""}`;
+  const refundState = assessRefundState(sourceOnly);
+  const approvalStated =
+    refundState.stage === "approved" ||
+    refundState.stage === "issued" ||
+    refundState.stage === "promised";
+  // REFUND_CUE is deliberately broad (compensation, money owed, delays), so it is
+  // not enough to justify the word "refund" in outgoing text. The draft only says
+  // "refund" when the source itself does.
+  const subjectPhrase = approvalStated
+    ? "my approved refund"
+    : /\brefunds?\b/i.test(sourceOnly)
+      ? "my refund request"
+      : "this order";
   const fullText = joinMessage([
     "Hello,",
-    `I'm following up on my approved refund${amount ? ` of ${amount}` : ""}.`,
+    `I'm following up on ${subjectPhrase}${amount ? ` of ${amount}` : ""}.`,
     reference ? `Reference: ${reference}` : "",
     refundWindow
       ? `The refund was due to return to my original payment method ${refundWindow.replace(/^within\s+/i, "within ")}. Please can you confirm whether it has been processed and when it should arrive?`
@@ -239,7 +263,9 @@ const createRefundMessage = (
       amount ? `Refund amount: ${amount}` : undefined,
       reference ? `Reference: ${reference}` : undefined,
       refundWindow ? `Refund window: ${refundWindow}` : undefined,
-      "Refund approved but not confirmed received yet",
+      approvalStated
+        ? "Refund approved but not confirmed received yet"
+        : "The source does not confirm an approved refund",
     ]),
     compact([
       "Check bank/card first",

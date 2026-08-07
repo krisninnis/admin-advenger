@@ -62,16 +62,55 @@ export const extractCurrencyAmounts = (text: string): CurrencyAmount[] =>
     }))
     .filter((match) => Number.isFinite(match.amount));
 
-export const extractMonthlyAmount = (text: string) => {
-  const monthlyMatch =
-    text.match(
-      new RegExp(`${currencyPrefixSource}(${moneyValueSource})\\s*(?:\\/month|per month|monthly)`, "i"),
-    ) ??
-    (/(?:subscription|monthly|recurring|auto-renewing|auto renewing)/i.test(text)
-      ? text.match(monthlyAmountPattern)
-      : undefined);
+// Wording that states a yearly cadence. The fallback below assumes a bare amount
+// in subscription wording is monthly, which is a reasonable guess for "your
+// subscription is £9.99" but wrong for "your annual subscription renews for
+// £79.99": that amount was then multiplied by twelve and shown as £959.88 a
+// year, an invented figure twelve times the real cost.
+//
+// A stated yearly cadence therefore disables the guess. AdminAvenger would rather
+// show no monthly figure than a calculated one built on the wrong period.
+const annualCadencePattern =
+  /\b(?:annual|annually|yearly|per\s+year|a\s+year|each\s+year|\/\s*year|p\.?a\.?)\b/i;
 
-  return monthlyMatch ? parseMoneyAmount(monthlyMatch[1]) : undefined;
+export const statesAnnualCadence = (text: string) => annualCadencePattern.test(text);
+
+export const extractMonthlyAmount = (text: string) => {
+  const explicitMonthly = text.match(
+    new RegExp(`${currencyPrefixSource}(${moneyValueSource})\\s*(?:\\/month|per month|monthly)`, "i"),
+  );
+
+  if (explicitMonthly) {
+    return parseMoneyAmount(explicitMonthly[1]);
+  }
+
+  if (statesAnnualCadence(text)) {
+    return undefined;
+  }
+
+  const inferredMonthly = /(?:subscription|monthly|recurring|auto-renewing|auto renewing)/i.test(
+    text,
+  )
+    ? text.match(monthlyAmountPattern)
+    : undefined;
+
+  return inferredMonthly ? parseMoneyAmount(inferredMonthly[1]) : undefined;
+};
+
+/**
+ * The amount a source states as a yearly figure, used instead of annualising a
+ * monthly guess. Only ever the amount the source printed, never a calculation.
+ */
+export const extractStatedAnnualAmount = (text: string) => {
+  if (!statesAnnualCadence(text)) {
+    return undefined;
+  }
+
+  const match = text.match(
+    new RegExp(`${currencyPrefixSource}(${moneyValueSource})`, "i"),
+  );
+
+  return match ? parseMoneyAmount(match[1]) : undefined;
 };
 
 export const annualiseMonthlyAmount = (amount?: number) =>
@@ -277,7 +316,12 @@ export const totalCostPhrasePattern =
 export const recoverableTravelSignalPattern =
   /extra\s+hotel|extra\s+night|additional\s+(?:hotel\s+)?cost|reimburs\w*|compensat\w*|claim\s+amount|refund\s+(?:approved|issued|processed|of)|amount\s+to\s+be\s+refunded|money\s+owed|payout|delay\s+repay/i;
 
-const splitSentences = (text: string) => text.split(/(?<=[.!?\n])\s*/);
+// A decimal point is a period, so splitting on every period cut "£68.40" into
+// "£68." and "40". The first amount in the sentence then read as 68, and the
+// result and the prepared draft both quoted £68 for a £68.40 refund.
+//
+// A sentence boundary is a period that is not immediately followed by a digit.
+const splitSentences = (text: string) => text.split(/(?<=[.!?\n])(?!\d)\s*/);
 
 const firstAmountIn = (sentence: string): CurrencyAmount | undefined => {
   const match = sentence.match(new RegExp(`${currencyPrefixSource}(${moneyValueSource})`, "i"));

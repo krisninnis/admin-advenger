@@ -72,7 +72,6 @@ const moneyPattern = /(?:£|Â£|GBP\s*|\?\s*)\d+(?:,\d{3})*(?:\.\d{1,2})?/i;
 const monthlyMoneyPattern = /(?:£|Â£|GBP\s*|\?\s*)\d+(?:,\d{3})*(?:\.\d{1,2})?\s*(?:\/month|per month|monthly)?/i;
 const refundWindowPattern =
   /(?:within\s+)?\d+\s*(?:to|-)\s*\d+\s+working days|within\s+\d+\s+working days/i;
-const refundReferencePattern = /(?:reference|ref)\s*:?\s*([A-Z]{1,5}\d{3,}[A-Z0-9-]*)/i;
 
 const toMoneyNumber = (value?: string) => {
   const match = value?.match(/\d+(?:,\d{3})*(?:\.\d{1,2})?/);
@@ -757,12 +756,18 @@ const evidenceForFinding = (
   if (isApprovedRefundFinding(finding, item)) {
     const refundAmount = matchFirst(text, moneyPattern);
     const refundWindow = matchFirst(text, refundWindowPattern);
-    const reference = text.match(refundReferencePattern)?.[1];
+    // The shared extractor already finds references, including hyphenated forms
+    // such as RF-20481 and wording like "your reference is RF-20481". A local
+    // pattern here used to re-derive the same fact and silently lose it, so this
+    // consumes the structured extraction instead of parsing the text again.
+    const references = extractGeneralAdmin(text).references;
 
     return [
       ...(refundAmount ? [createEvidence(caseId, "Refund amount", refundAmount)] : []),
       ...(refundWindow ? [createEvidence(caseId, "Expected refund window", refundWindow)] : []),
-      ...(reference ? [createEvidence(caseId, "Reference", reference)] : []),
+      ...references.map((reference) =>
+        createEvidence(caseId, "Reference", reference.value),
+      ),
       createEvidence(
         caseId,
         "Refund status",
@@ -830,6 +835,14 @@ const evidenceForFinding = (
         : []),
       ...extraction.references.map((reference) =>
         createEvidence(caseId, "Reference", reference.value),
+      ),
+      // This template read references and relative periods but never the dates
+      // the same extraction had already found, so an explicit date such as
+      // "expected on 4 August 2026" disappeared from the result. The date and
+      // the response period stay separate facts: a date the sender gave is not
+      // the same thing as a window they promised to reply within.
+      ...extraction.dates.map((date) =>
+        createEvidence(caseId, "Date shown in the message", date.value),
       ),
       ...extraction.relativePeriods.map((period) =>
         createEvidence(caseId, "Expected response period", period.value),

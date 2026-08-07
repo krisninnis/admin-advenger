@@ -186,50 +186,53 @@ const buildQuestionsAction = (
     : undefined;
 
 /**
- * A refund AdminAvenger has already read as approved, promised or issued, which
- * carries a processing window the provider stated, and which shows no sign in
- * the source that the window has gone or the payment has failed.
+ * A refund the source has already put beyond the request stage, with no present
+ * assertion that it has failed.
  *
- * The stage comes from the finding title AdminAvenger generated for itself, in
- * the same way this file already recognises "travel evidence check" and
- * caseFactory recognises "refund approved". It deliberately does not read
- * assessRefundState().stage: that pattern cannot cross a decimal point, so
- * "£68.40 has been approved" reports an unknown stage while "£39" reports
- * approved. Escalation must not depend on whether an amount has pence, and
- * fixing the extractor belongs to a different workstream.
+ * This now reads the shared refund state directly. W4 had to match
+ * AdminAvenger's own finding titles instead, because the stage ladder could not
+ * cross a decimal point and reported an unknown stage for "£68.40 has been
+ * approved". With that fixed, the action decision consumes the structured state
+ * rather than a second-hand signal, and conditional provider wording no longer
+ * counts as failure because `failureAsserted` is clause-aware.
  *
- * The window itself does come from the shared extractor, which handles it
- * correctly. Returns undefined the moment the source shows refusal, failure, or
- * that the window has passed, so existing escalation for those cases is
- * untouched.
+ * `window` is optional: an approved refund that states no timescale is still
+ * waiting, and telling somebody to complain because the provider omitted a
+ * timescale was the same defect wearing a different hat.
  */
-const REFUND_WAITING_STAGE = /^refund (?:approved|promised|issued)$/i;
-
-const REFUND_ESCALATION_SIGNAL =
-  /\b(?:has|have)\s+(?:now\s+)?passed\b|\bwindow\s+(?:has|have)\s+(?:now\s+)?(?:passed|expired)\b|\bnot\s+(?:been\s+)?(?:paid|received|arrived)\b|\bfailed\b|\boverdue\b|\bstill\s+waiting\b/i;
-
-const refundWaitingWithinStatedWindow = (
+const refundWaitingOnProvider = (
   adminCase: AdminCase,
   item?: AdminItem,
-  finding?: AdminFinding,
-): { window: string; reference?: string } | undefined => {
-  const stageTitle = finding?.title ?? adminCase.title;
-
-  if (!REFUND_WAITING_STAGE.test(stageTitle.trim())) {
+): { window?: string; reference?: string } | undefined => {
+  // Security comes first, always. A scam that demands a fee often also mentions a
+  // refund that "will be returned", and reading that as a refund to wait for
+  // would replace the safety checklist with money guidance on exactly the message
+  // where that is most harmful. The security-precedence flag decides this, so the
+  // rule matches the one selection already uses.
+  if (adminCase.securityPrecedence) {
     return undefined;
   }
 
   const text = `${item?.title ?? ""}\n${item?.rawText ?? ""}`.trim();
 
-  if (!text || REFUND_ESCALATION_SIGNAL.test(text)) {
+  if (!text) {
     return undefined;
   }
 
   const refund = assessRefundState(text);
 
-  return refund.relativePeriod
-    ? { window: refund.relativePeriod.value, reference: refund.reference?.value }
-    : undefined;
+  if (!refund.isRefund || refund.failureAsserted) {
+    return undefined;
+  }
+
+  if (refund.stage !== "approved" && refund.stage !== "promised" && refund.stage !== "issued") {
+    return undefined;
+  }
+
+  return {
+    window: refund.relativePeriod?.value,
+    reference: refund.reference?.value,
+  };
 };
 
 const buildDeadlineAction = (
@@ -442,22 +445,28 @@ const deriveFromOpportunity = (
   // trustworthy anchor for "today minus a working-day count", so it never claims
   // the window has passed - it asks the person to compare, and keeps the draft
   // available as a secondary action for when it has.
-  const waitingRefund = refundWaitingWithinStatedWindow(adminCase, item, finding);
+  const waitingRefund = refundWaitingOnProvider(adminCase, item);
 
   if (waitingRefund) {
+    const { window, reference } = waitingRefund;
+
     return {
       primaryAction: {
         kind: "deadline_checklist",
-        label: "Check the refund window",
+        label: window ? "Check the refund window" : "Keep the approval and check later",
         title: opportunity.title,
-        deadlineText: waitingRefund.window,
+        deadlineText: window ?? "No timescale was stated in this message",
         checklist: dedupe([
-          `The provider stated: ${waitingRefund.window}.`,
-          waitingRefund.reference
-            ? `Keep the reference ${waitingRefund.reference} with this message.`
+          window
+            ? `The provider stated: ${window}.`
+            : "This message does not give a timescale for the refund.",
+          reference
+            ? `Keep the reference ${reference} with this message.`
             : "Keep this message and any reference with it.",
-          "Check your account or statement once that period has passed, counting from the date the provider used.",
-          "If the money has not arrived after that period, prepare a follow-up using the draft below.",
+          window
+            ? "Check your account or statement once that period has passed, counting from the date the provider used."
+            : "Check your account or statement, and ask the provider how long it usually takes if nothing arrives.",
+          "If the money has not arrived after that, prepare a follow-up using the draft below.",
           "AdminAvenger cannot check your account. Do not treat this money as recovered until you can see it yourself.",
         ]),
       },

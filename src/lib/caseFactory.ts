@@ -12,7 +12,9 @@ import { buildCareerSupportPack } from "./careerSupportPack";
 import { assessUkTrainDelayRefund } from "./delayRepayAssessment";
 import { analyseDecisionProblem } from "./decisionEngine/decisionEngine";
 import {
+  annualiseMonthlyAmount,
   extractEnergyAnnualCosts,
+  extractMonthlyAmount,
   extractStatedAnnualAmount,
   extractTotalCostMention,
   extractTravelRecoveryDetails,
@@ -20,8 +22,6 @@ import {
   formatCurrency,
   isEnergyPriceChangeText,
   isTravelDisruptionRecoveryText,
-  parseMoneyAmount,
-  statesAnnualCadence,
 } from "./moneyParsers";
 import { assessPaymentReminder } from "./paymentReminderAssessment";
 import {
@@ -72,14 +72,8 @@ const getEvidenceValue = (text: string, pattern: RegExp, fallback: string) =>
   matchFirst(text, pattern) ?? fallback;
 
 const moneyPattern = /(?:£|Â£|GBP\s*|\?\s*)\d+(?:,\d{3})*(?:\.\d{1,2})?/i;
-const monthlyMoneyPattern = /(?:£|Â£|GBP\s*|\?\s*)\d+(?:,\d{3})*(?:\.\d{1,2})?\s*(?:\/month|per month|monthly)?/i;
 const refundWindowPattern =
   /(?:within\s+)?\d+\s*(?:to|-)\s*\d+\s+working days|within\s+\d+\s+working days/i;
-
-const toMoneyNumber = (value?: string) => {
-  const match = value?.match(/\d+(?:,\d{3})*(?:\.\d{1,2})?/);
-  return match ? parseMoneyAmount(match[0]) : undefined;
-};
 
 const formatPounds = (value: number) => formatCurrency(value);
 
@@ -992,16 +986,12 @@ const evidenceForFinding = (
     // monthly and multiplied by twelve. "Your annual subscription renews for
     // £79.99" produced an estimated annual cost of £959.88, which the source
     // never said and which is twelve times the real figure.
-    const statesAnnual = statesAnnualCadence(text);
-    const monthlyAmount = statesAnnual
-      ? undefined
-      : (matchFirst(text, monthlyMoneyPattern) ?? money);
-    const monthlyValue = toMoneyNumber(monthlyAmount);
-    const annualValue = statesAnnual
+    const monthlyValue = extractMonthlyAmount(text);
+    const statedAnnualValue = monthlyValue === undefined
       ? extractStatedAnnualAmount(text)
-      : monthlyValue === undefined
-        ? undefined
-        : monthlyValue * 12;
+      : undefined;
+    const annualValue = annualiseMonthlyAmount(monthlyValue) ?? statedAnnualValue;
+    const statesAnnual = statedAnnualValue !== undefined;
     const autoRenewStatus = getEvidenceValue(
       text,
       /auto-renewing|auto renewing|charged automatically until cancelled|charged automatically until canceled|until cancelled|until canceled|renews|recurring/i,
@@ -1012,9 +1002,9 @@ const evidenceForFinding = (
       createEvidence(
         caseId,
         "Monthly amount",
-        monthlyAmount === undefined || monthlyAmount === "Amount not stated"
+        monthlyValue === undefined
           ? "Monthly cost not stated"
-          : monthlyAmount,
+          : formatPounds(monthlyValue),
       ),
       ...(annualValue !== undefined
         ? [

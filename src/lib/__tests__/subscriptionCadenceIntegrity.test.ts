@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractMonthlyAmount } from "../moneyParsers";
+import { extractMonthlyAmount, extractStatedAnnualAmount } from "../moneyParsers";
 import { runPublicMessageScenario } from "../publicMessageEvaluation/runEvaluation";
 import type { PublicMessageScenario } from "../publicMessageEvaluation/types";
 import { validateResultViewModelSafety } from "../resultViewModel";
@@ -26,6 +26,28 @@ const run = (id: string, message: string, sourceType = "email") =>
 const BUILT_IN_ANNUAL =
   "Your annual subscription renews on 12 July for GBP 79.99. Cancel before 10 July to avoid being charged.";
 
+const FIXED_PERIOD_CASES = [
+  ["hyphenated 12-month price", "The 12-month subscription price is GBP 79.99."],
+  ["unhyphenated 12 month cost", "The 12 month subscription costs GBP 79.99."],
+  ["amount for 12 months", "Your subscription is GBP 79.99 for 12 months."],
+  ["annual price", "The annual subscription price is GBP 79.99."],
+  ["yearly price", "The yearly subscription price is GBP 79.99."],
+  ["renewal every 12 months", "Your subscription renews every 12 months at GBP 79.99."],
+  ["amount covering 12 months", "GBP 79.99 covers the next 12 months."],
+] as const;
+
+const MONTHLY_CASES = [
+  ["monthly price", "The monthly subscription price is GBP 79.99."],
+  ["per-month cost", "Your subscription costs GBP 79.99 per month."],
+  ["charge every month", "GBP 79.99 will be charged every month."],
+] as const;
+
+const ANNUAL_CASES = [
+  ["annual price", "The annual subscription price is GBP 79.99."],
+  ["per-year cost", "Your subscription costs GBP 79.99 per year."],
+  ["annual charge", "GBP 79.99 will be charged annually."],
+] as const;
+
 describe("an amount is only monthly when the source says so", () => {
   it.each([
     ["an annual subscription", "Your annual subscription renews on 12 July for GBP 79.99."],
@@ -42,6 +64,69 @@ describe("an amount is only monthly when the source says so", () => {
     ["a monthly wording amount", "Your monthly subscription is GBP 9.99.", 9.99],
   ])("still reads %s", (_name, message, expected) => {
     expect(extractMonthlyAmount(message)).toBe(expected);
+  });
+});
+
+describe("12-month subscription cadence", () => {
+  it.each(FIXED_PERIOD_CASES)("keeps a %s annual or fixed-period amount", (_name, message) => {
+    const journey = run(`subscription-fixed-${_name}`, message);
+
+    expect(extractMonthlyAmount(message)).toBeUndefined();
+    expect(extractStatedAnnualAmount(message)).toBe(79.99);
+    expect(journey.visibleText).not.toContain("959.88");
+    expect(
+      journey.resultViewModel.moneyMentioned.some(
+        (line) => /79\.99/.test(line.amountText) && /monthly|\/\s*month/i.test(`${line.label} ${line.amountText}`),
+      ),
+    ).toBe(false);
+    expect(
+      journey.resultViewModel.moneyMentioned.some(
+        (line) => /79\.99/.test(line.amountText) && /annual|year/i.test(`${line.label} ${line.amountText}`),
+      ),
+    ).toBe(true);
+
+    const report = validateResultViewModelSafety(journey.resultViewModel, {
+      sourceText: `${journey.item.title}\n${journey.item.rawText}`,
+    });
+    expect(report.moneySourceSupported).toBe(true);
+  });
+
+  it.each(MONTHLY_CASES)("keeps a %s monthly", (_name, message) => {
+    const journey = run(`subscription-monthly-${_name}`, message);
+
+    expect(extractMonthlyAmount(message)).toBe(79.99);
+    expect(
+      journey.resultViewModel.moneyMentioned.some(
+        (line) => /79\.99/.test(line.amountText) && /monthly|\/\s*month/i.test(`${line.label} ${line.amountText}`),
+      ),
+    ).toBe(true);
+  });
+
+  it.each(ANNUAL_CASES)("keeps an %s annual", (_name, message) => {
+    const journey = run(`subscription-annual-${_name}`, message);
+
+    expect(extractMonthlyAmount(message)).toBeUndefined();
+    expect(extractStatedAnnualAmount(message)).toBe(79.99);
+    expect(
+      journey.resultViewModel.moneyMentioned.some(
+        (line) => /79\.99/.test(line.amountText) && /annual|year/i.test(`${line.label} ${line.amountText}`),
+      ),
+    ).toBe(true);
+    expect(journey.visibleText).not.toContain("959.88");
+  });
+
+  it.each([
+    ["Your plan lasts 12 months. The monthly charge is GBP 79.99.", 79.99],
+    ["The contract lasts 12 months. Your monthly price is GBP 34.", 34],
+  ])("does not let contract duration override an explicit monthly amount", (message, expected) => {
+    const journey = run(`subscription-explicit-monthly-${expected}`, message);
+
+    expect(extractMonthlyAmount(message)).toBe(expected);
+    expect(
+      journey.resultViewModel.moneyMentioned.some(
+        (line) => line.amountText.includes(expected.toFixed(2)) && /monthly|\/\s*month/i.test(`${line.label} ${line.amountText}`),
+      ),
+    ).toBe(true);
   });
 });
 

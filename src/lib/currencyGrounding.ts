@@ -41,6 +41,18 @@ const MONETARY_LABEL =
 const PER_PERIOD_AFTER = /^\s*(?:\/|per\s+)(month|year|annum|week|mo|yr|wk)\b/i;
 
 const perPeriodFrom = (suffix: string): GroundedAmount["perPeriod"] => {
+  if (/^\s*(?:will\s+be\s+)?charged\s+every\s+month\b/i.test(suffix)) {
+    return "monthly";
+  }
+
+  if (/^\s*(?:will\s+be\s+)?charged\s+annually\b/i.test(suffix)) {
+    return "annual";
+  }
+
+  if (/^\s*(?:for\s+(?:the\s+)?(?:next\s+)?|covers\s+(?:the\s+)?(?:next\s+)?)12(?:\s*-\s*|\s+)months?\b/i.test(suffix)) {
+    return "annual";
+  }
+
   const match = suffix.match(PER_PERIOD_AFTER);
 
   if (!match) {
@@ -58,6 +70,22 @@ const perPeriodFrom = (suffix: string): GroundedAmount["perPeriod"] => {
   }
 
   return "weekly";
+};
+
+const perPeriodBefore = (prefix: string): GroundedAmount["perPeriod"] => {
+  const labelledCadence = prefix.match(
+    /\b(monthly|annual|yearly)\s+(?:(?:subscription|plan|service)\s+)?(?:price|charge|cost|fee|payment)\s*(?:is|of|at|:)?\s*$/i,
+  )?.[1]?.toLowerCase();
+
+  if (labelledCadence === "monthly") {
+    return "monthly";
+  }
+
+  if (labelledCadence === "annual" || labelledCadence === "yearly") {
+    return "annual";
+  }
+
+  return undefined;
 };
 
 export const parseAmount = (raw: string): number =>
@@ -92,21 +120,23 @@ export const extractGroundedAmounts = (text: string): GroundedAmount[] => {
   for (const match of text.matchAll(strongPattern)) {
     const index = match.index ?? 0;
     const raw = match[0];
-    const suffix = text.slice(index + raw.length, index + raw.length + 12);
+    const suffix = text.slice(index + raw.length, index + raw.length + 48);
+    const prefix = text.slice(Math.max(0, index - 64), index);
 
     results.push({
       raw,
       amount: parseAmount(match[2]),
       index,
       currencyToken: strongToken(match[1]),
-      perPeriod: perPeriodFrom(suffix),
+      perPeriod: perPeriodFrom(suffix) ?? perPeriodBefore(prefix),
     });
   }
 
   for (const match of text.matchAll(degradedPattern)) {
     const index = match.index ?? 0;
     const raw = match[0];
-    const suffix = text.slice(index + raw.length, index + raw.length + 12);
+    const suffix = text.slice(index + raw.length, index + raw.length + 48);
+    const prefix = text.slice(Math.max(0, index - 64), index);
 
     if (!degradedIsSupported(text, index, suffix)) {
       continue; // ordinary question mark before a number - not money
@@ -117,7 +147,7 @@ export const extractGroundedAmounts = (text: string): GroundedAmount[] => {
       amount: parseAmount(match[1]),
       index,
       currencyToken: "degraded_pound",
-      perPeriod: perPeriodFrom(suffix),
+      perPeriod: perPeriodFrom(suffix) ?? perPeriodBefore(prefix),
     });
   }
 

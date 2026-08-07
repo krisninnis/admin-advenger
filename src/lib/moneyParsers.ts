@@ -71,14 +71,24 @@ export const extractCurrencyAmounts = (text: string): CurrencyAmount[] =>
 // A stated yearly cadence therefore disables the guess. AdminAvenger would rather
 // show no monthly figure than a calculated one built on the wrong period.
 const annualCadencePattern =
-  /\b(?:annual|annually|yearly|per\s+year|a\s+year|each\s+year|\/\s*year|p\.?a\.?)\b/i;
+  /\b(?:annual|annually|yearly|per\s+year|a\s+year|each\s+year|\/\s*year|p\.?a\.?|12(?:\s*-\s*|\s+)months?)\b/i;
 
 export const statesAnnualCadence = (text: string) => annualCadencePattern.test(text);
 
 export const extractMonthlyAmount = (text: string) => {
-  const explicitMonthly = text.match(
-    new RegExp(`${currencyPrefixSource}(${moneyValueSource})\\s*(?:\\/month|per month|monthly)`, "i"),
+  const explicitMonthlyAfterAmount = text.match(
+    new RegExp(
+      `${currencyPrefixSource}(${moneyValueSource})\\s*(?:\\/\\s*month|per\\s+month|monthly|(?:will\\s+be\\s+)?charged\\s+every\\s+month)`,
+      "i",
+    ),
   );
+  const explicitMonthlyBeforeAmount = text.match(
+    new RegExp(
+      `\\bmonthly\\s+(?:(?:subscription|plan|service)\\s+)?(?:price|charge|cost|fee|payment)\\s*(?:is|of|at|:)?\\s*${currencyPrefixSource}(${moneyValueSource})`,
+      "i",
+    ),
+  );
+  const explicitMonthly = explicitMonthlyAfterAmount ?? explicitMonthlyBeforeAmount;
 
   if (explicitMonthly) {
     return parseMoneyAmount(explicitMonthly[1]);

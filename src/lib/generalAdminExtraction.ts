@@ -620,31 +620,122 @@ export type RefundStage =
 export type RefundStateAssessment = {
   isRefund: boolean;
   stage: RefundStage;
+  /**
+   * True only when the source states, as something that has already happened,
+   * that the refund has failed or its window has gone. Conditional provider
+   * wording such as "if it has not arrived by then, contact us" is not a present
+   * failure, so it does not set this.
+   */
+  failureAsserted: boolean;
   amount?: ExtractedAmount;
   relativePeriod?: ExtractedRelativePeriod;
   reference?: ExtractedReference;
 };
 
+// Stay inside one sentence, but do not mistake a decimal point for the end of
+// one. The old gap matcher was `[^.\n]*`, so "£39 has been approved" matched and
+// "£68.40 has been approved" did not: the refund stage depended on whether the
+// amount had pence. A sentence-ending period is followed by whitespace or the end
+// of the text; a decimal point is followed by a digit.
+const SAME_SENTENCE = String.raw`(?:[^.\n]|\.(?=\d)){0,160}`;
+
+const sameSentence = (...parts: readonly string[]) =>
+  new RegExp(parts.join(SAME_SENTENCE), "i");
+
+// The gap matcher also happily crossed a negation, so "Your refund has not been
+// approved." reported `approved`. Each affirmative rung is therefore guarded: up
+// to three words may sit between the negator and the state word, which covers
+// "has not been approved" and "has not yet been approved" without reaching into
+// the next clause.
+const negated = (state: string) =>
+  new RegExp(String.raw`\b(?:not|never|no longer)\b(?:\s+\w+){0,3}\s+\b${state}\b`, "i");
+
+const REFUSAL_WORDS = String.raw`(?:refused|declined|rejected|turned\s+down)`;
+
+/**
+ * Conditional markers. A provider writing "If it has not arrived by then,
+ * contact us" is describing what to do later, not reporting a failure now, and
+ * treating that as present failure promoted a complaint draft over a refund the
+ * provider had just approved.
+ *
+ * This is clause-level and deliberately shallow: a failure phrase is treated as
+ * conditional when a conditional marker appears earlier in the same sentence. It
+ * is not a sentence parser, and it errs towards "not yet failed", which is the
+ * safer direction for escalation.
+ */
+const CONDITIONAL_MARKER =
+  /\b(?:if|unless|should|in\s+case|provided\s+that|in\s+the\s+event)\b/i;
+
+const FAILURE_ASSERTION =
+  /\b(?:window|period|deadline)\s+(?:has|have)\s+(?:now\s+)?(?:passed|expired)\b|\b(?:has|have)\s+(?:now\s+)?passed\b|\b(?:not|never)\s+(?:yet\s+)?(?:been\s+)?(?:paid|received|arrived|refunded)\b|\b(?:refund|payment)\s+failed\b|\bfailed\s+to\s+(?:arrive|pay)\b|\boverdue\b|\bstill\s+waiting\b/gi;
+
+const assertsPresentFailure = (text: string): boolean =>
+  text
+    .split(/(?<=[.;!?])\s+|\n+/)
+    .some((sentence) => {
+      for (const match of sentence.matchAll(FAILURE_ASSERTION)) {
+        if (!CONDITIONAL_MARKER.test(sentence.slice(0, match.index ?? 0))) {
+          return true;
+        }
+      }
+
+      return false;
+    });
+
 export const assessRefundState = (text: string): RefundStateAssessment => {
-  const stage: RefundStage = /\brefund\b[^.\n]*\b(?:reached|received)\b|\bconfirm(?:ing|ed)?\b[^.\n]*\brefund\b[^.\n]*\breached\b/i.test(text)
-    ? "received"
-    : /\brefund\b[^.\n]*\bissued\b/i.test(text)
-      ? "issued"
-      : /\brefund\b[^.\n]*\bapproved\b/i.test(text)
-        ? "approved"
-        : /\b(?:we|provider|retailer)\s+will\s+refund\b|\brefund\b[^.\n]*\bwill\s+be\s+(?:returned|paid|sent)\b/i.test(text)
-          ? "promised"
-          : /\brefund\b[^.\n]*\brefused\b/i.test(text)
-            ? "refused"
+  // Explicit refusal is checked before the affirmative ladder so that a refused
+  // or declined request can never be read as an earlier, more positive stage.
+  const refused =
+    sameSentence(String.raw`\brefund\b`, String.raw`\b${REFUSAL_WORDS}\b`).test(text) ||
+    sameSentence(String.raw`\b${REFUSAL_WORDS}\b`, String.raw`\brefund\b`).test(text);
+
+  const received =
+    !negated("received").test(text) &&
+    !negated("reached").test(text) &&
+    (sameSentence(String.raw`\brefund\b`, String.raw`\b(?:reached|received)\b`).test(text) ||
+      sameSentence(
+        String.raw`\bconfirm(?:ing|ed)?\b`,
+        String.raw`\brefund\b`,
+        String.raw`\breached\b`,
+      ).test(text));
+
+  const issued =
+    !negated("issued").test(text) &&
+    sameSentence(String.raw`\brefund\b`, String.raw`\bissued\b`).test(text);
+
+  const approved =
+    !negated("approved").test(text) &&
+    (sameSentence(String.raw`\brefund\b`, String.raw`\bapproved\b`).test(text) ||
+      sameSentence(String.raw`\bapproved\b`, String.raw`\brefund\b`).test(text));
+
+  const promised =
+    /\b(?:we|provider|retailer)\s+will\s+refund\b/i.test(text) ||
+    sameSentence(
+      String.raw`\brefund\b`,
+      String.raw`\bwill\s+be\s+(?:returned|paid|sent)\b`,
+    ).test(text);
+
+  const stage: RefundStage = refused
+    ? "refused"
+    : received
+      ? "received"
+      : issued
+        ? "issued"
+        : approved
+          ? "approved"
+          : promised
+            ? "promised"
             : /\b(?:may|might|could)\s+refund\b/i.test(text)
               ? "possible"
-              : /\brefund request\b|\brequest(?:ed)?\b[^.\n]*\brefund\b/i.test(text)
+              : /\brefund request\b/i.test(text) ||
+                  sameSentence(String.raw`\brequest(?:ed)?\b`, String.raw`\brefund\b`).test(text)
                 ? "requested"
                 : "unknown";
   const relativePeriods = extractRelativePeriods(text);
   return {
     isRefund: REFUND_CUE.test(text),
     stage,
+    failureAsserted: assertsPresentFailure(text),
     amount: selectRefundTotal(text),
     relativePeriod: relativePeriods.find((period) => period.role === "refund_window"),
     reference: extractReferences(text)[0],

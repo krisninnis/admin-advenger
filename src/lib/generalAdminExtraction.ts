@@ -650,6 +650,26 @@ const sameSentence = (...parts: readonly string[]) =>
 const negated = (state: string) =>
   new RegExp(String.raw`\b(?:not|never|no longer)\b(?:\s+\w+){0,3}\s+\b${state}\b`, "i");
 
+// `not`, `never` and `no longer` are adverbs sitting before the verb, which is
+// what the rule above catches. A refusal can also be written with `no` as a
+// determiner governing the noun: "No refund has been approved", "no refund will
+// be issued", "There will be no refund issued". That reported an approval, which
+// rendered as "Refund approved" and told the person to keep an approval that did
+// not exist.
+//
+// The guard is scoped to one sentence and requires the determiner to be attached
+// to `refund` itself, so an unrelated "No delay occurred." in a neighbouring
+// sentence cannot suppress a genuine approval.
+const NO_REFUND_DETERMINER =
+  /\bno\s+(?:further\s+|additional\s+|partial\s+|full\s+)?refund\b/i;
+
+const sentencesOf = (text: string): string[] => text.split(/(?<=[.;!?])\s+|\n+/);
+
+const refundDeniedByDeterminer = (text: string, state: RegExp): boolean =>
+  sentencesOf(text).some(
+    (sentence) => NO_REFUND_DETERMINER.test(sentence) && state.test(sentence),
+  );
+
 const REFUSAL_WORDS = String.raw`(?:refused|declined|rejected|turned\s+down)`;
 
 /**
@@ -670,8 +690,7 @@ const FAILURE_ASSERTION =
   /\b(?:window|period|deadline)\s+(?:has|have)\s+(?:now\s+)?(?:passed|expired)\b|\b(?:has|have)\s+(?:now\s+)?passed\b|\b(?:not|never)\s+(?:yet\s+)?(?:been\s+)?(?:paid|received|arrived|refunded)\b|\b(?:refund|payment)\s+failed\b|\bfailed\s+to\s+(?:arrive|pay)\b|\boverdue\b|\bstill\s+waiting\b/gi;
 
 const assertsPresentFailure = (text: string): boolean =>
-  text
-    .split(/(?<=[.;!?])\s+|\n+/)
+  sentencesOf(text)
     .some((sentence) => {
       for (const match of sentence.matchAll(FAILURE_ASSERTION)) {
         if (!CONDITIONAL_MARKER.test(sentence.slice(0, match.index ?? 0))) {
@@ -692,6 +711,7 @@ export const assessRefundState = (text: string): RefundStateAssessment => {
   const received =
     !negated("received").test(text) &&
     !negated("reached").test(text) &&
+    !refundDeniedByDeterminer(text, /\b(?:received|reached)\b/i) &&
     (sameSentence(String.raw`\brefund\b`, String.raw`\b(?:reached|received)\b`).test(text) ||
       sameSentence(
         String.raw`\bconfirm(?:ing|ed)?\b`,
@@ -701,30 +721,41 @@ export const assessRefundState = (text: string): RefundStateAssessment => {
 
   const issued =
     !negated("issued").test(text) &&
+    !refundDeniedByDeterminer(text, /\bissued\b/i) &&
     sameSentence(String.raw`\brefund\b`, String.raw`\bissued\b`).test(text);
 
   const approved =
     !negated("approved").test(text) &&
+    !refundDeniedByDeterminer(text, /\bapproved\b/i) &&
     (sameSentence(String.raw`\brefund\b`, String.raw`\bapproved\b`).test(text) ||
       sameSentence(String.raw`\bapproved\b`, String.raw`\brefund\b`).test(text));
 
   const promised =
-    /\b(?:we|provider|retailer)\s+will\s+refund\b/i.test(text) ||
-    sameSentence(
-      String.raw`\brefund\b`,
-      String.raw`\bwill\s+be\s+(?:returned|paid|sent)\b`,
-    ).test(text);
+    !refundDeniedByDeterminer(text, /\bwill\s+be\s+(?:returned|paid|sent)\b/i) &&
+    (/\b(?:we|provider|retailer)\s+will\s+refund\b/i.test(text) ||
+      sameSentence(
+        String.raw`\brefund\b`,
+        String.raw`\bwill\s+be\s+(?:returned|paid|sent)\b`,
+      ).test(text));
 
-  const stage: RefundStage = refused
-    ? "refused"
-    : received
-      ? "received"
-      : issued
-        ? "issued"
-        : approved
-          ? "approved"
-          : promised
-            ? "promised"
+  // Affirmative states are checked before refusal, because a message can carry
+  // both: "Refund refused initially, but a refund of £249 has now been approved"
+  // describes a decision that was reversed, and the current state is the
+  // approval. Refusal is only the answer when nothing positive is asserted.
+  //
+  // This ordering is only safe because negation is now handled explicitly: the
+  // `not/never/no longer` guard and the determiner-`no` guard both run inside the
+  // affirmative checks, so a plain refusal cannot reach them.
+  const stage: RefundStage = received
+    ? "received"
+    : issued
+      ? "issued"
+      : approved
+        ? "approved"
+        : promised
+          ? "promised"
+          : refused
+            ? "refused"
             : /\b(?:may|might|could)\s+refund\b/i.test(text)
               ? "possible"
               : /\brefund request\b/i.test(text) ||

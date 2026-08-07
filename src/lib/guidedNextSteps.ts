@@ -1,5 +1,6 @@
 import type { DecisionDocumentType, DecisionResult } from "./decisionEngine/types";
 import type { AdminCase, AdminFinding, AdminItem, OpportunityCard } from "../types";
+import { assessRefundState } from "./generalAdminExtraction";
 import { createPreparedMessageDraft } from "./messageDrafts";
 import { deriveOpportunityCard } from "./opportunityCards";
 
@@ -183,6 +184,53 @@ const buildQuestionsAction = (
         questions: dedupe(questions),
       }
     : undefined;
+
+/**
+ * A refund AdminAvenger has already read as approved, promised or issued, which
+ * carries a processing window the provider stated, and which shows no sign in
+ * the source that the window has gone or the payment has failed.
+ *
+ * The stage comes from the finding title AdminAvenger generated for itself, in
+ * the same way this file already recognises "travel evidence check" and
+ * caseFactory recognises "refund approved". It deliberately does not read
+ * assessRefundState().stage: that pattern cannot cross a decimal point, so
+ * "£68.40 has been approved" reports an unknown stage while "£39" reports
+ * approved. Escalation must not depend on whether an amount has pence, and
+ * fixing the extractor belongs to a different workstream.
+ *
+ * The window itself does come from the shared extractor, which handles it
+ * correctly. Returns undefined the moment the source shows refusal, failure, or
+ * that the window has passed, so existing escalation for those cases is
+ * untouched.
+ */
+const REFUND_WAITING_STAGE = /^refund (?:approved|promised|issued)$/i;
+
+const REFUND_ESCALATION_SIGNAL =
+  /\b(?:has|have)\s+(?:now\s+)?passed\b|\bwindow\s+(?:has|have)\s+(?:now\s+)?(?:passed|expired)\b|\bnot\s+(?:been\s+)?(?:paid|received|arrived)\b|\bfailed\b|\boverdue\b|\bstill\s+waiting\b/i;
+
+const refundWaitingWithinStatedWindow = (
+  adminCase: AdminCase,
+  item?: AdminItem,
+  finding?: AdminFinding,
+): { window: string; reference?: string } | undefined => {
+  const stageTitle = finding?.title ?? adminCase.title;
+
+  if (!REFUND_WAITING_STAGE.test(stageTitle.trim())) {
+    return undefined;
+  }
+
+  const text = `${item?.title ?? ""}\n${item?.rawText ?? ""}`.trim();
+
+  if (!text || REFUND_ESCALATION_SIGNAL.test(text)) {
+    return undefined;
+  }
+
+  const refund = assessRefundState(text);
+
+  return refund.relativePeriod
+    ? { window: refund.relativePeriod.value, reference: refund.reference?.value }
+    : undefined;
+};
 
 const buildDeadlineAction = (
   title: string,
@@ -383,6 +431,53 @@ const deriveFromOpportunity = (
   }
 
   const draft = createPreparedMessageDraft({ adminCase, item, finding, opportunity });
+
+  // A refund the provider has just approved, inside the window the provider
+  // itself stated, is not a complaint. Offering "Create complaint draft" as the
+  // immediate action on day zero of a ten-day window told the person to escalate
+  // against an organisation that had done what they asked.
+  //
+  // The decision is made from state, not from the category: the refund stage and
+  // the stated window both come from the shared extractor. AdminAvenger has no
+  // trustworthy anchor for "today minus a working-day count", so it never claims
+  // the window has passed - it asks the person to compare, and keeps the draft
+  // available as a secondary action for when it has.
+  const waitingRefund = refundWaitingWithinStatedWindow(adminCase, item, finding);
+
+  if (waitingRefund) {
+    return {
+      primaryAction: {
+        kind: "deadline_checklist",
+        label: "Check the refund window",
+        title: opportunity.title,
+        deadlineText: waitingRefund.window,
+        checklist: dedupe([
+          `The provider stated: ${waitingRefund.window}.`,
+          waitingRefund.reference
+            ? `Keep the reference ${waitingRefund.reference} with this message.`
+            : "Keep this message and any reference with it.",
+          "Check your account or statement once that period has passed, counting from the date the provider used.",
+          "If the money has not arrived after that period, prepare a follow-up using the draft below.",
+          "AdminAvenger cannot check your account. Do not treat this money as recovered until you can see it yourself.",
+        ]),
+      },
+      secondaryActions: [
+        {
+          kind: "draft_message",
+          label: "Prepare a follow-up for later",
+          title: draft.suggestedSubject,
+          body: draft.fullText,
+          copyButtonLabel: COPY_DRAFT_LABEL,
+          safetyNote: ensureSendSafetyNote(draft.safetyNote ?? GUIDED_NEXT_STEP_SAFETY_NOTE),
+        },
+        buildEvidenceChecklistAction(opportunity.title, [
+          ...draft.missingBeforeSending,
+          ...opportunity.missingInformation,
+        ]),
+      ].filter((action): action is NextStepAction => Boolean(action)),
+    };
+  }
+
   const label =
     opportunity.opportunityType === "travel_extra_cost_recovery" ||
     opportunity.opportunityType === "travel_evidence_check"

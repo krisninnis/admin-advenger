@@ -14,6 +14,7 @@ import {
 } from "./safetyWording";
 import { resolveEvidenceKind } from "./evidenceKind";
 import { extractGeneralAdmin } from "./generalAdminExtraction";
+import type { DateRole, RelativePeriodRole } from "./generalAdminExtraction";
 import { SENSITIVE_INFORMATION_REQUEST_EVIDENCE_LABEL } from "./sensitiveInformationRequest";
 import { isSupportedBySource } from "./sourceSupport";
 import type { StrategicNextStepPlan } from "./strategicNextStep";
@@ -57,6 +58,21 @@ export type ResultSectionView = {
   priority: "summary" | "detail";
 };
 
+/**
+ * What a timing item means. Reuses the extractor's own vocabulary rather than
+ * inventing a parallel one: `DateRole` covers exact dates (event date, stated
+ * deadline, document date and so on) and `RelativePeriodRole` covers windows
+ * ("within 5 to 10 working days") and response periods.
+ *
+ * Optional, so every existing producer that only has a label and a string stays
+ * valid and keeps behaving exactly as before.
+ */
+export type ResultTimingRole = DateRole | RelativePeriodRole;
+
+/** True when the role describes a window or period rather than an exact date. */
+export const isPeriodTimingRole = (role?: ResultTimingRole): boolean =>
+  role === "refund_window" || role === "response_period" || role === "follow_up_period";
+
 export type ResultDateView = {
   id: string;
   label: string;
@@ -65,6 +81,7 @@ export type ResultDateView = {
   userMustCheck: true;
   source: ResultViewSource;
   sourceQuote?: string;
+  role?: ResultTimingRole;
 };
 
 export type ResultMoneyView = {
@@ -338,6 +355,61 @@ const fromGeneralAdminFallbackDate = (
   userMustCheck: true,
   source: "main_result",
   sourceQuote: date.sourceQuote,
+});
+
+// Honest labels for each role. They describe what the source said, and never
+// promise more: a window is described as a window, not as a date.
+const DATE_ROLE_LABELS: Record<DateRole, string> = {
+  document_date: "Date on the message",
+  stated_deadline: "Deadline stated in the message",
+  event_date: "Date the message says this happens",
+  period_boundary: "Period stated in the message",
+  suggested_followup: "Suggested follow-up date",
+  unknown: "Date stated in the message",
+};
+
+const PERIOD_ROLE_LABELS: Record<RelativePeriodRole, string> = {
+  refund_window: "Expected processing window",
+  response_period: "Response or update period",
+  follow_up_period: "Follow-up period",
+  unknown: "Time period stated in the message",
+};
+
+// Roles that describe timing a person can act on. A document date and a period
+// boundary are real source facts but they are not something to act on, and the
+// timing step has always refused to be satisfied by them.
+const ACTIONABLE_DATE_ROLES = new Set<DateRole>([
+  "stated_deadline",
+  "event_date",
+  "suggested_followup",
+]);
+
+const fromCaseTimingDate = (
+  date: NonNullable<AdminCase["timingFacts"]>["dates"][number],
+  index: number,
+): ResultDateView => ({
+  id: `case-timing-date-${index + 1}`,
+  label: DATE_ROLE_LABELS[date.role],
+  value: date.value,
+  caution: RESULT_DATE_CAUTION,
+  userMustCheck: true,
+  source: "main_result",
+  sourceQuote: date.sourceQuote,
+  role: date.role,
+});
+
+const fromCaseTimingPeriod = (
+  period: NonNullable<AdminCase["timingFacts"]>["relativePeriods"][number],
+  index: number,
+): ResultDateView => ({
+  id: `case-timing-period-${index + 1}`,
+  label: PERIOD_ROLE_LABELS[period.role],
+  value: period.value,
+  caution: RESULT_DATE_CAUTION,
+  userMustCheck: true,
+  source: "main_result",
+  sourceQuote: period.sourceQuote,
+  role: period.role,
 });
 
 const formatMoneyAmountOnly = (money: MoneyImpact) => {
@@ -902,13 +974,44 @@ export const buildResultViewModel = ({
         source: bestNextMove.source,
       }
     : undefined;
-  const keyDates = dedupeDates([
+  const existingKeyDates = dedupeDates([
     ...(benefitsActionPack?.possibleDatesToCheck.map(fromBenefitsDate) ?? []),
     ...getDateFacts(decisionResult?.sourceFacts ?? []).map(fromDecisionDate),
     ...(decisionResult?.deadlines.map(fromDeadline) ?? []),
     ...(adminCase?.generalAdminFallback?.dates.map(fromGeneralAdminFallbackDate) ?? []),
     fromOpportunityDeadline(opportunity),
   ].filter((date): date is ResultDateView => Boolean(date)));
+  // Timing the existing producers cannot express. Relative periods had no route
+  // here at all, and a case with no decision result, no benefits pack and no
+  // opportunity deadline contributed no timing even when the source clearly gave
+  // some.
+  //
+  // Existing producers win: a value they already carry is not repeated, so the
+  // labels and order every other document type relies on are unchanged. This
+  // only fills genuine gaps, in source order.
+  const alreadyPresent = new Set(
+    existingKeyDates.map((date) => normaliseResultText(date.value)),
+  );
+  const caseTimingDates = (
+    // HMRC tax code notices govern their own timing: the module deliberately
+    // emits no deadlines, and a tax-year boundary must never appear as a key
+    // date or complete the timing step. The existing evidence path carries the
+    // same exception, so this follows it rather than inventing a second rule.
+    isHmrcTaxCodeResult
+      ? []
+      : [
+          ...(adminCase?.timingFacts?.dates ?? [])
+            // A letter date or a period boundary is a source fact, not timing to
+            // act on, so neither is offered here. This is the same distinction
+            // the tax-year filter in case progress already makes.
+            .filter((date) => ACTIONABLE_DATE_ROLES.has(date.role))
+            .map(fromCaseTimingDate),
+          ...(adminCase?.timingFacts?.relativePeriods ?? [])
+            .filter((period) => period.role !== "unknown")
+            .map(fromCaseTimingPeriod),
+        ]
+  ).filter((date) => !alreadyPresent.has(normaliseResultText(date.value)));
+  const keyDates = dedupeDates([...existingKeyDates, ...caseTimingDates]);
   const moneyMentioned = dedupeMoney([
     ...(benefitsActionPack?.moneyMentioned.map(fromBenefitsMoneyLine) ?? []),
     ...moneyImpactsFor(opportunity).map(fromOpportunityMoney),

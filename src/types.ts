@@ -1,6 +1,11 @@
 import type { DecisionResult } from "./lib/decisionEngine/types";
 import type { CareerSupportPack } from "./lib/careerSupportPack";
-import type { DocumentStatus, StructuredGeneralAdminFallback } from "./lib/generalAdminExtraction";
+import type {
+  DocumentStatus,
+  ExtractedDate,
+  ExtractedRelativePeriod,
+  StructuredGeneralAdminFallback,
+} from "./lib/generalAdminExtraction";
 
 export type SourceType =
   | "email"
@@ -469,6 +474,22 @@ export type AdminCase = {
   decisionResult?: DecisionResult;
   careerSupportPack?: CareerSupportPack;
   generalAdminFallback?: StructuredGeneralAdminFallback;
+  /**
+   * Timing facts exactly as the shared extractor found them, so the result and
+   * progress layers can tell an event date from a stated deadline, and a refund
+   * window from a response period.
+   *
+   * Downstream layers used to receive a label and a string, and relative periods
+   * had no route into the timing view at all, so a usable window read as "no
+   * date gathered". The extractor's own types are reused rather than a parallel
+   * date model, and the field is optional so every existing case stays valid.
+   *
+   * Never converted into a calendar date: a working-day window stays a window.
+   */
+  timingFacts?: {
+    readonly dates: readonly ExtractedDate[];
+    readonly relativePeriods: readonly ExtractedRelativePeriod[];
+  };
   createdAt: string;
   updatedAt: string;
   evidence: EvidenceItem[];

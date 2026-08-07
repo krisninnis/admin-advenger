@@ -844,6 +844,7 @@ const createSecurityAlertFinding = (item: AdminItem): AdminFinding => ({
     "If it was not you, use the provider's official app or website (not links in this message) to check activity and change your password. If the message says do not reply, there is no need to reply.",
   urgency: "medium",
   documentStatus: "informational",
+  securityPrecedence: true,
   confidence: "medium",
   status: "new",
   createdAt: new Date().toISOString(),

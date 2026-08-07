@@ -93,6 +93,21 @@ export type AdminFinding = {
   // every existing finding remains valid without change.
   documentStatus?: DocumentStatus;
   generalAdminFallback?: StructuredGeneralAdminFallback;
+  /**
+   * Marks a finding that exists because the input looked security-shaped, so it
+   * must outrank every ordinary finding when one message produces several.
+   *
+   * A scam message usually also reads as ordinary commerce: a held parcel, a fee,
+   * a refund that "will follow". Those words legitimately produce refund and
+   * delivery findings, and category priority used to hand selection to them,
+   * discarding the security route entirely. This flag makes the precedence
+   * explicit instead of leaving it to a category table where the security
+   * findings sit under `unknown`.
+   *
+   * Only the two security finding creators set it: createEmailSafetyFinding and
+   * createSecurityAlertFinding.
+   */
+  securityPrecedence?: true;
   confidence: FindingConfidence;
   status: FindingStatus;
   createdAt: string;
@@ -473,6 +488,8 @@ export type AdminCase = {
   emailSafetyAssessment?: EmailSafetyAssessment;
   decisionResult?: DecisionResult;
   careerSupportPack?: CareerSupportPack;
+  /** Carried from the finding. See AdminFinding.securityPrecedence. */
+  securityPrecedence?: true;
   generalAdminFallback?: StructuredGeneralAdminFallback;
   /**
    * Timing facts exactly as the shared extractor found them, so the result and

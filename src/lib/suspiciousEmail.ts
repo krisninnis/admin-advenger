@@ -437,6 +437,10 @@ export const createEmailSafetyFinding = (
         ? "Use the email safety check. If unsure, open the provider's official website or app directly instead of using links in this email."
         : assessment.nextAction,
     urgency: highRisk || credentialRequest.requested ? "high" : "medium",
+    // This finding only exists because shouldPrioritiseEmailSafety already found
+    // security evidence, so it must never lose selection to a refund or delivery
+    // finding produced by the same message.
+    securityPrecedence: true,
     confidence: getEmailSafetyRiskBand(assessment) === "lower_risk_verify" ? "low" : "medium",
     status: "new",
     createdAt: new Date().toISOString(),

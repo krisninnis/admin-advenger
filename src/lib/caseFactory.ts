@@ -1139,8 +1139,35 @@ const urgencyPriority: Record<AdminCase["urgency"], number> = {
   low: 2,
 };
 
+// Security precedence sorts ahead of urgency and category.
+//
+// One message often produces several findings. A held-parcel scam that demands a
+// fee reads as ordinary commerce too, so refund and delivery rules fire on the
+// same text and produce their own findings, legitimately. Selection then decided
+// between them on urgency and then category, and both security findings carry
+// `category: "unknown"`, which is last of ten in categoryPriority. So appending
+// something as harmless as "or it will be returned." was enough to hand the
+// result to a refund case: the security route, its warnings and its safety
+// checklist were discarded, and the demanded fee was rendered as money the
+// person might receive.
+//
+// This is a tier rather than another category number, because the rule is not
+// "security is a slightly more important category" but "security is not allowed
+// to lose". Urgency cannot express it either: W4 established that an ordinary
+// price rise is legitimately high urgency, so promoting on urgency would promote
+// the wrong things.
+const securityPrecedenceRank = (adminCase: AdminCase) =>
+  adminCase.securityPrecedence ? 0 : 1;
+
 export const selectMostImportantCase = (cases: AdminCase[]) =>
   [...cases].sort((first, second) => {
+    const securityDifference =
+      securityPrecedenceRank(first) - securityPrecedenceRank(second);
+
+    if (securityDifference !== 0) {
+      return securityDifference;
+    }
+
     const urgencyDifference =
       urgencyPriority[first.urgency] - urgencyPriority[second.urgency];
 
@@ -1304,6 +1331,7 @@ export const createAdminCase = (finding: AdminFinding, item: AdminItem): AdminCa
     decisionResult: isDecisionEngineCase ? decisionResult : undefined,
     careerSupportPack: isCareerSupportCase ? careerSupportPack : undefined,
     generalAdminFallback: finding.generalAdminFallback,
+    securityPrecedence: finding.securityPrecedence,
     // W1's principle applied to timing: consume the shared extraction rather
     // than letting each layer re-derive dates from raw text. Roles travel with
     // the values, so the result and progress layers can tell an event date from

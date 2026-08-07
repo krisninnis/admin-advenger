@@ -71,10 +71,33 @@ const extractPricePair = (text: string) => {
 const cleanProviderName = (value?: string) =>
   normaliseSpaces(value)?.replace(/[.,:;]+$/, "").trim();
 
+// A provider name is never a price, a period or a date. The explicit-provider
+// pattern below alternates on "from", so "increase from GBP 34 to GBP 46 per
+// month from 1 September 2026" used to capture the price phrase: "GBP" begins
+// with a capital letter, and the character class allows digits and spaces. The
+// pound-sign spelling escaped it only by accident, because "£" is not A-Z.
+//
+// Inventing a provider is worse than reporting none, so anything that looks
+// like money, a period or a date is rejected outright.
+const looksLikeMoneyPeriodOrDate = (value: string): boolean =>
+  /(?:^|\s)(?:GBP|USD|EUR)\s*\d/i.test(value) ||
+  /[£$€]\s*\d/.test(value) ||
+  /\bper\s+(?:month|year|annum|quarter|week)\b/i.test(value) ||
+  /\b\d{1,2}\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\b/i.test(
+    value,
+  ) ||
+  /\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4}\b/i.test(
+    value,
+  );
+
 const isPlausibleProviderHeading = (value?: string) => {
   const cleaned = cleanProviderName(value);
 
   if (!cleaned || cleaned.length < 2 || cleaned.length > 60) {
+    return false;
+  }
+
+  if (looksLikeMoneyPeriodOrDate(cleaned)) {
     return false;
   }
 
@@ -97,8 +120,14 @@ const extractProviderName = (text: string) => {
     /(?:your provider is|provider(?:\s+is)?|with|from)\s*:?\s+([A-Z][A-Za-z0-9&.'’ -]{1,60}?)(?=[.,:\n]|\s+(?:will|has|is)\b|$)/,
   );
 
+  // A rejected candidate must not stop the heading route from finding a real
+  // provider further down, so this falls through rather than returning early.
   if (explicitProvider) {
-    return cleanProviderName(explicitProvider);
+    const cleaned = cleanProviderName(explicitProvider);
+
+    if (cleaned && !looksLikeMoneyPeriodOrDate(cleaned)) {
+      return cleaned;
+    }
   }
 
   const lines = text

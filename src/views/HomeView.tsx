@@ -389,6 +389,69 @@ function FactList({ title, items }: { title: string; items: string[] }) {
   );
 }
 
+// WCP-005, mobile page length.
+//
+// The care-preparation summary was measured several screens below the top of the
+// page on a 320 px phone, because the whole input surface stayed at full height
+// above it. This is what stands in its place while a Wales care route is live: a
+// short, readable record of what was submitted, and one control that says
+// exactly what it will do.
+//
+// It hides nothing. The care panel below still echoes the full wording, the
+// controls come back untouched with the text still in them, and the person can
+// leave through the ordinary-message check as before. This component holds no
+// rule about routing and cannot submit, save or send anything.
+const COMPACT_MESSAGE_HEADING = "Your message";
+const COMPACT_MESSAGE_REOPEN_LABEL = "View or change original message";
+const COMPACT_MESSAGE_PREVIEW_LIMIT = 180;
+
+const compactMessagePreview = (text: string): string => {
+  const collapsed = text.trim().replace(/\s+/g, " ");
+  return collapsed.length > COMPACT_MESSAGE_PREVIEW_LIMIT
+    ? `${collapsed.slice(0, COMPACT_MESSAGE_PREVIEW_LIMIT).trimEnd()}...`
+    : collapsed;
+};
+
+function CompactSubmittedMessage({
+  submittedText,
+  isOpen,
+  onToggle,
+  disclosureId,
+}: {
+  submittedText: string;
+  isOpen: boolean;
+  onToggle: () => void;
+  disclosureId: string;
+}) {
+  return (
+    <section
+      className="rounded-lg border border-white/10 bg-slate-900/85 p-4 shadow-xl shadow-slate-950/20 sm:p-5"
+      aria-label={COMPACT_MESSAGE_HEADING}
+    >
+      <p className="text-xs font-bold uppercase tracking-widest text-slate-500">
+        {COMPACT_MESSAGE_HEADING}
+      </p>
+      {isOpen ? null : (
+        <p className="mt-1 text-sm leading-6 text-slate-300">
+          {compactMessagePreview(submittedText)}
+        </p>
+      )}
+      <button
+        type="button"
+        aria-expanded={isOpen}
+        aria-controls={disclosureId}
+        onClick={onToggle}
+        className="mt-3 flex min-h-11 w-full items-center justify-between gap-3 rounded-lg border border-white/10 bg-slate-950 px-3 py-2 text-left text-xs font-bold text-slate-200 transition hover:border-emerald-300/40 hover:text-white focus:outline-none focus:ring-2 focus:ring-emerald-300/40"
+      >
+        <span>{COMPACT_MESSAGE_REOPEN_LABEL}</span>
+        <span aria-hidden="true" className="text-lg leading-none">
+          {isOpen ? "-" : "+"}
+        </span>
+      </button>
+    </section>
+  );
+}
+
 function AiExtractedFactsPanel({ extraction }: { extraction: AiExtractionResult }) {
   const [isOpen, setIsOpen] = useState(false);
   const amountItems = extraction.amounts.map((amount) => {
@@ -516,6 +579,12 @@ export function HomeView({
     frontDoorRouteReducer,
     initialFrontDoorRouteState,
   );
+  // WCP-005. While a Wales care route is live, the full input surface above it
+  // is replaced by a short summary of what was submitted. This flag is the
+  // person's explicit override: it only ever changes because they pressed the
+  // control, and it is never used to decide anything other than how much of the
+  // input surface is drawn.
+  const [showOriginalInputSurface, setShowOriginalInputSurface] = useState(false);
   // Document Attachment Intake v1 - files attached beside the paste box
   // (chosen from the device or dropped). Kept as its
   // own small list rather than reusing the single-photo OCR state above, so
@@ -530,6 +599,20 @@ export function HomeView({
   const isReadingAttachments = attachedFiles.some((attached) => attached.status === "reading");
   const isLocalOllamaMode = aiSettings.mode === "local_ollama";
   const hasEditedOcrText = ocrText.trim() !== ocrOriginalText.trim();
+  // WCP-005. A Wales care route is live exactly when the orientation page is
+  // about a named person's care, which is the state the three preparation panels
+  // and the trusted directory hang off. Every other route, including the one
+  // question that precedes this, the urgent page, benefits, documents and
+  // ordinary messages, keeps the full input surface it has today.
+  const careOrientation =
+    frontDoorRoute.view?.kind === "orientation" ? frontDoorRoute.view : undefined;
+  const walesCarePathActive =
+    careOrientation !== undefined &&
+    (careOrientation.aboutOneOtherPerson ||
+      careOrientation.aboutSupporterWithNamedPerson ||
+      careOrientation.aboutBothPeopleWithNamedPerson);
+  const compactOriginalInput = walesCarePathActive && !showOriginalInputSurface;
+  const originalInputDisclosureId = "home-original-input-surface";
   const isOcrReviewUnreliable =
     ocrStatus === "success" && isOcrResultUnreliable(ocrOriginalText || ocrText, ocrConfidence);
   const canShowOcrKeyDetails =
@@ -1708,7 +1791,20 @@ export function HomeView({
         </p>
       </header>
 
-      <section className="rounded-lg border border-white/10 bg-slate-900/85 p-4 shadow-xl shadow-slate-950/20 sm:p-6">
+      {walesCarePathActive && careOrientation ? (
+        <CompactSubmittedMessage
+          submittedText={careOrientation.originalInput}
+          isOpen={showOriginalInputSurface}
+          onToggle={() => setShowOriginalInputSurface((current) => !current)}
+          disclosureId={originalInputDisclosureId}
+        />
+      ) : null}
+
+      <section
+        id={originalInputDisclosureId}
+        hidden={compactOriginalInput}
+        className="rounded-lg border border-white/10 bg-slate-900/85 p-4 shadow-xl shadow-slate-950/20 sm:p-6"
+      >
         <div className="grid gap-3 sm:grid-cols-3">
           {[
             ["paste", "Paste text", "Fastest way to check something"],
@@ -2433,9 +2529,13 @@ export function HomeView({
         <FrontDoorConfirmationPanel
           view={frontDoorRoute.view}
           selectedChoiceId={frontDoorRoute.selectedChoiceId}
-          onChoose={(choiceId: FrontDoorChoiceId) =>
-            dispatchFrontDoorRoute({ type: "choice_selected", choiceId })
-          }
+          onChoose={(choiceId: FrontDoorChoiceId) => {
+            // Answering the question starts a fresh care step, so the input
+            // surface returns to its compact state rather than inheriting an
+            // expansion from a previous route.
+            setShowOriginalInputSurface(false);
+            dispatchFrontDoorRoute({ type: "choice_selected", choiceId });
+          }}
           onBack={() => dispatchFrontDoorRoute({ type: "go_back" })}
           onCheckAsMessage={() => {
             void handleFrontDoorCheckAsMessage();

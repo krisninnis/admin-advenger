@@ -1,4 +1,4 @@
-import { useReducer } from "react";
+import { useReducer, useState } from "react";
 import {
   TRUSTED_WALES_SIGNPOSTING_DIRECTORY,
   createTrustedSignpostingState,
@@ -19,8 +19,17 @@ const LIMITS =
 const CHANGE_WARNING =
   "Contact details and opening hours can change. Check the organisation's official website if a call does not connect or the service appears different.";
 
+// WCP-005. Every card used to print its hours, phone purpose and full
+// limitations at once, which is what made the open directory the longest thing
+// on a 320 px screen. The supporting detail now sits behind a per-record
+// disclosure, and the label carries the organisation name so that "More
+// details" is never ambiguous to somebody listening rather than looking.
+const DETAIL_LABEL = "More details";
+
 const buttonClass =
   "min-h-11 rounded-lg border border-white/10 bg-transparent px-3 py-2 text-xs font-bold text-slate-200 transition hover:border-cyan-300/40 hover:text-white focus:outline-none focus:ring-2 focus:ring-cyan-300/50";
+const detailButtonClass =
+  "flex min-h-11 w-full items-center justify-between gap-3 rounded-lg border border-white/10 bg-transparent px-3 py-2 text-left text-xs font-bold text-slate-200 transition hover:border-cyan-300/40 hover:text-white focus:outline-none focus:ring-2 focus:ring-cyan-300/50";
 const linkClass =
   "inline-flex min-h-11 items-center rounded-lg border border-white/10 bg-slate-950 px-3 py-2 text-xs font-bold text-slate-200 transition hover:border-cyan-300/40 hover:text-white focus:outline-none focus:ring-2 focus:ring-cyan-300/50";
 
@@ -38,6 +47,18 @@ const organisationTypeLabel = (record: TrustedSignpostingViewRecord): string =>
   record.organisationType === "official" ? "Official Wales service" : "Charity";
 
 function SourceCard({ record }: { record: TrustedSignpostingViewRecord }) {
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const detailsId = `trusted-wales-detail-${record.id}`;
+
+  // What stays on the surface is deliberate: who they are, what kind of
+  // organisation they are, what the service is for, the safe way to reach them,
+  // and any warning that the details may have gone out of date. Nobody has to
+  // open anything to work out whether a service is relevant to them.
+  const hasDetail =
+    record.phone !== undefined ||
+    record.hoursToDisplay !== undefined ||
+    record.limitations.length > 0;
+
   return (
     <article className="rounded-lg border border-white/10 bg-slate-950/60 p-4">
       <h5 className="text-base font-bold text-white">{record.organisationName}</h5>
@@ -74,24 +95,49 @@ function SourceCard({ record }: { record: TrustedSignpostingViewRecord }) {
         ) : null}
       </div>
 
-      {record.phone ? (
-        <p className="mt-2 text-xs leading-5 text-slate-400">
-          Phone purpose: {record.phone.purpose}
-        </p>
-      ) : null}
-      {record.hoursToDisplay ? (
-        <p className="mt-1 text-xs leading-5 text-slate-400">
-          Opening hours: {record.hoursToDisplay}
-        </p>
-      ) : null}
+      {hasDetail ? (
+        <div className="mt-3">
+          <button
+            type="button"
+            aria-expanded={detailsOpen}
+            aria-controls={detailsId}
+            aria-label={`${DETAIL_LABEL} for ${record.organisationName}`}
+            onClick={() => setDetailsOpen((current) => !current)}
+            className={detailButtonClass}
+          >
+            <span>{DETAIL_LABEL}</span>
+            <span aria-hidden="true" className="text-lg leading-none">
+              {detailsOpen ? "-" : "+"}
+            </span>
+          </button>
 
-      <ul className="mt-3 space-y-1" aria-label={`Limits for ${record.organisationName}`}>
-        {record.limitations.map((limitation) => (
-          <li key={limitation} className="text-xs leading-5 text-slate-400">
-            {limitation}
-          </li>
-        ))}
-      </ul>
+          {detailsOpen ? (
+            <div id={detailsId} className="mt-3">
+              {record.phone ? (
+                <p className="text-xs leading-5 text-slate-400">
+                  Phone purpose: {record.phone.purpose}
+                </p>
+              ) : null}
+              {record.hoursToDisplay ? (
+                <p className="mt-1 text-xs leading-5 text-slate-400">
+                  Opening hours: {record.hoursToDisplay}
+                </p>
+              ) : null}
+
+              <ul
+                className="mt-2 space-y-1"
+                aria-label={`Limits for ${record.organisationName}`}
+              >
+                {record.limitations.map((limitation) => (
+                  <li key={limitation} className="text-xs leading-5 text-slate-400">
+                    {limitation}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </article>
   );
 }

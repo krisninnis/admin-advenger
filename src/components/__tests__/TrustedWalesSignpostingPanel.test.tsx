@@ -12,6 +12,24 @@ afterEach(() => {
 const OFFER = "Find trusted support in Wales";
 const HEADING = "Trusted places to try next";
 
+/**
+ * The three governed organisations, in the approved order. Every per-record
+ * disclosure is named after its organisation so that a screen-reader user
+ * hearing "More details" always hears which service it belongs to, and so
+ * that these tests can never accidentally assert against the wrong card.
+ */
+const ORGANISATIONS = [
+  "Welsh Government",
+  "Carers UK, including Carers Wales",
+  "Carers Trust",
+] as const;
+
+const detailsButton = (organisation: string) =>
+  screen.getByRole("button", { name: `More details for ${organisation}` });
+
+const expandedState = (organisation: string) =>
+  detailsButton(organisation).getAttribute("aria-expanded");
+
 const renderPanel = (today = "2026-08-06") => {
   render(<TrustedWalesSignpostingPanel today={today} />);
   return userEvent.setup();
@@ -21,6 +39,12 @@ const openPanel = async (today = "2026-08-06") => {
   const user = renderPanel(today);
   await user.click(screen.getByRole("button", { name: OFFER }));
   return user;
+};
+
+const expandEveryRecord = async (user: ReturnType<typeof userEvent.setup>) => {
+  for (const organisation of ORGANISATIONS) {
+    await user.click(detailsButton(organisation));
+  }
 };
 
 describe("the optional disclosure", () => {
@@ -63,13 +87,12 @@ describe("the visible governed directory", () => {
     expect(screen.getAllByText("Charity")).toHaveLength(2);
   });
 
-  it("shows short source descriptions and material limitations", async () => {
+  it("shows what every source is for without opening anything", async () => {
     await openPanel();
 
     expect(screen.getByText(/Find your council website using a postcode/i)).toBeTruthy();
     expect(screen.getByText(/Information and support for questions about caring/i)).toBeTruthy();
     expect(screen.getByText(/Search for a local Carers Trust Network Partner/i)).toBeTruthy();
-    expect(screen.getByText(/cannot provide an individual help and information service/i)).toBeTruthy();
   });
 
   it("uses safe descriptive website links", async () => {
@@ -103,11 +126,146 @@ describe("the visible governed directory", () => {
   });
 
   it("shows opening hours only for the two directly verified phones", async () => {
-    await openPanel();
+    const user = await openPanel();
+    await expandEveryRecord(user);
 
     expect(screen.getByText(/Opening hours: Monday to Friday, 9am to 6pm/)).toBeTruthy();
     expect(screen.getByText(/Opening hours: Monday to Friday, 9am to 5pm/)).toBeTruthy();
     expect(screen.getAllByText(/Opening hours:/)).toHaveLength(2);
+  });
+});
+
+// WCP-005. The open directory was the single largest block on a 320 px screen,
+// and most of it was detail nobody needs before they have decided which of the
+// three services is even relevant. So each card now carries its own disclosure.
+//
+// The rule these tests defend is the one that matters: a person must never have
+// to expand a card to find out what the service is for. Name, type, purpose,
+// the safe way to make contact, and any warning that the details are stale all
+// stay on the surface. Only the supporting detail moves.
+describe("compact governed service cards", () => {
+  it("gives every record its own disclosure, closed by default", async () => {
+    await openPanel();
+
+    for (const organisation of ORGANISATIONS) {
+      expect(expandedState(organisation)).toBe("false");
+    }
+  });
+
+  it("keeps name, type, purpose and the safe primary action visible while compact", async () => {
+    await openPanel();
+
+    expect(screen.getByRole("heading", { name: "Welsh Government" })).toBeTruthy();
+    expect(screen.getByText("Official Wales service")).toBeTruthy();
+    expect(screen.getByText("Find your local authority")).toBeTruthy();
+    expect(
+      screen.getByText(/Find your council website using a postcode/i),
+    ).toBeTruthy();
+
+    expect(screen.getAllByRole("link", { name: /Open official website/i })).toHaveLength(3);
+    expect(screen.getAllByRole("link", { name: /^Call / })).toHaveLength(2);
+  });
+
+  it("holds hours, phone purpose and limitations back until asked", async () => {
+    await openPanel();
+
+    expect(screen.queryByText(/Opening hours:/)).toBeNull();
+    expect(screen.queryByText(/Phone purpose:/)).toBeNull();
+    expect(screen.queryAllByRole("list", { name: /^Limits for/ })).toHaveLength(0);
+  });
+
+  it("reveals one record without disturbing the other two", async () => {
+    const user = await openPanel();
+    await user.click(detailsButton("Carers Trust"));
+
+    expect(expandedState("Carers Trust")).toBe("true");
+    expect(expandedState("Welsh Government")).toBe("false");
+    expect(expandedState("Carers UK, including Carers Wales")).toBe("false");
+
+    expect(screen.getAllByRole("list", { name: /^Limits for/ })).toHaveLength(1);
+    expect(screen.getByRole("list", { name: "Limits for Carers Trust" })).toBeTruthy();
+    expect(screen.getByText(/Opening hours: Monday to Friday, 9am to 5pm/)).toBeTruthy();
+    expect(screen.queryByText(/Opening hours: Monday to Friday, 9am to 6pm/)).toBeNull();
+  });
+
+  it("puts its own detail away again when closed", async () => {
+    const user = await openPanel();
+    const organisation = "Carers UK, including Carers Wales";
+
+    await user.click(detailsButton(organisation));
+    expect(screen.getByRole("list", { name: `Limits for ${organisation}` })).toBeTruthy();
+
+    await user.click(detailsButton(organisation));
+    expect(expandedState(organisation)).toBe("false");
+    expect(screen.queryByRole("list", { name: `Limits for ${organisation}` })).toBeNull();
+    expect(screen.queryByText(/Opening hours: Monday to Friday, 9am to 6pm/)).toBeNull();
+  });
+
+  it("toggles with Enter and with Space, and never takes focus away", async () => {
+    const user = await openPanel();
+    const organisation = "Welsh Government";
+    detailsButton(organisation).focus();
+
+    await user.keyboard("{Enter}");
+    expect(expandedState(organisation)).toBe("true");
+    expect(document.activeElement).toBe(detailsButton(organisation));
+
+    await user.keyboard(" ");
+    expect(expandedState(organisation)).toBe("false");
+    expect(document.activeElement).toBe(detailsButton(organisation));
+  });
+
+  it("exposes every governed detail once every record is expanded", async () => {
+    const user = await openPanel();
+    await expandEveryRecord(user);
+
+    expect(
+      screen.getByText(/Phone purpose: A question about caring, or someone to talk to/),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(/Phone purpose: Help finding the nearest Carers Trust Network Partner/),
+    ).toBeTruthy();
+
+    expect(screen.getAllByRole("list", { name: /^Limits for/ })).toHaveLength(3);
+    expect(screen.getByText(/only identifies a local authority/i)).toBeTruthy();
+    expect(
+      screen.getByText(/more complex queries may be handled more effectively by email/i),
+    ).toBeTruthy();
+    expect(screen.getByText(/cannot promise a particular outcome/i)).toBeTruthy();
+    expect(
+      screen.getByText(/cannot provide an individual help and information service/i),
+    ).toBeTruthy();
+    expect(screen.getByText(/Not every part of the UK is covered/i)).toBeTruthy();
+    expect(screen.getByText(/points people to Dewis and Carers Wales/i)).toBeTruthy();
+  });
+
+  it("leaves the governed contact destinations and their names alone", async () => {
+    const user = await openPanel();
+    await expandEveryRecord(user);
+
+    const websites = screen.getAllByRole("link", { name: /Open official website/i });
+    expect(websites.map((link) => link.getAttribute("href"))).toEqual([
+      "https://www.gov.wales/find-your-local-authority",
+      "https://www.carersuk.org/wales/about-us/what-we-do/we-help/",
+      "https://carers.org/help-for-carers/find-carer-services-near-you",
+    ]);
+
+    const phones = screen.getAllByRole("link", { name: /^Call / });
+    expect(phones.map((link) => link.getAttribute("href"))).toEqual([
+      "tel:+448088087777",
+      "tel:+443007729600",
+    ]);
+  });
+
+  it("keeps the three records in governed order once the disclosures exist", async () => {
+    await openPanel();
+
+    const list = screen.getByRole("list", { name: "Trusted Wales sources" });
+    const items = Array.from(list.children) as HTMLElement[];
+    expect(items).toHaveLength(3);
+    expect(
+      items.map((item) => within(item).getAllByRole("heading")[0].textContent),
+    ).toEqual([...ORGANISATIONS]);
   });
 });
 
@@ -138,7 +296,8 @@ describe("provenance and boundaries", () => {
   });
 
   it("contains no recommendation, approval, guarantee or completed action claim", async () => {
-    await openPanel();
+    const user = await openPanel();
+    await expandEveryRecord(user);
     const text = screen.getByRole("region", { name: HEADING }).textContent ?? "";
 
     expect(text).not.toMatch(/recommended for you|best option|you should contact|you need to contact/i);
@@ -147,10 +306,19 @@ describe("provenance and boundaries", () => {
   });
 
   it("marks stale details for rechecking and does not present hours as current", async () => {
-    await openPanel("2026-11-07");
+    const user = await openPanel("2026-11-07");
 
+    // The warning has to survive the compaction: somebody skimming three
+    // collapsed cards must still be told the details may be out of date,
+    // without opening anything.
     expect(screen.getByText(/These details need rechecking/i)).toBeTruthy();
     expect(screen.getAllByText("Details need rechecking")).toHaveLength(3);
-    expect(screen.queryByText(/^Opening hours:/)).toBeNull();
+    expect(screen.queryByText(/Opening hours:/)).toBeNull();
+
+    // And expanding must not become a way to see hours the governance layer
+    // has already withdrawn.
+    await expandEveryRecord(user);
+    expect(screen.queryByText(/Opening hours:/)).toBeNull();
+    expect(screen.getAllByRole("list", { name: /^Limits for/ })).toHaveLength(3);
   });
 });

@@ -3,6 +3,7 @@ import type { BenefitsActionPack } from "./benefitsActionPack";
 import type { CommunityHelperPack, CommunityHelperSituationType } from "./communityHelperPack";
 import { isBenefitsDocumentType } from "./benefitsActionPack";
 import type { DecisionDocumentType, DecisionResult } from "./decisionEngine/types";
+import { isPeriodTimingRole } from "./resultViewModel";
 import type { ResultDateView, ResultViewModel } from "./resultViewModel";
 import type { StrategicNextStepPlan } from "./strategicNextStep";
 import type { WorkplaceSupportDocumentType, WorkplaceSupportPack } from "./workplaceSupportPack";
@@ -176,21 +177,49 @@ const isTaxYearBoundaryDate = (date: ResultDateView): boolean =>
   /\btax year\b/i.test(date.label) ||
   /\b\d{1,2}\s+\w+\s+\d{4}\s+to\s+\d{1,2}\s+\w+\s+\d{4}\b/i.test(date.value);
 
+// A stated window such as "within 5 to 10 working days" is real, usable timing.
+// Requiring an exact date made a refund with a clear processing window report
+// "no actionable date has been gathered yet", which is simply untrue.
+//
+// The two cases stay distinct in the wording, because a window is not a date:
+// AdminAvenger must not imply the source named a day when it did not.
 const buildKeyDateItem = (
   resultViewModel: ResultViewModel,
   label = "Key date checked",
 ): CaseProgressItem => {
-  const hasActionableDate = resultViewModel.keyDates.some(
+  const usableTiming = resultViewModel.keyDates.filter(
     (date) => !isTaxYearBoundaryDate(date),
   );
+  const hasExactDate = usableTiming.some((date) => !isPeriodTimingRole(date.role));
+  const hasPeriodOnly = !hasExactDate && usableTiming.length > 0;
+
+  if (hasExactDate) {
+    return buildItem(
+      "key-date",
+      label,
+      "A date was found in this result. Check it against the original letter before relying on it.",
+      "complete",
+      "result",
+      "Check this date against the original letter.",
+    );
+  }
+
+  if (hasPeriodOnly) {
+    return buildItem(
+      "key-date",
+      label,
+      "A time period was found in this result, but no exact date. Check it against the original letter, and count from the date the sender used.",
+      "complete",
+      "result",
+      "Check this period against the original letter.",
+    );
+  }
 
   return buildItem(
     "key-date",
     label,
-    hasActionableDate
-      ? "A date was found in this result. Check it against the original letter before relying on it."
-      : "No actionable date has been gathered yet. Look for a decision date, deadline, or reply-by date on the original letter. A tax-year period on its own is not a deadline.",
-    hasActionableDate ? "complete" : "missing",
+    "No actionable date has been gathered yet. Look for a decision date, deadline, or reply-by date on the original letter. A tax-year period on its own is not a deadline.",
+    "missing",
     "result",
     "Check this date against the original letter.",
   );

@@ -1304,6 +1304,17 @@ export const createAdminCase = (finding: AdminFinding, item: AdminItem): AdminCa
     decisionResult: isDecisionEngineCase ? decisionResult : undefined,
     careerSupportPack: isCareerSupportCase ? careerSupportPack : undefined,
     generalAdminFallback: finding.generalAdminFallback,
+    // W1's principle applied to timing: consume the shared extraction rather
+    // than letting each layer re-derive dates from raw text. Roles travel with
+    // the values, so the result and progress layers can tell an event date from
+    // a response period.
+    timingFacts: (() => {
+      const timing = extractGeneralAdmin(`${item.title}\n${item.rawText}`);
+
+      return timing.dates.length > 0 || timing.relativePeriods.length > 0
+        ? { dates: timing.dates, relativePeriods: timing.relativePeriods }
+        : undefined;
+    })(),
     createdAt: finding.createdAt,
     updatedAt: now,
     evidence: evidenceForFinding(caseId, finding, item),

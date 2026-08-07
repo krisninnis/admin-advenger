@@ -1,4 +1,4 @@
-import type { AdminCase, MoneyImpact, OpportunityCard } from "../types";
+import type { AdminCase, EvidenceKind, MoneyImpact, OpportunityCard } from "../types";
 import type { BenefitsActionPack, BenefitsKeyDate, BenefitsMoneyLine } from "./benefitsActionPack";
 import type { CareerRequirementEvidenceMapItem, CareerSupportPack } from "./careerSupportPack";
 import type { CommunityHelperPack } from "./communityHelperPack";
@@ -12,6 +12,7 @@ import {
   FORBIDDEN_OUTCOME_CLAIMS,
   normaliseSafetyText,
 } from "./safetyWording";
+import { resolveEvidenceKind } from "./evidenceKind";
 import { extractGeneralAdmin } from "./generalAdminExtraction";
 import { SENSITIVE_INFORMATION_REQUEST_EVIDENCE_LABEL } from "./sensitiveInformationRequest";
 import { isSupportedBySource } from "./sourceSupport";
@@ -110,6 +111,11 @@ export type ResultViewModel = {
   keyDates: ResultDateView[];
   moneyMentioned: ResultMoneyView[];
   evidenceFound: ResultEvidenceView[];
+  /**
+   * Derived figures and caveats. Visible context, deliberately not counted as
+   * facts read from the source.
+   */
+  evidenceContext: ResultEvidenceView[];
   evidenceToGather: ResultEvidenceView[];
   questionsToAnswer: string[];
   risks: string[];
@@ -386,6 +392,20 @@ const fromCaseEvidence = (adminCase: AdminCase, index: number): ResultEvidenceVi
   value: safeText(adminCase.evidence[index]?.value, "Check the case file"),
   source: "case",
 });
+
+// A case's evidence list carries four different meanings (see
+// src/lib/evidenceKind.ts). Only source facts may be presented as evidence
+// found. Absences belong with the other things still to gather, and derived
+// figures and caveats stay visible as context without being counted as facts
+// read from the source.
+const caseEvidenceOfKind = (
+  adminCase: AdminCase | undefined,
+  kinds: readonly EvidenceKind[],
+): ResultEvidenceView[] =>
+  (adminCase?.evidence ?? [])
+    .map((entry, index) => ({ entry, index }))
+    .filter(({ entry }) => kinds.includes(resolveEvidenceKind(entry)))
+    .map(({ index }) => fromCaseEvidence(adminCase as AdminCase, index));
 
 const fromMissingEvidence = (value: string, index: number, source: ResultViewSource): ResultEvidenceView => ({
   id: `${source}-missing-${index + 1}`,
@@ -943,10 +963,13 @@ export const buildResultViewModel = ({
     // "evidence found". Pulling it in here is what inflated the HMRC evidence
     // count, so it is skipped for that document type; all other types keep the
     // existing behaviour.
-    ...(isHmrcTaxCodeResult
-      ? []
-      : (adminCase?.evidence.map((_, index) => fromCaseEvidence(adminCase, index)) ?? [])),
+    ...(isHmrcTaxCodeResult ? [] : caseEvidenceOfKind(adminCase, ["source_fact"])),
   ]);
+  // Derived figures and caveats stay visible, separately from the facts that
+  // were actually read from the source.
+  const evidenceContext = dedupeEvidence(
+    isHmrcTaxCodeResult ? [] : caseEvidenceOfKind(adminCase, ["derived", "informational"]),
+  );
   // For HMRC tax code notices, decisionResult.evidenceNeeded is the single
   // authoritative "still to gather" list. The opportunity card's
   // missingInformation (and the strategic plan derived from it) deliberately
@@ -964,6 +987,24 @@ export const buildResultViewModel = ({
           ...(strategicNextStepPlan?.missingInformation ?? []),
           ...(decisionResult?.evidenceNeeded ?? []),
           ...(opportunity?.missingInformation ?? []),
+          // Absences recorded on the case belong here, not inside the list of
+          // evidence already found.
+          //
+          // Rows whose value is only a placeholder ("Not found yet", "Needed")
+          // are skipped: the same gap is already described properly by the
+          // assessment's own missing-information list above, and restating it
+          // from the row label would list one gap twice in slightly different
+          // words, which is the inflation this workstream is removing. Rows that
+          // carry a real sentence are kept and collapse against an identical
+          // entry in dedupeEvidence below.
+          ...caseEvidenceOfKind(adminCase, ["missing"])
+            .map((entry) => entry.value)
+            .filter(
+              (value) =>
+                !/^(?:not found yet|needed|missing|needs user confirmation)$/i.test(
+                  value.trim(),
+                ),
+            ),
         ],
   );
   const evidenceToGather = dedupeEvidence(
@@ -1416,6 +1457,7 @@ export const buildResultViewModel = ({
   ].filter((section): section is ResultSectionView => Boolean(section));
   const detailSections = [
     makeSection("evidence-found", "Evidence found", evidenceFound.map((item) => `${item.label}: ${item.value}`), "main_result", "detail"),
+    makeSection("evidence-context", "Notes and calculations", evidenceContext.map((item) => `${item.label}: ${item.value}`), "main_result", "detail"),
     makeSection("risks", "Risks to be aware of", risks, "main_result", "detail"),
     makeSection("cannot-know", "What AdminAvenger cannot know", cannotKnow, "main_result", "detail"),
     makeSection("uncertainty", "Uncertainty", uncertainty, "main_result", "detail"),
@@ -1473,6 +1515,7 @@ export const buildResultViewModel = ({
     keyDates,
     moneyMentioned,
     evidenceFound,
+    evidenceContext,
     evidenceToGather,
     questionsToAnswer,
     risks,
@@ -1503,6 +1546,7 @@ export const flattenResultViewModelText = (model: ResultViewModel) =>
     ...model.keyDates.map((date) => `${date.label} ${date.value} ${date.caution} ${date.sourceQuote ?? ""}`),
     ...model.moneyMentioned.map((line) => `${line.label} ${line.amountText} ${line.caution} ${line.sourceQuote ?? ""}`),
     ...model.evidenceFound.map((item) => `${item.label} ${item.value} ${item.sourceQuote ?? ""}`),
+    ...model.evidenceContext.map((item) => `${item.label} ${item.value}`),
     ...model.evidenceToGather.map((item) => `${item.label} ${item.value}`),
     ...model.questionsToAnswer,
     ...model.risks,

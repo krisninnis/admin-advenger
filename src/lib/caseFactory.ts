@@ -120,12 +120,20 @@ const createEvidence = (
   label: string,
   value: string,
   source: EvidenceItem["source"] = "detected",
+  // `source` is provenance, so it cannot say whether a row is a fact, a
+  // calculation, a gap or a caveat. resolveEvidenceKind defaults "detected" to a
+  // source fact and everything else to visible-but-uncounted context; rows that
+  // disagree say so here. Derived arithmetic and genuine gaps both need it: a
+  // gap must be tagged "missing" to become something to gather, because an
+  // untagged row is deliberately never turned into a task.
+  kind?: EvidenceItem["kind"],
 ): EvidenceItem => ({
   id: `evidence-${crypto.randomUUID()}`,
   caseId,
   label,
   value,
   source,
+  ...(kind ? { kind } : {}),
 });
 
 const dedupeNormalised = (items: string[]) => {
@@ -224,7 +232,7 @@ const evidenceForFinding = (
         ? [createEvidence(caseId, "Consequence stated by source", fallback.consequence, "detected")]
         : []),
       ...(fallback.evidenceToGather ?? []).map((record) =>
-        createEvidence(caseId, "Record worth having to hand", record, "manual"),
+        createEvidence(caseId, "Record worth having to hand", record, "manual", "missing"),
       ),
       createEvidence(
         caseId,
@@ -619,6 +627,12 @@ const evidenceForFinding = (
               caseId,
               "Contract timing",
               broadbandPriceRiseAssessment.contractDateRegime.replaceAll("_", " "),
+              "detected",
+              // The regime can itself be "missing", which is an absence rather
+              // than a fact read from the notice.
+              broadbandPriceRiseAssessment.contractDateRegime === "missing"
+                ? "missing"
+                : "source_fact",
             ),
           ]
         : []),
@@ -627,6 +641,7 @@ const evidenceForFinding = (
         "Contract timing explanation",
         broadbandPriceRiseAssessment.contractTimingExplanation,
         broadbandPriceRiseAssessment.contractDate ? "detected" : "manual",
+        "informational",
       ),
       ...(broadbandPriceRiseAssessment.oldMonthlyPrice
         ? [createEvidence(caseId, "Current monthly price", broadbandPriceRiseAssessment.oldMonthlyPrice)]
@@ -634,12 +649,17 @@ const evidenceForFinding = (
       ...(broadbandPriceRiseAssessment.newMonthlyPrice
         ? [createEvidence(caseId, "New monthly price", broadbandPriceRiseAssessment.newMonthlyPrice)]
         : []),
+      // Arithmetic on the two source prices, not a third fact found in the
+      // notice. It stays visible as money mentioned; it must not be counted as
+      // separately found evidence.
       ...(broadbandPriceRiseAssessment.monthlyIncrease
         ? [
             createEvidence(
               caseId,
               "Potential cost increase",
               `${broadbandPriceRiseAssessment.monthlyIncrease}/month more`,
+              "detected",
+              "derived",
             ),
           ]
         : []),
@@ -649,6 +669,8 @@ const evidenceForFinding = (
               caseId,
               "Annual increase if unchanged",
               `${broadbandPriceRiseAssessment.annualIncrease}/year if unchanged`,
+              "detected",
+              "derived",
             ),
           ]
         : []),
@@ -681,15 +703,22 @@ const evidenceForFinding = (
               "Rights not confirmed",
               "Cancellation/switching rights need checking",
               "manual",
+              "missing",
             ),
           ]),
       ...broadbandPriceRiseAssessment.rightsNeedChecking.map((rightsCheck) =>
-        createEvidence(caseId, "Rights need checking", rightsCheck, "manual"),
+        createEvidence(caseId, "Rights need checking", rightsCheck, "manual", "missing"),
       ),
       ...broadbandPriceRiseAssessment.evidenceMissing.map((missingEvidence) =>
-        createEvidence(caseId, "Missing critical evidence", missingEvidence, "manual"),
+        createEvidence(caseId, "Missing critical evidence", missingEvidence, "manual", "missing"),
       ),
-      createEvidence(caseId, "Caveat", broadbandPriceRiseAssessment.caveat, "manual"),
+      createEvidence(
+        caseId,
+        "Caveat",
+        broadbandPriceRiseAssessment.caveat,
+        "manual",
+        "informational",
+      ),
       createEvidence(caseId, "Source", item.title, "user_text"),
     ];
   }
@@ -700,9 +729,15 @@ const evidenceForFinding = (
         createEvidence(caseId, evidence.label, evidence.value),
       ),
       ...delayRepayAssessment.evidenceMissing.map((missingEvidence) =>
-        createEvidence(caseId, `Missing: ${missingEvidence}`, "Needs user confirmation", "manual"),
+        createEvidence(caseId, `Missing: ${missingEvidence}`, "Needs user confirmation", "manual", "missing"),
       ),
-      createEvidence(caseId, "Rule caveat", delayRepayAssessment.ruleCaveat, "manual"),
+      createEvidence(
+        caseId,
+        "Rule caveat",
+        delayRepayAssessment.ruleCaveat,
+        "manual",
+        "informational",
+      ),
       createEvidence(caseId, "Source", item.title, "user_text"),
     ];
   }
@@ -714,11 +749,21 @@ const evidenceForFinding = (
       ...decision.sourceFacts.map((fact) => createEvidence(caseId, fact.label, fact.value, "detected")),
       ...decision.possibleGrounds.map((ground) => createEvidence(caseId, "Possible ground", ground, "detected")),
       ...decision.evidenceNeeded.map((need) =>
-        createEvidence(caseId, `Missing: ${need}`, "Needed before acting", "manual"),
+        createEvidence(caseId, `Missing: ${need}`, "Needed before acting", "manual", "missing"),
       ),
-      ...decision.deadlines.map((deadline) => createEvidence(caseId, "Deadline/urgency", deadline, "manual")),
-      ...decision.risks.map((risk) => createEvidence(caseId, "Risk", risk, "manual")),
-      createEvidence(caseId, "Safety note", decision.safetyNotes[0] ?? "", "manual"),
+      ...decision.deadlines.map((deadline) =>
+        createEvidence(caseId, "Deadline/urgency", deadline, "manual", "informational"),
+      ),
+      ...decision.risks.map((risk) =>
+        createEvidence(caseId, "Risk", risk, "manual", "informational"),
+      ),
+      createEvidence(
+        caseId,
+        "Safety note",
+        decision.safetyNotes[0] ?? "",
+        "manual",
+        "informational",
+      ),
       createEvidence(caseId, "Source", item.title, "user_text"),
     ];
   }
@@ -774,8 +819,8 @@ const evidenceForFinding = (
         "Approved, but not confirmed received yet",
         "detected",
       ),
-      createEvidence(caseId, "Missing: Provider/retailer name", "Not found yet", "manual"),
-      createEvidence(caseId, "Missing: Exact refund arrival date", "Not found yet", "manual"),
+      createEvidence(caseId, "Missing: Provider/retailer name", "Not found yet", "manual", "missing"),
+      createEvidence(caseId, "Missing: Exact refund arrival date", "Not found yet", "manual", "missing"),
       createEvidence(caseId, "Source", item.title, "user_text"),
     ];
   }
@@ -794,12 +839,13 @@ const evidenceForFinding = (
             ),
           ]
         : []),
-      createEvidence(caseId, "Recoverable amount", "No clear recoverable amount found", "manual"),
+      createEvidence(caseId, "Recoverable amount", "No clear recoverable amount found", "manual", "missing"),
       createEvidence(
         caseId,
         "Missing: What evidence the airline requires",
         "Ask the airline before making a claim",
         "manual",
+        "missing",
       ),
       createEvidence(caseId, "Source", item.title, "user_text"),
     ];
@@ -812,7 +858,7 @@ const evidenceForFinding = (
       ...(travel.extraCostDescription ? [createEvidence(caseId, "Extra cost", travel.extraCostDescription)] : []),
       ...(travel.recoveryAmount !== undefined
         ? [createEvidence(caseId, "Recovery amount", formatCurrency(travel.recoveryAmount))]
-        : [createEvidence(caseId, "Recovery amount", "Amount needs checking", "manual")]),
+        : [createEvidence(caseId, "Recovery amount", "Amount needs checking", "manual", "missing")]),
       ...(travel.bookingReference ? [createEvidence(caseId, "Booking reference", travel.bookingReference)] : []),
       ...(travel.airline ? [createEvidence(caseId, "Airline involved", travel.airline)] : []),
       ...(travel.travelCompany ? [createEvidence(caseId, "Travel company involved", travel.travelCompany)] : []),
@@ -820,7 +866,7 @@ const evidenceForFinding = (
       ...dedupeNormalised(travel.proofAvailable).map((proof) => createEvidence(caseId, "Proof available", proof)),
       ...(travel.suggestedRecipient ? [createEvidence(caseId, "Suggested recipient", travel.suggestedRecipient)] : []),
       ...dedupeNormalised(travel.missingProof).map((missing) =>
-        createEvidence(caseId, `Missing proof: ${missing}`, "Needed before sending", "manual"),
+        createEvidence(caseId, `Missing proof: ${missing}`, "Needed before sending", "manual", "missing"),
       ),
       createEvidence(caseId, "Source", item.title, "user_text"),
     ];
@@ -1062,7 +1108,7 @@ const evidenceForFinding = (
         createEvidence(caseId, "Project or portfolio evidence", project),
       ),
       ...pack.possibleGapsToCheck.slice(0, 4).map((gap) =>
-        createEvidence(caseId, "Gap to check", gap, "manual"),
+        createEvidence(caseId, "Gap to check", gap, "manual", "missing"),
       ),
       createEvidence(caseId, "Preparation boundary", "Preparation only. The user reviews and decides what to use.", "manual"),
     ];

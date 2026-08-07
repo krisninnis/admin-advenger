@@ -418,12 +418,27 @@ export type FeedbackEntry = {
   createdAt: string;
 };
 
+// What a row in a case's evidence list actually is.
+//
+// "Evidence found" used to hold four different things at once - facts read from
+// the source, arithmetic derived from those facts, placeholders for information
+// that is absent, and caveats or provenance - and the progress widget reported
+// the raw length as the number of pieces of evidence found. Only a source fact
+// may be counted as found.
+//
+// `source` already carried most of this signal, so `kind` is optional: when it
+// is absent the meaning is derived from `source` (see resolveEvidenceKind).
+// Existing templates therefore keep working unchanged, and only the rows whose
+// `source` marker disagrees with their meaning need to say so explicitly.
+export type EvidenceKind = "source_fact" | "derived" | "missing" | "informational";
+
 export type EvidenceItem = {
   id: string;
   caseId: string;
   label: string;
   value: string;
   source: "user_text" | "detected" | "manual";
+  kind?: EvidenceKind;
 };
 
 export type CaseTimelineEvent = {

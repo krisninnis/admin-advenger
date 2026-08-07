@@ -243,16 +243,27 @@ const buildEvidenceItem = (resultViewModel: ResultViewModel): CaseProgressItem =
   );
 };
 
+// An empty questions list means no question was generated, which is not the
+// same thing as every question having been answered. Reporting "complete" let a
+// result say the provider was unknown and the questions were done at once. When
+// nothing was asked, the honest status is that this step does not apply.
 const buildQuestionsItem = (resultViewModel: ResultViewModel): CaseProgressItem => {
   const outstanding = resultViewModel.questionsToAnswer.length;
+
+  if (outstanding > 0) {
+    return buildItem(
+      "questions-answered",
+      "Questions answered",
+      `${outstanding} question${outstanding === 1 ? "" : "s"} still to answer before this pack is ready.`,
+      "missing",
+    );
+  }
 
   return buildItem(
     "questions-answered",
     "Questions answered",
-    outstanding > 0
-      ? `${outstanding} question${outstanding === 1 ? "" : "s"} still to answer before this pack is ready.`
-      : "No outstanding questions were listed in this result.",
-    outstanding > 0 ? "missing" : "complete",
+    "No questions were prepared for this result, so there is nothing to answer here.",
+    "not_needed",
   );
 };
 

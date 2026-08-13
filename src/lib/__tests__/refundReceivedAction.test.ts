@@ -225,3 +225,123 @@ describe("neighbouring journeys are unchanged", () => {
     expect(visible).not.toMatch(/£68\b(?!\.40)/);
   });
 });
+
+// --- Remaining completed-refund lifecycle wording --------------------------
+
+const COMPLETED_REFUND_WORDING = [
+  "Your refund has arrived.",
+  "Your refund has been received.",
+  "Refund received.",
+  "Refund successful.",
+  "Refund complete.",
+  "Your refund has been paid.",
+  "We've paid your refund.",
+  "We've sent the refund to your bank account.",
+  "The refund has reached your account.",
+  "The refund is back in your bank account.",
+  "The money has been returned.",
+  "The refund has been credited.",
+  "The refund has been returned to your original payment method.",
+  "The amount has been refunded to your card.",
+  "We've processed your refund and the money is now in your account.",
+  "Your £68.40 refund is now back in your bank account.",
+  "£68.40 has been refunded.",
+  "Refund issued and received.",
+  "Refund deposited.",
+  "Refund credited today.",
+  "Money returned successfully.",
+  "Refund now showing in your account.",
+  "Your refund has arrived. No further action is required.",
+] as const;
+
+const PENDING_REFUND_WORDING = [
+  "Refund approved.",
+  "Refund authorised.",
+  "Refund accepted.",
+  "Refund initiated.",
+  "Refund requested.",
+  "Refund processing.",
+  "Refund is being processed.",
+  "Refund has been sent.",
+  "Refund is on its way.",
+  "Refund should arrive in 5 working days.",
+  "Refund within 7 working days.",
+  "Refund expected within 10 working days.",
+  "Refund may take 3–5 business days.",
+  "Refund released today.",
+  "Refund scheduled.",
+  "Refund queued.",
+  "Money is on its way.",
+] as const;
+
+describe("completed refund lifecycle wording", () => {
+  it.each(COMPLETED_REFUND_WORDING)("reads completed wording as received: %s", (message) => {
+    expect(assessRefundState(message).stage).toBe("received");
+  });
+
+  it.each(COMPLETED_REFUND_WORDING)("uses the completed result and no chase action: %s", (message) => {
+    const result = view(`completed-${message}`, message);
+
+    expect(result.title).toBe("Refund confirmed as received");
+    expect(result.primaryKind).toBe("evidence_checklist");
+    expect(result.hasDraft).toBe(false);
+    expect(`${result.visible}\n${result.allActionText}`).not.toMatch(
+      /money back to chase|track refund|pending recovery|create complaint draft/i,
+    );
+  });
+
+  it("preserves a completed amount and reference without counting recovery", () => {
+    const result = view(
+      "completed-amount-reference",
+      "Your £68.40 refund is now back in your bank account. Reference RF-20481.",
+    );
+
+    expect(result.visible).toContain("68.40");
+    expect(result.visible).toContain("RF-20481");
+    for (const line of result.journey.resultViewModel.moneyMentioned) {
+      expect(line.countedInMoneyTracker).toBe(false);
+    }
+  });
+});
+
+describe("pending refund lifecycle wording", () => {
+  it.each(PENDING_REFUND_WORDING)("never promotes pending wording to completed: %s", (message) => {
+    expect(assessRefundState(message).stage).not.toBe("received");
+    expect(view(`pending-${message}`, message).title).not.toBe("Refund confirmed as received");
+  });
+});
+
+describe("completed-refund negative controls", () => {
+  it.each([
+    "Your refund was denied.",
+    "Your refund was rejected.",
+    "Your refund was declined.",
+    "No refund has been approved.",
+    "Your refund has not been received.",
+    "Your refund was cancelled.",
+    "A partial refund remains under review.",
+    "Your chargeback is under review.",
+    "A credit note has been added to the order.",
+    "Store credit is available on your account.",
+    "Your compensation request is under review.",
+    "Cashback may be available.",
+    "Your payment has been received.",
+    "This is confirmation that your payment was received.",
+    "Your subscription renews for £9.99 per month.",
+    "Your broadband price will rise from £30 to £34 per month.",
+  ])("does not create a completed refund for: %s", (message) => {
+    expect(view(`non-completed-${message}`, message).title).not.toBe(
+      "Refund confirmed as received",
+    );
+  });
+
+  it("keeps mixed-message security precedence", () => {
+    const result = view(
+      "completed-security-precedence",
+      "Your refund has arrived. Reply with your one-time passcode to confirm it.",
+    );
+
+    expect(result.journey.adminCase.title).toMatch(/safety check|security alert/i);
+    expect(result.primaryLabel).toMatch(/safety checklist/i);
+  });
+});

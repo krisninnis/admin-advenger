@@ -780,8 +780,13 @@ export function HomeView({
           ? "Save this task"
           : getHomePrimaryActionLabel(primaryOpportunity.opportunityType, guidedMode)
       : undefined;
+  const isCompletedRefund = Boolean(
+    primaryOpportunity?.outcomeConfirmed &&
+      (primaryOpportunity.opportunityType === "refund_expected" ||
+        primaryOpportunity.opportunityType === "money_back"),
+  );
   const simplePrimaryAction: ResultCaseSheetAction | undefined =
-    primaryOpportunity && primaryCase
+    primaryOpportunity && primaryCase && !isCompletedRefund
       ? {
           label: primaryActionLabel ?? "Save this check",
           onClick:

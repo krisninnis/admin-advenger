@@ -747,6 +747,32 @@ const refundDeniedByDeterminer = (text: string, state: RegExp): boolean =>
     (sentence) => NO_REFUND_DETERMINER.test(sentence) && state.test(sentence),
   );
 
+// Receipt can be stated without the literal words "received" or "reached".
+// These patterns only cover affirmative, already-completed wording. Future or
+// pending forms such as "will be returned", "has been sent", "processing" and
+// "on its way" deliberately do not match.
+const REFUND_COMPLETION_PATTERNS = [
+  /\brefund\s+(?:has|have|had)\s+(?:now\s+)?arrived\b/i,
+  /\brefund\s+(?:now\s+)?arrived\b/i,
+  /\brefund\s+(?:(?:is|was|has\s+been)\s+)?(?:now\s+)?(?:successful|complete)\b/i,
+  /\brefund\s+(?:(?:has\s+been|was|is\s+now)\s+)?(?:paid|credited|deposited)\b/i,
+  /\b(?:we(?:'ve|\s+have)?|the\s+(?:provider|retailer|company))\s+paid\b[^.\n]{0,100}\brefund\b/i,
+  /\bwe(?:'ve|\s+have)?\s+sent\b[^.\n]{0,80}\brefund\b[^.\n]{0,80}\bto\s+(?:your|the)\s+(?:bank\s+)?account\b/i,
+  /\brefund\b[^.\n]{0,100}\b(?:has\s+been|was)\s+returned\s+to\s+(?:your|the)\s+original\s+payment\s+method\b/i,
+  /\brefund\s+(?:(?:is|was|has\s+been)\s+)?(?:now\s+)?back\s+in\s+(?:your|the)\s+(?:bank\s+)?account\b/i,
+  /\b(?:the\s+)?money\s+(?:(?:has\s+been|was|is\s+now)\s+)?returned(?:\s+successfully)?\b/i,
+  /\b(?:the\s+)?(?:amount|\d+(?:,\d{3})*(?:\.\d{1,2})?)\s+(?:has\s+been|was)\s+refunded(?:\s+to\s+(?:your|the)\s+card)?\b/i,
+  /\brefund\b[^.\n]{0,120}\bmoney\s+(?:is|was)\s+now\s+in\s+(?:your|the)\s+(?:bank\s+)?account\b/i,
+  /\brefund\s+(?:is\s+)?(?:now\s+)?showing\s+in\s+(?:your|the)\s+(?:bank\s+)?account\b/i,
+] as const;
+
+const hasCompletedRefundWording = (text: string): boolean =>
+  sentencesOf(text).some(
+    (sentence) =>
+      !NO_REFUND_DETERMINER.test(sentence) &&
+      REFUND_COMPLETION_PATTERNS.some((pattern) => pattern.test(sentence)),
+  );
+
 const REFUSAL_WORDS = String.raw`(?:refused|declined|rejected|turned\s+down)`;
 
 /**
@@ -786,15 +812,16 @@ export const assessRefundState = (text: string): RefundStateAssessment => {
     sameSentence(String.raw`\b${REFUSAL_WORDS}\b`, String.raw`\brefund\b`).test(text);
 
   const received =
-    !negated("received").test(text) &&
-    !negated("reached").test(text) &&
-    !refundDeniedByDeterminer(text, /\b(?:received|reached)\b/i) &&
-    (sameSentence(String.raw`\brefund\b`, String.raw`\b(?:reached|received)\b`).test(text) ||
-      sameSentence(
-        String.raw`\bconfirm(?:ing|ed)?\b`,
-        String.raw`\brefund\b`,
-        String.raw`\breached\b`,
-      ).test(text));
+    hasCompletedRefundWording(text) ||
+    (!negated("received").test(text) &&
+      !negated("reached").test(text) &&
+      !refundDeniedByDeterminer(text, /\b(?:received|reached)\b/i) &&
+      (sameSentence(String.raw`\brefund\b`, String.raw`\b(?:reached|received)\b`).test(text) ||
+        sameSentence(
+          String.raw`\bconfirm(?:ing|ed)?\b`,
+          String.raw`\brefund\b`,
+          String.raw`\breached\b`,
+        ).test(text)));
 
   const issued =
     !negated("issued").test(text) &&
@@ -841,7 +868,7 @@ export const assessRefundState = (text: string): RefundStateAssessment => {
                 : "unknown";
   const relativePeriods = extractRelativePeriods(text);
   return {
-    isRefund: REFUND_CUE.test(text),
+    isRefund: REFUND_CUE.test(text) || received,
     stage,
     failureAsserted: assertsPresentFailure(text),
     amount: selectRefundTotal(text),

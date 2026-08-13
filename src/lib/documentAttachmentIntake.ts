@@ -17,8 +17,18 @@
 // read locally in this browser tab, exactly like the existing photo/file
 // intake paths.
 import { getAttachmentUnsupportedMessage, classifyFileForIntake } from "./fileIntakeAccept";
-import { combineOcrTexts, type OcrTextPart } from "./photoOcr";
+import {
+  combineOcrTexts,
+  isOcrResultUnreliable,
+  type OcrTextPart,
+} from "./photoOcr";
 import { getFileTooLargeMessage, isFileWithinSizeLimit } from "./fileSizeLimit";
+import type { DocumentFileTextSegment } from "./documentFileText";
+import type {
+  SourceDocument,
+  SourceExtractionMethod,
+  SourceSegment,
+} from "./sourceProvenance";
 
 // "docx" and "pdf" are their own kinds (Document File Support v1) rather
 // than being folded into "text" - they go through a different local reader
@@ -37,6 +47,7 @@ export type AttachedFile = {
   extractedText?: string;
   confidence?: number;
   warnings: string[];
+  segments?: SourceSegment[];
   errorMessage?: string;
 };
 
@@ -187,6 +198,118 @@ export const buildAttachedFilesCombinedText = (files: AttachedFile[]): string =>
 
   return combineOcrTexts(parts);
 };
+
+export const buildDocumentFileSegments = (
+  documentId: string,
+  segments: readonly DocumentFileTextSegment[],
+): SourceSegment[] =>
+  segments.map((segment) => {
+    if (segment.pageNumber !== undefined) {
+      return {
+        id: `${documentId}-page-${segment.pageNumber}`,
+        kind: "page",
+        order: segment.order,
+        pageNumber: segment.pageNumber,
+        text: segment.text,
+      };
+    }
+
+    return {
+      id: `${documentId}-segment-${segment.order}`,
+      kind: "document",
+      order: segment.order,
+      text: segment.text,
+    };
+  });
+
+const getDisplayName = (file: File): string =>
+  file.name.split(/[\\/]/).pop()?.trim() || "Unnamed document";
+
+const getExtractionMethod = (file: AttachedFile): SourceExtractionMethod => {
+  switch (file.kind) {
+    case "image":
+      return "local_ocr";
+    case "text":
+      return "browser_text";
+    case "docx":
+      return "docx_text";
+    case "pdf":
+      return "pdf_text";
+    default:
+      return "unavailable";
+  }
+};
+
+const buildFallbackSegments = (file: AttachedFile, text: string): SourceSegment[] => {
+  if (!text) {
+    return [];
+  }
+
+  if (file.kind === "image") {
+    return [
+      {
+        id: `${file.id}-photo-1`,
+        kind: "photo",
+        order: 1,
+        photoNumber: 1,
+        text,
+      },
+    ];
+  }
+
+  return [
+    {
+      id: `${file.id}-segment-1`,
+      kind: "document",
+      order: 1,
+      text,
+    },
+  ];
+};
+
+/**
+ * Preserve the attachment records as typed local source documents while the
+ * existing combined-text representation continues unchanged. File bytes are
+ * never copied into this model.
+ */
+export const buildSourceDocuments = (
+  files: readonly AttachedFile[],
+): SourceDocument[] =>
+  files.map((file, index) => {
+    const extractedText = file.extractedText?.trim() ?? "";
+    const unavailable = file.status !== "read" || !extractedText;
+    const reviewRequired =
+      !unavailable &&
+      file.kind === "image" &&
+      isOcrResultUnreliable(extractedText, file.confidence);
+    const warnings = file.errorMessage
+      ? [...file.warnings, file.errorMessage]
+      : [...file.warnings];
+
+    return {
+      id: file.id,
+      displayName: getDisplayName(file.file),
+      intakeType:
+        file.kind === "image"
+          ? "photo"
+          : file.kind === "text"
+            ? "text_file"
+            : file.kind,
+      extractionMethod: getExtractionMethod(file),
+      order: index + 1,
+      extractedText,
+      warnings,
+      confidence: file.confidence,
+      reviewState: unavailable
+        ? "unavailable"
+        : reviewRequired
+          ? "review_required"
+          : "confirmed",
+      segments: file.segments
+        ? file.segments.map((segment) => ({ ...segment }))
+        : buildFallbackSegments(file, extractedText),
+    };
+  });
 
 // Combines whatever the person typed in the paste box with whatever text the
 // attached files produced. Never bypasses the normal check flow - this is

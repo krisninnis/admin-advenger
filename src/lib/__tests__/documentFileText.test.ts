@@ -123,6 +123,27 @@ describe("extractPdfText", () => {
       expect(result.text).toContain("Page one text");
       expect(result.text).toContain("Page two text");
       expect(result.text.indexOf("Page one")).toBeLessThan(result.text.indexOf("Page two"));
+      expect(result.segments).toEqual([
+        { order: 1, pageNumber: 1, text: "Page one text" },
+        { order: 2, pageNumber: 2, text: "Page two text" },
+      ]);
+    }
+  });
+
+  it("preserves empty page positions without inventing selectable text", async () => {
+    getDocumentMock.mockReturnValue({
+      promise: Promise.resolve(makeFakePdfDocument(["Page one text", "", "Page three text"])),
+    });
+
+    const result = await extractPdfText(makeFile("letter.pdf"));
+
+    expect(result.status).toBe("success");
+    if (result.status === "success") {
+      expect(result.segments).toEqual([
+        { order: 1, pageNumber: 1, text: "Page one text" },
+        { order: 2, pageNumber: 2, text: "" },
+        { order: 3, pageNumber: 3, text: "Page three text" },
+      ]);
     }
   });
 

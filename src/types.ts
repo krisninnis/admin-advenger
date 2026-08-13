@@ -1,5 +1,6 @@
 import type { DecisionResult } from "./lib/decisionEngine/types";
 import type { CareerSupportPack } from "./lib/careerSupportPack";
+import type { SourceDocument } from "./lib/sourceProvenance";
 import type {
   DocumentStatus,
   ExtractedDate,
@@ -72,6 +73,11 @@ export type AdminItem = {
   title: string;
   sourceType: SourceType;
   rawText: string;
+  /**
+   * Optional structured source records retained beside compatibility rawText.
+   * They contain extracted text and provenance metadata, never original bytes.
+   */
+  sourceDocuments?: readonly SourceDocument[];
   createdAt: string;
   analysedAt?: string;
   userQuestion?: string;

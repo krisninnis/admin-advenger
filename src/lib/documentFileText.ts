@@ -24,8 +24,19 @@ import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
+export type DocumentFileTextSegment = {
+  order: number;
+  text: string;
+  pageNumber?: number;
+};
+
 export type DocumentFileReadResult =
-  | { status: "success"; text: string; warnings: string[] }
+  | {
+      status: "success";
+      text: string;
+      warnings: string[];
+      segments: DocumentFileTextSegment[];
+    }
   | { status: "no_text"; message: string }
   | { status: "failed"; message: string };
 
@@ -69,7 +80,12 @@ export const extractDocxText = async (file: File): Promise<DocumentFileReadResul
       return { status: "no_text", message: DOCX_NO_TEXT_MESSAGE };
     }
 
-    return { status: "success", text, warnings };
+    return {
+      status: "success",
+      text,
+      warnings,
+      segments: [{ order: 1, text }],
+    };
   } catch {
     return { status: "failed", message: DOCX_READ_FAILED_MESSAGE };
   }
@@ -94,7 +110,7 @@ export const extractPdfText = async (file: File): Promise<DocumentFileReadResult
     const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
     const pdfDocument = await loadingTask.promise;
 
-    const pageTexts: string[] = [];
+    const segments: DocumentFileTextSegment[] = [];
 
     for (let pageNumber = 1; pageNumber <= pdfDocument.numPages; pageNumber += 1) {
       // Sequential by design - pages must stay in order, and PDF parsing is
@@ -109,16 +125,20 @@ export const extractPdfText = async (file: File): Promise<DocumentFileReadResult
         .join(" ")
         .trim();
 
-      pageTexts.push(pageText);
+      segments.push({ order: pageNumber, pageNumber, text: pageText });
     }
 
-    const text = pageTexts.filter((pageText) => pageText.length > 0).join("\n\n").trim();
+    const text = segments
+      .map((segment) => segment.text)
+      .filter((pageText) => pageText.length > 0)
+      .join("\n\n")
+      .trim();
 
     if (!text) {
       return { status: "no_text", message: PDF_NO_SELECTABLE_TEXT_MESSAGE };
     }
 
-    return { status: "success", text, warnings: [] };
+    return { status: "success", text, warnings: [], segments };
   } catch {
     return { status: "failed", message: PDF_READ_FAILED_MESSAGE };
   }

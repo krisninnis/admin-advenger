@@ -366,6 +366,7 @@ export type FrontDoorRouteAction =
       /** Defaults preserve the original paste-box behaviour for older callers. */
       readonly sourceTitle?: string;
       readonly sourceType?: FrontDoorSubmissionSource["sourceType"];
+      readonly sourceDocuments?: FrontDoorSubmissionSource["sourceDocuments"];
       readonly snapshot?: FrontDoorInputSnapshot;
     }
   | { readonly type: "choice_selected"; readonly choiceId: FrontDoorChoiceId }
@@ -397,6 +398,7 @@ export const frontDoorRouteReducer = (
           acceptedText: text,
           sourceTitle: action.sourceTitle ?? "Pasted admin text",
           sourceType: action.sourceType ?? "email",
+          sourceDocuments: action.sourceDocuments,
         },
         snapshot: action.snapshot,
         view: resolveFrontDoorRouteView(text),

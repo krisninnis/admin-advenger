@@ -63,6 +63,25 @@ const sampleItem: AdminItem = {
   analysedAt: now,
 };
 
+const sampleSourceDocument = {
+  id: "pasted-text-1",
+  displayName: "Pasted admin text",
+  intakeType: "pasted_text" as const,
+  extractionMethod: "user_text" as const,
+  order: 1,
+  extractedText: sampleItem.rawText,
+  warnings: [] as string[],
+  reviewState: "confirmed" as const,
+  segments: [
+    {
+      id: "pasted-text-1-segment-1",
+      kind: "document" as const,
+      order: 1,
+      text: sampleItem.rawText,
+    },
+  ],
+};
+
 const sampleFinding: AdminFinding = {
   id: "finding-storage-test",
   itemId: sampleItem.id,
@@ -163,6 +182,53 @@ describe("AdminAvenger storage safety", () => {
     expect(loadedState.impactEntries[0]?.amount).toBe(42.99);
     expect(loadedState.impactEntries[0]?.proofImageName).toBe("refund-proof.png");
     expect(loadedState.impactEntries[0]?.proofImageDataUrl).toBeUndefined();
+  });
+
+  it("round trips validated source documents while legacy items remain valid", () => {
+    const state = sampleState();
+    state.adminItems = [
+      { ...sampleItem, sourceDocuments: [sampleSourceDocument] },
+      { ...sampleItem, id: "legacy-item" },
+    ];
+
+    expect(saveAdminAvengerState(state).ok).toBe(true);
+    const loadedState = loadSavedAdminAvengerState(emptyFallback());
+
+    expect(loadedState.adminItems[0]?.sourceDocuments).toEqual([sampleSourceDocument]);
+    expect(loadedState.adminItems[1]?.sourceDocuments).toBeUndefined();
+  });
+
+  it.each([
+    { label: "unknown review state", source: { ...sampleSourceDocument, reviewState: "trusted" } },
+    { label: "invalid confidence", source: { ...sampleSourceDocument, confidence: -1 } },
+    { label: "malformed segment", source: { ...sampleSourceDocument, segments: [{ id: "bad" }] } },
+  ])("omits $label from loaded items rather than trusting it", ({ source }) => {
+    localStorage.setItem(
+      ADMIN_AVENGER_STORAGE_KEY,
+      JSON.stringify({ ...sampleState(), adminItems: [{ ...sampleItem, sourceDocuments: [source] }] }),
+    );
+
+    const [loadedItem] = loadSavedAdminAvengerState(emptyFallback()).adminItems;
+
+    expect(loadedItem?.id).toBe(sampleItem.id);
+    expect(loadedItem?.sourceDocuments).toBeUndefined();
+  });
+
+  it("does not serialize extra File objects attached to otherwise valid source metadata", () => {
+    const sourceWithFile = {
+      ...sampleSourceDocument,
+      file: new File(["private binary"], "private.txt"),
+    };
+    const state = sampleState();
+    state.adminItems = [
+      { ...sampleItem, sourceDocuments: [sourceWithFile] },
+    ];
+
+    expect(saveAdminAvengerState(state).ok).toBe(true);
+
+    const stored = localStorage.getItem(ADMIN_AVENGER_STORAGE_KEY) ?? "";
+    expect(stored).not.toContain("private binary");
+    expect(stored).not.toContain('"file"');
   });
 
   it("loads recoverable legacy state when the main saved state is malformed", () => {

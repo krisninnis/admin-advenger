@@ -72,6 +72,7 @@ import type {
   SourceType,
   EmailSafetyAssessment,
 } from "./types";
+import type { SourceDocument } from "./lib/sourceProvenance";
 import type { OutcomeConfirmationValues } from "./components/OutcomeConfirmation";
 
 const findingStatusByCaseStatus: Record<AdminCaseStatus, FindingStatus> = {
@@ -444,6 +445,7 @@ function App() {
     openCaseFile: boolean,
     setPreviewResult: (result: HomeAnalysisResult | undefined) => void = setHomeResult,
     userQuestion?: string,
+    sourceDocuments?: readonly SourceDocument[],
   ): Promise<HomeAnalysisResult | undefined> => {
     setPreviewResult(undefined);
     const now = new Date().toISOString();
@@ -452,6 +454,7 @@ function App() {
       title,
       sourceType,
       rawText,
+      sourceDocuments,
       createdAt: now,
       analysedAt: now,
       userQuestion,
@@ -521,8 +524,17 @@ function App() {
     sourceType: SourceType,
     rawText: string,
     userQuestion?: string,
+    sourceDocuments?: readonly SourceDocument[],
   ): Promise<boolean> => {
-    const result = await runAnalysis(title, sourceType, rawText, false, setHomeResult, userQuestion);
+    const result = await runAnalysis(
+      title,
+      sourceType,
+      rawText,
+      false,
+      setHomeResult,
+      userQuestion,
+      sourceDocuments,
+    );
     return Boolean(result);
   };
 

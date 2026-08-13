@@ -307,10 +307,14 @@ describe("simplified photo scan review workflow", () => {
   });
 
   it("camera capture, selected uploads, and initial image attachments share the same scanner path", () => {
-    expect(photoCapturePanelSource).toContain("await preparePhotoForReview(file)");
+    expect(photoCapturePanelSource).toContain('await preparePhotoForReview(file, "camera")');
     expect(photoCapturePanelSource).toContain("const handleUploadExisting = (file: File)");
+    expect(photoCapturePanelSource).toContain('void preparePhotoForReview(file, "upload")');
     expect(photoCapturePanelSource).toContain("initialPhotoFile");
-    expect(photoCapturePanelSource).toContain("void preparePhotoForReview(initialPhotoFile)");
+    expect(photoCapturePanelSource).toContain(
+      'void preparePhotoForReview(initialPhotoFile, "upload")',
+    );
+    expect(photoCapturePanelSource).toContain("origin: sourceOriginRef.current");
     expect(homeViewSource).toContain("setPendingPhotoFile(file)");
     expect(homeViewSource).toContain("setShowPhotoCapturePanel(true)");
   });

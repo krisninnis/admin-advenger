@@ -77,6 +77,8 @@ import {
   ATTACHMENT_READ_FAILED_MESSAGE,
   buildAttachedFilesCombinedText,
   buildCheckSourceTitle,
+  buildDocumentFileSegments,
+  buildSourceDocuments,
   combineTypedTextWithAttachments,
   createAttachedFile,
   getFilesFromDroppedDataTransfer,
@@ -133,6 +135,12 @@ import type {
   EmailSafetyAssessment,
   SourceType,
 } from "../types";
+import {
+  createPhotoSourceDocument,
+  createSourceDocumentId,
+  createTextSourceDocument,
+  type SourceDocument,
+} from "../lib/sourceProvenance";
 import type { GuidedDraftToSave } from "../lib/guidedDraftSave";
 import { submitAcceptedText } from "../lib/submissionHandoff";
 
@@ -146,7 +154,13 @@ type HomeViewProps = {
   result?: HomeAnalysisResult;
   analysisStatus: ServiceStatus;
   analysisError?: string;
-  onCheck: (title: string, sourceType: SourceType, rawText: string, userQuestion?: string) => Promise<boolean>;
+  onCheck: (
+    title: string,
+    sourceType: SourceType,
+    rawText: string,
+    userQuestion?: string,
+    sourceDocuments?: readonly SourceDocument[],
+  ) => Promise<boolean>;
   onSaveCase: (caseId: string, draft?: GuidedDraftToSave) => void;
   onSaveRecord: (caseId: string) => void;
   onClearResult: () => void;
@@ -550,6 +564,7 @@ export function HomeView({
   const [ocrWarnings, setOcrWarnings] = useState<string[]>([]);
   const [ocrSectionWarnings, setOcrSectionWarnings] = useState<string[]>([]);
   const [ocrSourceMode, setOcrSourceMode] = useState<"single" | "multi">("single");
+  const [reviewedPhotoSources, setReviewedPhotoSources] = useState<SourceDocument[]>([]);
   const [photoCaptureIntent, setPhotoCaptureIntent] = useState<PhotoCaptureIntent>("replace");
   const [inputResetKey, setInputResetKey] = useState(0);
   const [aiSettings, setAiSettings] = useState(loadAiProviderSettings);
@@ -928,6 +943,8 @@ export function HomeView({
     setOcrError("");
     setOcrConfidence(undefined);
     setOcrWarnings([]);
+    setOcrSectionWarnings([]);
+    setReviewedPhotoSources([]);
     setAiStatus("idle");
     setAiError("");
     setAiFallbackHint("");
@@ -959,6 +976,8 @@ export function HomeView({
     setOcrError("");
     setOcrConfidence(undefined);
     setOcrWarnings([]);
+    setOcrSectionWarnings([]);
+    setReviewedPhotoSources([]);
     setAiError("");
     setAiFallbackHint("");
     setAiExtraction(undefined);
@@ -1011,6 +1030,7 @@ export function HomeView({
         sourceType,
         acceptedText: reconstructedText,
         userQuestion,
+        sourceDocuments: source.sourceDocuments,
         onCheck,
       });
 
@@ -1039,6 +1059,7 @@ export function HomeView({
         sourceType,
         acceptedText: textToExtract,
         userQuestion,
+        sourceDocuments: source.sourceDocuments,
         onCheck,
       });
     }
@@ -1053,6 +1074,7 @@ export function HomeView({
       sourceType: source.sourceType,
       acceptedText: source.acceptedText,
       userQuestion,
+      sourceDocuments: source.sourceDocuments,
       onCheck,
     });
 
@@ -1086,6 +1108,7 @@ export function HomeView({
         text: source.acceptedText,
         sourceTitle: source.sourceTitle,
         sourceType: source.sourceType,
+        sourceDocuments: source.sourceDocuments,
         snapshot,
       });
       setInputMessage("");
@@ -1159,11 +1182,41 @@ export function HomeView({
       return;
     }
 
+    const attachmentSources =
+      selectedInput === "paste" ? buildSourceDocuments(attachedFiles) : [];
+    const directTextSource =
+      selectedInput === "paste" && rawText.trim().length > 0
+        ? createTextSourceDocument({
+            id: createSourceDocumentId("pasted-text"),
+            displayName: "Pasted admin text",
+            intakeType: "pasted_text",
+            extractionMethod: "user_text",
+            order: 1,
+            text: rawText.trim(),
+          })
+        : selectedInput === "file" && rawText.trim().length > 0
+          ? createTextSourceDocument({
+              id: createSourceDocumentId("uploaded-text"),
+              displayName: uploadedFileName || "Uploaded text file",
+              intakeType: "text_file",
+              extractionMethod: "browser_text",
+              order: 1,
+              text: rawText.trim(),
+            })
+          : undefined;
+    const sourceDocuments = directTextSource
+      ? [
+          directTextSource,
+          ...attachmentSources.map((source) => ({ ...source, order: source.order + 1 })),
+        ]
+      : attachmentSources;
+
     await submitFrontDoorSource(
       {
         acceptedText: textToCheck,
         sourceTitle: checkSourceTitle,
         sourceType: "email",
+        sourceDocuments: sourceDocuments.length > 0 ? sourceDocuments : undefined,
       },
       currentInputSnapshot,
     );
@@ -1235,6 +1288,7 @@ export function HomeView({
     setOcrWarnings([]);
     setOcrSectionWarnings([]);
     setOcrSourceMode("single");
+    setReviewedPhotoSources([]);
     setUploadNote("");
   };
 
@@ -1296,6 +1350,7 @@ export function HomeView({
       setOcrConfidence(undefined);
       setOcrWarnings([]);
       setOcrSectionWarnings([]);
+      setReviewedPhotoSources([]);
     }
 
     const oversizedPhoto = photos.find((photo) => !isFileWithinSizeLimit(photo.file));
@@ -1373,6 +1428,23 @@ export function HomeView({
         results.length > 1 || isAppend
           ? Array.from(new Set([...(isAppend ? ocrWarnings : []), ...labelledWarnings]))
           : results[0]?.warnings ?? [];
+      const firstSourceOrder = isAppend ? reviewedPhotoSources.length + 1 : 1;
+      const newPhotoSources = results.map((result, index) => {
+        const photo = usablePhotos[index];
+        const sourceId = createSourceDocumentId("reviewed-photo");
+        return createPhotoSourceDocument({
+          id: sourceId,
+          displayName: photo.sourceFileName ?? photo.file.name,
+          intakeType: photo.origin === "camera" ? "camera_photo" : "photo",
+          order: firstSourceOrder + index,
+          text: result.text,
+          confidence: result.confidence,
+          warnings: result.warnings,
+          reviewState: isOcrResultUnreliable(result.text, result.confidence)
+            ? "review_required"
+            : "confirmed",
+        });
+      });
 
       setPhotoMetadata(results[0]?.metadata);
       setOcrConfidence(
@@ -1386,6 +1458,9 @@ export function HomeView({
       setOcrProgress(1);
       setOcrText(combinedText);
       setOcrOriginalText(combinedText);
+      setReviewedPhotoSources((current) =>
+        isAppend ? [...current, ...newPhotoSources] : newPhotoSources,
+      );
       setOcrStatus("success");
       setPhotoCaptureIntent("replace");
     } catch (error) {
@@ -1475,6 +1550,35 @@ export function HomeView({
     setAiFallbackHint("");
     onClearResult();
 
+    const originalWasEdited = cleanedText !== ocrOriginalText.trim();
+    let acceptedPhotoSources = reviewedPhotoSources;
+
+    if (reviewedPhotoSources.length === 1) {
+      acceptedPhotoSources = reviewedPhotoSources.map((source) => ({
+        ...source,
+        extractedText: cleanedText,
+        segments: source.segments.map((segment) => ({ ...segment, text: cleanedText })),
+      }));
+    } else if (reviewedPhotoSources.length > 1 && originalWasEdited) {
+      const reviewWarning =
+        "The combined reviewed text was edited; check each photo before relying on its original OCR text.";
+      acceptedPhotoSources = [
+        ...reviewedPhotoSources.map((source) => ({
+          ...source,
+          warnings: Array.from(new Set([...source.warnings, reviewWarning])),
+          reviewState: "review_required" as const,
+        })),
+        createTextSourceDocument({
+          id: createSourceDocumentId("reviewed-photo-text"),
+          displayName: "Reviewed photo text",
+          intakeType: "pasted_text",
+          extractionMethod: "user_text",
+          order: reviewedPhotoSources.length + 1,
+          text: cleanedText,
+        }),
+      ];
+    }
+
     // Reviewed photo text is a submission like any other. It used to go
     // straight to analysis or straight to local extraction, which meant a
     // sentence a person had typed over the top of unreadable photo text could
@@ -1484,6 +1588,8 @@ export function HomeView({
         acceptedText: cleanedText,
         sourceTitle: "Photo text (reviewed before checking)",
         sourceType: "email",
+        sourceDocuments:
+          acceptedPhotoSources.length > 0 ? acceptedPhotoSources : undefined,
       },
       {
         inputMode: "paste",
@@ -1699,6 +1805,7 @@ export function HomeView({
                       status: "read",
                       extractedText: result.text,
                       warnings: result.warnings,
+                      segments: buildDocumentFileSegments(entry.id, result.segments),
                     }
                   : item,
               ),

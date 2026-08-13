@@ -2,6 +2,7 @@ import type { AdminCase, AdminDraft, AdminFinding, AdminItem, ImpactEntry } from
 import { AI_PROVIDER_SETTINGS_STORAGE_KEY } from "./aiProviderSettings";
 import { deriveImpactFromCase } from "./impactLedger";
 import { INBOX_SCAN_SETTINGS_STORAGE_KEY } from "./inboxScanStorage";
+import { hydrateSourceDocuments } from "./sourceProvenance";
 import { TERMS_ACCEPTANCE_STORAGE_KEY } from "./termsAcceptance";
 import { FEEDBACK_STORAGE_KEY, VALIDATION_STORAGE_KEY } from "./validationStorage";
 
@@ -78,7 +79,16 @@ const hasStringId = (value: unknown): value is Record<string, unknown> =>
   isRecord(value) && typeof value.id === "string";
 
 const hydrateItems = (value: unknown, fallback: AdminItem[]) =>
-  asArray<unknown>(value, fallback).filter(hasStringId) as AdminItem[];
+  asArray<unknown>(value, fallback)
+    .filter(hasStringId)
+    .map((item) => {
+      const sourceDocuments = hydrateSourceDocuments(item.sourceDocuments);
+      const { sourceDocuments: _untrustedSourceDocuments, ...rest } = item;
+      return {
+        ...rest,
+        ...(sourceDocuments ? { sourceDocuments } : {}),
+      };
+    }) as AdminItem[];
 
 const hydrateFindings = (value: unknown, fallback: AdminFinding[]) =>
   asArray<unknown>(value, fallback).filter(hasStringId) as AdminFinding[];
@@ -126,6 +136,14 @@ export const sanitizeStoredAdminAvengerState = (
   state: StoredAdminAvengerState,
 ): StoredAdminAvengerState => ({
   ...state,
+  adminItems: state.adminItems.map((item) => {
+    const sourceDocuments = hydrateSourceDocuments(item.sourceDocuments);
+    const { sourceDocuments: _untrustedSourceDocuments, ...rest } = item;
+    return {
+      ...rest,
+      ...(sourceDocuments ? { sourceDocuments } : {}),
+    } as AdminItem;
+  }),
   impactEntries: state.impactEntries.map((entry) => ({
     ...entry,
     proofImageDataUrl: undefined,

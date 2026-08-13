@@ -277,6 +277,38 @@ describe("state model", () => {
     expect(next.originalInput).toBe("My father needs care.");
   });
 
+  it("carries structured sources through an interrupting route without using them to route", () => {
+    const sourceDocuments = [
+      {
+        id: "attachment-1",
+        displayName: "care-note.txt",
+        intakeType: "text_file" as const,
+        extractionMethod: "browser_text" as const,
+        order: 1,
+        extractedText: "My father needs care.",
+        warnings: [],
+        reviewState: "confirmed" as const,
+        segments: [
+          {
+            id: "attachment-1-segment-1",
+            kind: "document" as const,
+            order: 1,
+            text: "My father needs care.",
+          },
+        ],
+      },
+    ];
+    const next = frontDoorRouteReducer(initialFrontDoorRouteState, {
+      type: "input_received",
+      text: "My father needs care.",
+      sourceTitle: "care-note.txt",
+      sourceDocuments,
+    });
+
+    expect(next.view?.kind).toBe("confirmation");
+    expect(next.source?.sourceDocuments).toBe(sourceDocuments);
+  });
+
   it("records a selection without opening anything", () => {
     const shown = frontDoorRouteReducer(initialFrontDoorRouteState, {
       type: "input_received",

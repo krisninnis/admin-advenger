@@ -15,6 +15,24 @@ const { extractAdminFactsWithOllamaMock } = vi.hoisted(() => ({
   extractAdminFactsWithOllamaMock: vi.fn(),
 }));
 
+vi.mock("../../lib/photoIntake", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../lib/photoIntake")>();
+  return { ...actual, getImageDimensions: vi.fn().mockResolvedValue(undefined) };
+});
+
+vi.mock("../../lib/documentImageQuality", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../lib/documentImageQuality")>();
+  return {
+    ...actual,
+    assessDocumentImageQuality: vi.fn().mockResolvedValue(undefined),
+    getVisibleDocumentQualityWarningMessagesAfterOcr: vi.fn().mockReturnValue([]),
+  };
+});
+
+const { readTextFromImageMock } = vi.hoisted(() => ({
+  readTextFromImageMock: vi.fn(),
+}));
+
 vi.mock("../../services/ollamaExtractionService", () => ({
   extractAdminFactsWithOllama: extractAdminFactsWithOllamaMock,
   OllamaExtractionError: class OllamaExtractionError extends Error {
@@ -28,6 +46,74 @@ vi.mock("../../services/ollamaExtractionService", () => ({
   },
 }));
 
+vi.mock("../../lib/photoOcr", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../lib/photoOcr")>();
+  return { ...actual, readTextFromImage: readTextFromImageMock };
+});
+
+vi.mock("../../components/PhotoCapturePanel", () => ({
+  PhotoCapturePanel: ({
+    onUsePhotos,
+  }: {
+    onUsePhotos: (photos: Array<{
+      file: File;
+      section: "full_page" | "additional";
+      label: string;
+      warnings: string[];
+      isDocumentScan: boolean;
+      sourceFileName: string;
+      origin: "camera" | "upload";
+    }>) => void;
+  }) => (
+    <div>
+      <button
+        type="button"
+        onClick={() => onUsePhotos([
+          {
+            file: new File(["photo"], "uploaded-letter.jpg", { type: "image/jpeg" }),
+            section: "full_page",
+            label: "Main photo",
+            warnings: ["Keep the whole page visible."],
+            isDocumentScan: true,
+            sourceFileName: "uploaded-letter.jpg",
+            origin: "upload",
+          },
+        ])}
+      >
+        Use test uploaded photo
+      </button>
+      <button
+        type="button"
+        onClick={() => onUsePhotos([{
+          file: new File(["photo-a"], "camera-photo.jpg", { type: "image/jpeg" }),
+          section: "full_page",
+          label: "Main photo",
+          warnings: [],
+          isDocumentScan: true,
+          sourceFileName: "camera-photo.jpg",
+          origin: "camera",
+        }])}
+      >
+        Use test camera photo
+      </button>
+      <button
+        type="button"
+        onClick={() => onUsePhotos([{
+          file: new File(["photo-b"], "close-up.jpg", { type: "image/jpeg" }),
+          section: "additional",
+          label: "Close-up photo",
+          warnings: ["Close-up warning"],
+          isDocumentScan: true,
+          sourceFileName: "close-up.jpg",
+          origin: "upload",
+        }])}
+      >
+        Use test close-up photo
+      </button>
+    </div>
+  ),
+}));
+
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -38,6 +124,7 @@ import {
   ATTACHMENT_STATUS_LABELS,
 } from "../../lib/documentAttachmentIntake";
 import type { SourceType } from "../../types";
+import type { SourceDocument } from "../../lib/sourceProvenance";
 
 // Front-Door Intent Routing v1, UI wiring slice.
 //
@@ -51,6 +138,14 @@ afterEach(cleanup);
 beforeEach(() => {
   window.localStorage.clear();
   extractAdminFactsWithOllamaMock.mockReset();
+  readTextFromImageMock.mockReset();
+  readTextFromImageMock.mockImplementation(async (file: File) => ({
+    text: file.name === "close-up.jpg"
+      ? "Close-up account reference ABC123"
+      : "Your account balance is GBP 12.00 and needs checking.",
+    confidence: file.name === "close-up.jpg" ? 38 : 88,
+    warnings: file.name === "close-up.jpg" ? ["OCR close-up warning"] : ["OCR main warning"],
+  }));
 });
 
 const defaultInboxScanSettings = {
@@ -85,6 +180,7 @@ type CheckHandler = (
   sourceType: SourceType,
   rawText: string,
   userQuestion?: string,
+  sourceDocuments?: readonly SourceDocument[],
 ) => Promise<boolean>;
 
 const useLocalOllamaMode = () => {
@@ -294,10 +390,23 @@ describe("the ordinary message override keeps what was accepted", () => {
       expect(onCheck).toHaveBeenCalled();
     });
 
-    const [title, sourceType, rawText] = onCheck.mock.calls[0] ?? [];
+    const [title, sourceType, rawText, question, sourceDocuments] = onCheck.mock.calls[0] ?? [];
     expect(rawText).toBe(CARE_SENTENCE);
     expect(title).toBe("Pasted admin text");
     expect(sourceType).toBe("email");
+    expect(question).toBeUndefined();
+    expect(sourceDocuments).toHaveLength(1);
+    expect(sourceDocuments?.[0]).toMatchObject({
+      intakeType: "pasted_text",
+      extractionMethod: "user_text",
+      extractedText: CARE_SENTENCE,
+      reviewState: "confirmed",
+    });
+    expect(sourceDocuments?.[0]?.segments[0]).toMatchObject({
+      kind: "document",
+      text: CARE_SENTENCE,
+    });
+    expect(sourceDocuments?.[0]).not.toHaveProperty("confidence");
   });
 
   it("keeps an attached document's title rather than relabelling it", async () => {
@@ -330,6 +439,127 @@ describe("the ordinary message override keeps what was accepted", () => {
     expect(rawText).toContain(CARE_SENTENCE);
     expect(rawText).toContain("note-from-mum.txt");
     expect(screen.queryByText(CARE_QUESTION)).toBeNull();
+  });
+
+  it("keeps typed evidence, an attachment, and the optional question separate", async () => {
+    const rendered = renderHomeView();
+    const user = userEvent.setup();
+    const typedText = "Please explain the attached notice.";
+    const question = "Is there a deadline?";
+
+    await user.type(screen.getByLabelText(PASTE_LABEL), typedText);
+    await user.type(screen.getByLabelText("What would you like to know about this?"), question);
+    await user.upload(
+      screen.getByLabelText(ATTACHMENT_CHOOSE_BUTTON_LABEL),
+      new File([DOCUMENT_SENTENCE], "notice.txt", { type: "text/plain" }),
+    );
+    await screen.findByText(ATTACHMENT_STATUS_LABELS.read, { exact: false });
+    await user.click(screen.getByRole("button", { name: CHECK_BUTTON }));
+
+    await waitFor(() => expect(rendered.onCheck).toHaveBeenCalled());
+    const [, , rawText, submittedQuestion, sourceDocuments] = rendered.onCheck.mock.calls[0] ?? [];
+
+    expect(rawText).toContain(typedText);
+    expect(rawText).toContain(DOCUMENT_SENTENCE);
+    expect(submittedQuestion).toBe(question);
+    expect(sourceDocuments).toHaveLength(2);
+    expect(sourceDocuments?.map(({ intakeType }) => intakeType)).toEqual([
+      "pasted_text",
+      "text_file",
+    ]);
+    expect(sourceDocuments?.[0]?.extractedText).toBe(typedText);
+    expect(sourceDocuments?.[1]).toMatchObject({
+      displayName: "notice.txt",
+      extractedText: DOCUMENT_SENTENCE,
+    });
+    expect(JSON.stringify(sourceDocuments)).not.toContain(question);
+  });
+
+  it("creates structured identity for the standalone text-file path", async () => {
+    const rendered = renderHomeView();
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("button", { name: /Upload a file/i }));
+    const quickUpload = rendered.container.querySelector<HTMLInputElement>(
+      'input[type="file"]:not([multiple])',
+    );
+    expect(quickUpload).not.toBeNull();
+    await user.upload(
+      quickUpload as HTMLInputElement,
+      new File([DOCUMENT_SENTENCE], "standalone.txt", { type: "text/plain" }),
+    );
+    await screen.findByText("Text loaded. You can review or edit before checking.");
+    await user.click(screen.getByRole("button", { name: CHECK_BUTTON }));
+
+    await waitFor(() => expect(rendered.onCheck).toHaveBeenCalled());
+    const [, , rawText, , sourceDocuments] = rendered.onCheck.mock.calls[0] ?? [];
+    expect(rawText).toBe(DOCUMENT_SENTENCE);
+    expect(sourceDocuments).toHaveLength(1);
+    expect(sourceDocuments?.[0]).toMatchObject({
+      displayName: "standalone.txt",
+      intakeType: "text_file",
+      extractionMethod: "browser_text",
+      extractedText: DOCUMENT_SENTENCE,
+    });
+  });
+});
+
+describe("reviewed photo provenance", () => {
+  it("carries uploaded-photo OCR confidence and warnings into analysis without a page number", async () => {
+    const rendered = renderHomeView();
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("button", { name: /Take or upload a photo/i }));
+    await user.click(screen.getByRole("button", { name: "Use test uploaded photo" }));
+    await screen.findByRole("button", { name: "Check this text" }, { timeout: 5000 });
+    await user.click(screen.getByRole("button", { name: "Check this text" }));
+
+    await waitFor(() => expect(rendered.onCheck).toHaveBeenCalled());
+    const [, , rawText, , sourceDocuments] = rendered.onCheck.mock.calls[0] ?? [];
+    expect(rawText).toBe("Your account balance is GBP 12.00 and needs checking.");
+    expect(sourceDocuments).toHaveLength(1);
+    expect(sourceDocuments?.[0]).toMatchObject({
+      displayName: "uploaded-letter.jpg",
+      intakeType: "photo",
+      extractionMethod: "local_ocr",
+      confidence: 88,
+      warnings: expect.arrayContaining(["Keep the whole page visible.", "OCR main warning"]),
+      reviewState: "confirmed",
+    });
+    expect(sourceDocuments?.[0]?.segments[0]).toMatchObject({ kind: "photo", photoNumber: 1 });
+    expect(sourceDocuments?.[0]?.segments[0]).not.toHaveProperty("pageNumber");
+  });
+
+  it("keeps multiple reviewed photos independently identifiable and source-specific", async () => {
+    const rendered = renderHomeView();
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("button", { name: /Take or upload a photo/i }));
+    await user.click(screen.getByRole("button", { name: "Use test camera photo" }));
+    await screen.findByRole("button", { name: "Check this text" }, { timeout: 5000 });
+    await user.click(screen.getByRole("button", { name: "Add close-up photo" }));
+    await user.click(screen.getByRole("button", { name: "Use test close-up photo" }));
+    await screen.findByRole("button", { name: "Review or edit the text we could read" });
+    await user.click(screen.getByRole("button", { name: "Review or edit the text we could read" }));
+    await user.click(screen.getByRole("button", { name: "Check corrected text" }));
+
+    await waitFor(() => expect(rendered.onCheck).toHaveBeenCalled());
+    const [, , rawText, , sourceDocuments] = rendered.onCheck.mock.calls[0] ?? [];
+    expect(rawText).toContain("Your account balance is GBP 12.00 and needs checking.");
+    expect(rawText).toContain("Close-up account reference ABC123");
+    expect(sourceDocuments).toHaveLength(2);
+    expect(new Set(sourceDocuments?.map(({ id }) => id)).size).toBe(2);
+    expect(sourceDocuments?.map(({ intakeType }) => intakeType)).toEqual([
+      "camera_photo",
+      "photo",
+    ]);
+    expect(sourceDocuments?.map(({ order }) => order)).toEqual([1, 2]);
+    expect(sourceDocuments?.[0]).toMatchObject({ confidence: 88, reviewState: "confirmed" });
+    expect(sourceDocuments?.[1]).toMatchObject({
+      confidence: 38,
+      reviewState: "review_required",
+      warnings: expect.arrayContaining(["Close-up warning", "OCR close-up warning"]),
+    });
   });
 });
 

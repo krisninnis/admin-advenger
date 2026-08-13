@@ -179,7 +179,7 @@ function DateList({ dates }: { dates: ResultDateView[] }) {
         {items.map((date) => (
           <li key={date.id} className="rounded-lg border border-white/10 bg-slate-950/45 p-3">
             <p className="font-semibold text-white">
-              {date.label}: {date.value}
+              {date.label}: {date.value}{date.time ? ` at ${date.time.value}` : ""}
             </p>
             <p className="mt-1 text-xs leading-5 text-amber-100">
               Check against the original letter. {date.caution}

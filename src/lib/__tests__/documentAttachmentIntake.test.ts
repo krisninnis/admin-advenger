@@ -9,6 +9,7 @@ import {
   ATTACHMENT_READ_FAILED_MESSAGE,
   buildAttachedFilesCombinedText,
   buildCheckSourceTitle,
+  buildSourceDocuments,
   classifyAttachedFileKind,
   combineTypedTextWithAttachments,
   createAttachedFile,
@@ -253,6 +254,139 @@ describe("buildAttachedFilesCombinedText", () => {
 
   it("returns an empty string when nothing has been read yet", () => {
     expect(buildAttachedFilesCombinedText([])).toBe("");
+  });
+});
+
+describe("buildSourceDocuments", () => {
+  it("keeps same-named files distinct, stable, and in attachment order", () => {
+    const files: AttachedFile[] = [
+      {
+        id: "attachment-a",
+        file: makeFile("statement.txt", "text/plain"),
+        kind: "text",
+        status: "read",
+        extractedText: "First statement",
+        warnings: [],
+      },
+      {
+        id: "attachment-b",
+        file: makeFile("statement.txt", "text/plain"),
+        kind: "text",
+        status: "read",
+        extractedText: "Second statement",
+        warnings: [],
+      },
+    ];
+
+    const sources = buildSourceDocuments(files);
+
+    expect(sources.map(({ id, displayName, order }) => ({ id, displayName, order }))).toEqual([
+      { id: "attachment-a", displayName: "statement.txt", order: 1 },
+      { id: "attachment-b", displayName: "statement.txt", order: 2 },
+    ]);
+    expect(sources[0]).not.toHaveProperty("file");
+    expect(buildAttachedFilesCombinedText(files)).toContain("First statement");
+    expect(buildAttachedFilesCombinedText(files)).toContain("Second statement");
+  });
+
+  it("gives text files a document segment without a fake page number", () => {
+    const [source] = buildSourceDocuments([
+      {
+        id: "text-1",
+        file: makeFile("notes.txt", "text/plain"),
+        kind: "text",
+        status: "read",
+        extractedText: "Some notes",
+        warnings: [],
+      },
+    ]);
+
+    expect(source.segments).toEqual([
+      {
+        id: "text-1-segment-1",
+        kind: "document",
+        order: 1,
+        text: "Some notes",
+      },
+    ]);
+    expect(source.segments[0]).not.toHaveProperty("pageNumber");
+  });
+
+  it("retains PDF page identities supplied by the extractor", () => {
+    const [source] = buildSourceDocuments([
+      {
+        id: "pdf-1",
+        file: makeFile("letter.pdf", "application/pdf"),
+        kind: "pdf",
+        status: "read",
+        extractedText: "First page\n\nSecond page",
+        warnings: [],
+        segments: [
+          { id: "pdf-1-page-1", kind: "page", order: 1, pageNumber: 1, text: "First page" },
+          { id: "pdf-1-page-2", kind: "page", order: 2, pageNumber: 2, text: "Second page" },
+        ],
+      },
+    ]);
+
+    expect(source.segments.map(({ id, pageNumber }) => ({ id, pageNumber }))).toEqual([
+      { id: "pdf-1-page-1", pageNumber: 1 },
+      { id: "pdf-1-page-2", pageNumber: 2 },
+    ]);
+  });
+
+  it("retains photo identity, confidence, warnings, and existing OCR review semantics", () => {
+    const warning = "This photo may contain mistakes.";
+    const [uncertain, confident] = buildSourceDocuments([
+      {
+        id: "photo-1",
+        file: makeFile("care-letter.jpg", "image/jpeg"),
+        kind: "image",
+        status: "read",
+        extractedText: "A sufficiently long but uncertain OCR result.",
+        confidence: 30,
+        warnings: [warning],
+      },
+      {
+        id: "photo-2",
+        file: makeFile("care-letter.jpg", "image/jpeg"),
+        kind: "image",
+        status: "read",
+        extractedText: "A clear ordinary OCR result from the document.",
+        confidence: 90,
+        warnings: [],
+      },
+    ]);
+
+    expect(uncertain).toMatchObject({
+      id: "photo-1",
+      confidence: 30,
+      warnings: [warning],
+      reviewState: "review_required",
+      segments: [{ id: "photo-1-photo-1", kind: "photo", photoNumber: 1 }],
+    });
+    expect(confident.reviewState).toBe("confirmed");
+    expect(confident.segments[0]).not.toHaveProperty("pageNumber");
+  });
+
+  it("keeps failed sources explicit and unavailable", () => {
+    const [source] = buildSourceDocuments([
+      {
+        id: "failed-pdf",
+        file: makeFile("broken.pdf", "application/pdf"),
+        kind: "pdf",
+        status: "failed",
+        warnings: [],
+        errorMessage: "Could not read",
+      },
+    ]);
+
+    expect(source).toMatchObject({
+      id: "failed-pdf",
+      extractedText: "",
+      reviewState: "unavailable",
+      warnings: ["Could not read"],
+      segments: [],
+    });
   });
 });
 

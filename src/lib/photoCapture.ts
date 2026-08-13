@@ -24,6 +24,7 @@ export type CapturedPhotoForOcr = {
   warnings?: string[];
   isDocumentScan?: boolean;
   sourceFileName?: string;
+  origin?: "camera" | "upload";
 };
 
 export const CAMERA_PERMISSION_DENIED_MESSAGE =

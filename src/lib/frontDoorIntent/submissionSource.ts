@@ -18,12 +18,15 @@
 // than no question at all.
 
 import type { SourceType } from "../../types";
+import type { SourceDocument } from "../sourceProvenance";
 
 export type FrontDoorSubmissionSource = {
   /** Exactly what was accepted, unmodified. */
   readonly acceptedText: string;
   readonly sourceTitle: string;
   readonly sourceType: SourceType;
+  /** Structured local source records, carried without affecting routing. */
+  readonly sourceDocuments?: readonly SourceDocument[];
 };
 
 /** Which of the three input areas the text came from. */

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { analyseDecisionProblem } from "../decisionEngine/decisionEngine";
 import { submitAcceptedText, type SubmissionCheckFn } from "../submissionHandoff";
+import type { SourceDocument } from "../sourceProvenance";
 
 const FULL_TAX_CODE_NOTICE = `HMRC
 HM Revenue & Customs
@@ -101,6 +102,46 @@ describe("submitAcceptedText", () => {
     });
 
     expect(onCheck).toHaveBeenCalledWith("Pasted admin text", "email", textWithWhitespace, undefined);
+  });
+
+  it("carries structured sources beside compatibility raw text when provided", async () => {
+    const onCheck = makeMockOnCheck();
+    const sourceDocuments: SourceDocument[] = [
+      {
+        id: "attachment-1",
+        displayName: "letter.txt",
+        intakeType: "text_file",
+        extractionMethod: "browser_text",
+        order: 1,
+        extractedText: "Original source text",
+        warnings: [],
+        reviewState: "confirmed",
+        segments: [
+          {
+            id: "attachment-1-segment-1",
+            kind: "document",
+            order: 1,
+            text: "Original source text",
+          },
+        ],
+      },
+    ];
+
+    await submitAcceptedText({
+      sourceTitle: "letter.txt",
+      sourceType: "email",
+      acceptedText: "--- Document file: letter.txt ---\nOriginal source text",
+      sourceDocuments,
+      onCheck,
+    });
+
+    expect(onCheck).toHaveBeenCalledWith(
+      "letter.txt",
+      "email",
+      "--- Document file: letter.txt ---\nOriginal source text",
+      undefined,
+      sourceDocuments,
+    );
   });
 });
 

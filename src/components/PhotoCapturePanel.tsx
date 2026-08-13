@@ -237,7 +237,9 @@ export function PhotoCapturePanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const preparePhotoForReview = async (file: File) => {
+  const sourceOriginRef = useRef<"camera" | "upload">("upload");
+
+  const preparePhotoForReview = async (file: File, origin: "camera" | "upload") => {
     scanRequestIdRef.current += 1;
     const requestId = scanRequestIdRef.current;
 
@@ -252,6 +254,7 @@ export function PhotoCapturePanel({
     setErrorMessage("");
     setStatusMessage(PHOTO_LOADING_MESSAGE);
     sourceFileRef.current = file;
+    sourceOriginRef.current = origin;
     setSourcePreviewUrl(URL.createObjectURL(file));
     dispatch({ type: "photo_loading" });
     await Promise.resolve();
@@ -298,13 +301,13 @@ export function PhotoCapturePanel({
   };
 
   const handleUploadExisting = (file: File) => {
-    void preparePhotoForReview(file);
+    void preparePhotoForReview(file, "upload");
   };
 
   useEffect(() => {
     if (initialPhotoFile && !initialPhotoSeededRef.current) {
       initialPhotoSeededRef.current = true;
-      void preparePhotoForReview(initialPhotoFile);
+      void preparePhotoForReview(initialPhotoFile, "upload");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -321,7 +324,7 @@ export function PhotoCapturePanel({
         videoElement,
         getCapturedPhotoFileName(currentSection),
       );
-      await preparePhotoForReview(file);
+      await preparePhotoForReview(file, "camera");
     } catch {
       stopActiveStream();
       setErrorMessage("Could not capture a photo. Try again or upload a photo instead.");
@@ -357,6 +360,7 @@ export function PhotoCapturePanel({
         warnings,
         isDocumentScan,
         sourceFileName: sourceFileRef.current?.name,
+        origin: sourceOriginRef.current,
       },
     ]);
     resetPhotoReviewState();

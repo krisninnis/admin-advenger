@@ -12,14 +12,35 @@ import {
   hasSensitiveInformationRequest,
   SENSITIVE_INFORMATION_WARNING,
 } from "./sensitiveInformationRequest";
+import type { SourceProvenance } from "./sourceProvenance";
 
 export type DateRole =
   | "document_date"
   | "stated_deadline"
   | "event_date"
+  | "context_date"
   | "period_boundary"
   | "suggested_followup"
   | "unknown";
+
+export type DateMeaning =
+  | "reply_deadline"
+  | "payment_due"
+  | "appointment"
+  | "effective_start"
+  | "statement_as_of"
+  | "document_issued"
+  | "period"
+  | "other";
+
+export type DateRelationship = "previous" | "replacement" | "start" | "end";
+export type DatePrecision = "day_month" | "full_date";
+
+export type ExtractedTime = {
+  value: string;
+  sourceQuote: string;
+  index: number;
+};
 
 export type MoneyRole =
   | "amount_demanded"
@@ -52,9 +73,15 @@ export type AmountFrequency = "one_off" | "monthly" | "annual" | "weekly";
 
 export type ExtractedDate = {
   role: DateRole;
+  meaning: DateMeaning;
+  relationship?: DateRelationship;
+  precision: DatePrecision;
+  components?: { day: number; month: number; year?: number };
   value: string; // verbatim - never reformatted, so it is always source-supported
   sourceQuote: string;
   index: number;
+  time?: ExtractedTime;
+  provenance?: SourceProvenance;
 };
 
 export type ExtractedAmount = {
@@ -201,6 +228,8 @@ type AccountOutcomeAmountContext =
 
 const NEGATION_PATTERNS: RegExp[] = [
   /(?:please\s+)?do(?:\s+not|n['’]t)\s+reply/gi,
+  /(?:you\s+)?do(?:\s+not|n['’]t)\s+need\s+to\s+reply/gi,
+  /no\s+reply\s+(?:is\s+)?needed/gi,
   /no[-\s]?reply/gi,
   /no\s+action\s+(?:is\s+)?(?:required|needed)/gi,
   /no\s+further\s+action/gi,
@@ -260,7 +289,7 @@ export const detectAutomaticCollection = (
 // --- Dates ----------------------------------------------------------------
 
 const MONTH = String.raw`(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*`;
-const DATE_SOURCE = String.raw`\d{1,2}\s+${MONTH}\s+\d{4}|${MONTH}\s+\d{1,2},?\s+\d{4}|\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{2,4}`;
+const DATE_SOURCE = String.raw`\d{1,2}\s+${MONTH}\s+\d{4}|${MONTH}\s+\d{1,2},?\s+\d{4}|\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{2,4}|\d{1,2}\s+${MONTH}|${MONTH}\s+\d{1,2}`;
 const datePattern = new RegExp(`(?:${DATE_SOURCE})`, "gi");
 const rangeConnector = /\b(?:to|until|through|and)\b|[-–—]/i;
 
@@ -284,32 +313,70 @@ const looksLikePeriodBoundary = (text: string, index: number, raw: string): bool
   );
 };
 
-const roleForDate = (
+const semanticForDate = (
   text: string,
   index: number,
   raw: string,
   negationSpans: NegationSpan[],
   automatic: boolean,
-): DateRole => {
-  if (looksLikePeriodBoundary(text, index, raw)) {
-    return "period_boundary";
+): Pick<ExtractedDate, "role" | "meaning" | "relationship"> => {
+  const before = text.slice(Math.max(0, index - 80), index).toLowerCase();
+  const clauseStart = Math.max(0, text.lastIndexOf(".", index) + 1, text.lastIndexOf("\n", index) + 1);
+  const clauseEndMatch = text.slice(index).search(/[.!?\n]/);
+  const clauseEnd = clauseEndMatch === -1 ? text.length : index + clauseEndMatch;
+  const clause = text.slice(clauseStart, clauseEnd).toLowerCase();
+  if (/\bappointment\b[^.\n]*\bmoved\s+from\b/.test(clause)) {
+    const relationship = /\bto\s*$/.test(before) ? "replacement" : "previous";
+    return { role: "event_date", meaning: "appointment", relationship };
   }
-
-  const before = text.slice(Math.max(0, index - 32), index).toLowerCase();
-
-  if (EVENT_CUE.test(before)) {
-    return "event_date";
+  if (/\bcontract\b[^.\n]*\bruns?\s+from\b/.test(clause) || looksLikePeriodBoundary(text, index, raw)) {
+    const relationship = /\b(?:to|until|through)\s*$/.test(before) ? "end" : "start";
+    return { role: "period_boundary", meaning: "period", relationship };
   }
-
+  if (/\b(?:statement|letter|notice|invoice)\s+(?:date|dated|issued)\s*:?\s*$/.test(before) || DOCUMENT_CUE.test(before)) {
+    return { role: "document_date", meaning: "document_issued" };
+  }
+  if (/\b(?:balance|amount|total)\b[^.\n]{0,40}\bas\s+of\s*$/.test(before)) {
+    return { role: "context_date", meaning: "statement_as_of" };
+  }
+  if (/\b(?:pay|payment)\b[^.\n]{0,45}\b(?:due\s+(?:on|by)|by)\s*$/.test(before)) {
+    return { role: "stated_deadline", meaning: "payment_due" };
+  }
+  if (/\b(?:reply|respond|response)\b[^.\n]{0,35}\b(?:by|before|on or before)\s*$/.test(before) && !isIndexNegated(index, negationSpans)) {
+    return { role: "stated_deadline", meaning: "reply_deadline" };
+  }
+  if (/\bappointment\b/.test(clause)) {
+    return { role: "event_date", meaning: "appointment" };
+  }
+  if (/\b(?:tariff|price|change|broadband|contract)\b/.test(clause) && /\b(?:from|on|starts?\s+on|takes?\s+effect\s+from)\s*$/.test(before)) {
+    return { role: "event_date", meaning: "effective_start" };
+  }
+  if (/\b(?:due\s+to\s+arrive|arriv\w*[^.\n]*(?:on|by))\s*$/.test(before)) {
+    return { role: "event_date", meaning: "other" };
+  }
+  if (EVENT_CUE.test(before)) return { role: "event_date", meaning: "other" };
   if (DEADLINE_CUE.test(before) && !isIndexNegated(index, negationSpans) && !automatic) {
-    return "stated_deadline";
+    return { role: "stated_deadline", meaning: "other" };
   }
+  return { role: "unknown", meaning: "other" };
+};
 
-  if (DOCUMENT_CUE.test(before)) {
-    return "document_date";
-  }
+const monthNumber = (value: string): number | undefined => {
+  const names = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+  const index = names.findIndex((name) => value.toLowerCase().startsWith(name));
+  return index === -1 ? undefined : index + 1;
+};
 
-  return "unknown";
+const dateDetails = (raw: string): Pick<ExtractedDate, "precision" | "components"> => {
+  const dayMonth = raw.match(/^(\d{1,2})\s+([a-z]+)/i);
+  const monthDay = raw.match(/^([a-z]+)\s+(\d{1,2})/i);
+  const year = raw.match(/\b(\d{4})\b/)?.[1];
+  const day = Number(dayMonth?.[1] ?? monthDay?.[2]);
+  const month = monthNumber(dayMonth?.[2] ?? monthDay?.[1] ?? "");
+  return {
+    precision: year || /^\d{4}-|\/\d{2,4}$/.test(raw) ? "full_date" : "day_month",
+    ...(day && month ? { components: { day, month, ...(year ? { year: Number(year) } : {}) } } : {}),
+  };
 };
 
 export const extractDates = (
@@ -322,11 +389,16 @@ export const extractDates = (
   for (const match of text.matchAll(datePattern)) {
     const raw = match[0];
     const index = match.index ?? 0;
+    const semantic = semanticForDate(text, index, raw, negationSpans, automatic);
+    const trailing = text.slice(index + raw.length);
+    const timeMatch = semantic.meaning === "appointment" ? trailing.match(/^\s+at\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm)\b)/i) : undefined;
     dates.push({
-      role: roleForDate(text, index, raw, negationSpans, automatic),
+      ...semantic,
+      ...dateDetails(raw),
       value: raw,
       sourceQuote: raw,
       index,
+      ...(timeMatch ? { time: { value: timeMatch[1], sourceQuote: timeMatch[1], index: index + raw.length + (timeMatch.index ?? 0) + timeMatch[0].indexOf(timeMatch[1]) } } : {}),
     });
   }
 
@@ -541,7 +613,7 @@ export const isDeliveryCompletedText = (text: string): boolean =>
   DELIVERY_CONTEXT.test(text) && DELIVERY_DONE.test(text) && !DELIVERY_PROBLEM.test(text);
 
 const APPOINTMENT_REMINDER_CUE =
-  /appointment\s+reminder|reminder\s+(?:that|of|for)|your\s+appointment\s+(?:is|will\s+be)|appointment\s+(?:is|has\s+been)\s+(?:booked|scheduled)|(?:booked|scheduled)\s+for|please\s+attend|due\s+to\s+attend|see\s+you\s+(?:on|at)/i;
+  /appointment\s+reminder|reminder\s+(?:that|of|for)|your\s+appointment\s+(?:is|will\s+be)|appointment\s+(?:is|has\s+been)\s+(?:booked|scheduled)|\bappointment\s+on\b|(?:booked|scheduled)\s+for|please\s+attend|due\s+to\s+attend|see\s+you\s+(?:on|at)/i;
 
 export const isAppointmentReminderText = (text: string): boolean =>
   APPOINTMENT.test(text) &&

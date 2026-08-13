@@ -30,6 +30,8 @@ import {
   extractGeneralAdmin,
   type RefundStage,
 } from "./generalAdminExtraction";
+import { countSupportedSourceOccurrences } from "./sourceSupport";
+import type { SourceDocument, SourceProvenance } from "./sourceProvenance";
 import {
   assessEmailSafety,
   describeStatedPressure,
@@ -70,6 +72,38 @@ const matchFirst = (text: string, pattern: RegExp) => text.match(pattern)?.[0];
 
 const getEvidenceValue = (text: string, pattern: RegExp, fallback: string) =>
   matchFirst(text, pattern) ?? fallback;
+
+const timingProvenanceFor = (
+  sourceQuote: string,
+  documents: readonly SourceDocument[] | undefined,
+): SourceProvenance | undefined => {
+  if (!documents?.length) return undefined;
+
+  const matches = documents.flatMap((document) =>
+    document.segments
+      .filter((segment) => countSupportedSourceOccurrences(sourceQuote, segment.text) === 1)
+      .map((segment) => ({ document, segment })),
+  );
+
+  if (matches.length === 1) {
+    const [{ document, segment }] = matches;
+    return {
+      sourceDocumentId: document.id,
+      sourceSegmentId: segment.id,
+      sourceQuote,
+      extractionConfidence: document.confidence,
+      reviewState: document.reviewState,
+    };
+  }
+
+  // Fail closed when structured source identity is missing or ambiguous.
+  return {
+    sourceDocumentId: documents[0].id,
+    sourceQuote,
+    extractionConfidence: documents[0].confidence,
+    reviewState: "review_required",
+  };
+};
 
 const moneyPattern = /(?:£|Â£|GBP\s*|\?\s*)\d+(?:,\d{3})*(?:\.\d{1,2})?/i;
 const refundWindowPattern =
@@ -1386,7 +1420,13 @@ export const createAdminCase = (finding: AdminFinding, item: AdminItem): AdminCa
       const timing = extractGeneralAdmin(`${item.title}\n${item.rawText}`);
 
       return timing.dates.length > 0 || timing.relativePeriods.length > 0
-        ? { dates: timing.dates, relativePeriods: timing.relativePeriods }
+        ? {
+            dates: timing.dates.map((date) => ({
+              ...date,
+              provenance: timingProvenanceFor(date.sourceQuote, item.sourceDocuments),
+            })),
+            relativePeriods: timing.relativePeriods,
+          }
         : undefined;
     })(),
     createdAt: finding.createdAt,

@@ -6,6 +6,7 @@ import { extractGeneralAdmin } from "../generalAdminExtraction";
 import { analyseAdminItem } from "../mockAnalysis";
 import { deriveOpportunityCard } from "../opportunityCards";
 import { buildResultViewModel, flattenResultViewModelText } from "../resultViewModel";
+import { createPhotoSourceDocument } from "../sourceProvenance";
 
 // W3 - Ordinary Message Date Role Propagation v1.
 //
@@ -23,16 +24,17 @@ import { buildResultViewModel, flattenResultViewModelText } from "../resultViewM
 // length. No date arithmetic - a working-day window is never turned into a
 // calendar date.
 
-const makeItem = (rawText: string): AdminItem => ({
+const makeItem = (rawText: string, sourceDocuments?: AdminItem["sourceDocuments"]): AdminItem => ({
   id: "item-date-roles",
   title: "Pasted admin text",
   sourceType: "email",
   rawText,
+  sourceDocuments,
   createdAt: "2026-08-07T09:00:00.000Z",
 });
 
-const compose = (rawText: string) => {
-  const item = makeItem(rawText);
+const compose = (rawText: string, sourceDocuments?: AdminItem["sourceDocuments"]) => {
+  const item = makeItem(rawText, sourceDocuments);
   const findings = analyseAdminItem(item, { accessMode: "public" });
   const cases = findings.map((finding) => createAdminCase(finding, item));
   const adminCase = selectMostImportantCase(cases);
@@ -56,6 +58,7 @@ const compose = (rawText: string) => {
   return {
     adminCase,
     resultViewModel,
+    classification: resultViewModel.title,
     progress,
     visibleText: flattenResultViewModelText(resultViewModel),
     keyDates: resultViewModel.keyDates,
@@ -257,5 +260,74 @@ describe("W3 does not invent timing", () => {
     expect(first.findIndex((entry) => entry.includes("4 August 2026"))).toBeLessThan(
       first.findIndex((entry) => entry.includes("3 working days")),
     );
+  });
+});
+
+describe("ordinary-message-date-role-extraction-v1 composition", () => {
+  it.each([
+    ["my broadband goes from Â£34 to Â£46 on 1 September", [["Effective or start date", "1 September"]], "partial"],
+    ["from 1 September your monthly price will be Â£46", [["Effective or start date", "1 September"]], "partial"],
+    ["please pay Â£500 by 20 August", [["Payment due date", "20 August"]], "partial"],
+    ["your balance is Â£500 as of 20 August", [["Balance as-of date", "20 August"]], "not_needed"],
+    ["your new tariff starts on 20 August", [["Effective or start date", "20 August"]], "partial"],
+    ["your appointment is on 20 August at 2pm", [["Appointment date", "20 August"]], "partial"],
+    ["please reply by 20 August", [["Reply deadline", "20 August"]], "partial"],
+    ["this change takes effect from 20 August", [["Effective or start date", "20 August"]], "partial"],
+    ["statement dated 20 August - payment is due on 5 September", [["Document date", "20 August"], ["Payment due date", "5 September"]], "partial"],
+    ["your payment is due on 5 September", [["Payment due date", "5 September"]], "partial"],
+    ["your appointment has moved from 20 August to 27 August", [["Previous appointment date", "20 August"], ["Replacement appointment date", "27 August"]], "partial"],
+    ["your price changes on 1 September but you do not need to reply", [["Effective or start date", "1 September"]], "partial"],
+    ["letter dated 20 August, please reply by 5 September", [["Document date", "20 August"], ["Reply deadline", "5 September"]], "partial"],
+    ["your contract runs from 1 September to 31 August 2027", [["Period start", "1 September"], ["Period end", "31 August 2027"]], "not_needed"],
+  ])("keeps every meaningful timing fact visible for: %s", (text, expected, progressStatus) => {
+    const { keyDates, keyDateItem, visibleText } = compose(text);
+
+    expect(keyDates.map(({ label, value }) => [label, value])).toEqual(expected);
+    expect(keyDateItem?.status).toBe(progressStatus);
+    if (text.includes("2pm")) expect(visibleText).toContain("2pm");
+    if (text.includes("do not need to reply")) {
+      expect(visibleText).not.toMatch(/reply urgency|urgent reply|reply required/i);
+    }
+  });
+
+  it("keeps full trusted actionable timing complete", () => {
+    expect(compose("please reply by 20 August 2027").keyDateItem?.status).toBe("complete");
+  });
+
+  it.each([
+    "appointment on 20 August",
+    "balance as of 20 August",
+    "letter dated 20 August",
+    "your tariff starts on 20 August",
+    "your parcel is due to arrive on 20 August",
+  ])("does not label a non-payment date as a payment deadline: %s", (text) => {
+    expect(compose(text).keyDates.map((date) => date.label)).not.toContain("Payment due date");
+  });
+
+  it("distinguishes a payment due date from parcel arrival", () => {
+    expect(compose("your payment is due on 20 August").keyDates[0]?.label).toBe("Payment due date");
+    expect(compose("your parcel is due to arrive on 20 August").keyDates[0]?.label).toBe("Event date");
+  });
+
+  it("does not classify a bare appointment date as a deadline", () => {
+    expect(compose("appointment on 20 August").classification).toBe("Appointment reminder");
+  });
+
+  it("keeps review-required OCR timing out of trusted key dates and leaves progress partial", () => {
+    const text = "please reply by 20 August";
+    const source = createPhotoSourceDocument({
+      id: "review-photo",
+      displayName: "Letter photo",
+      intakeType: "photo",
+      order: 1,
+      text,
+      confidence: 62,
+      warnings: ["Check the OCR text"],
+      reviewState: "review_required",
+    });
+    const { keyDates, keyDateItem } = compose(text, [source]);
+
+    expect(keyDates).toEqual([]);
+    expect(keyDateItem?.status).toBe("partial");
   });
 });

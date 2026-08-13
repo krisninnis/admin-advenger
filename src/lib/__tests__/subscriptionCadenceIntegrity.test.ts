@@ -178,14 +178,15 @@ describe("the built-in annual subscription example", () => {
     ).toBe(false);
   });
 
-  // Year-less dates are not extracted at all, so "Cancel before 10 July" never
-  // reaches the result. Inferring a year would risk inventing a date, so this is
-  // recorded as a finding for a later, policy-led slice rather than guessed here.
-  // What must hold now is that no date is invented in its place.
-  it("invents no date when the source omits the year", () => {
+  // Year-less dates now survive as explicitly partial day/month facts. They
+  // must retain the source wording and must never acquire an inferred year.
+  it("preserves yearless dates without inventing a year", () => {
     const journey = run("subscription-no-year", BUILT_IN_ANNUAL);
 
-    expect(journey.resultViewModel.keyDates).toHaveLength(0);
+    expect(journey.resultViewModel.keyDates.map(({ value, precision }) => ({ value, precision }))).toEqual([
+      { value: "12 July", precision: "day_month" },
+      { value: "10 July", precision: "day_month" },
+    ]);
     expect(journey.visibleText).not.toMatch(/\b\d{1,2}\s+July\s+20\d{2}\b/);
   });
 

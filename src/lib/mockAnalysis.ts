@@ -481,23 +481,30 @@ const createDeliveryUpdateFinding = (item: AdminItem): AdminFinding => ({
 
 const isAppointmentTask = (text: string) =>
   /\b(appointment|dentist|doctor|gp|optician|clinic)\b/.test(text) &&
-  /\b(cancelled|canceled|rebook|reschedule|book another|asked me to rebook)\b/.test(text) &&
+  /\b(cancelled|canceled|rebook|reschedule|book another|asked me to rebook|moved\s+from)\b/.test(text) &&
   !/\b(deadline|due by|expires|respond before|reply before|before \d{1,2}|by \d{1,2})\b/.test(text);
 
-const createAppointmentTaskFinding = (item: AdminItem): AdminFinding => ({
-  id: `finding-${crypto.randomUUID()}`,
-  itemId: item.id,
-  category: "unknown",
-  title: "Appointment to rebook",
-  summary: "This looks like an appointment or booking that needs rearranging.",
-  whyItMatters:
-    "Rebooking keeps the admin loop closed, but this is not a refund or money-back case.",
-  suggestedAction: "Rebook the appointment and save the confirmation.",
-  urgency: "low",
-  confidence: "medium",
-  status: "new",
-  createdAt: new Date().toISOString(),
-});
+const createAppointmentTaskFinding = (item: AdminItem): AdminFinding => {
+  const moved = /\bappointment\b[^.\n]*\bmoved\s+from\b/i.test(item.rawText);
+  return {
+    id: `finding-${crypto.randomUUID()}`,
+    itemId: item.id,
+    category: "unknown",
+    title: moved ? "Appointment date changed" : "Appointment to rebook",
+    summary: moved
+      ? "This message states that an appointment has moved to a replacement date."
+      : "This looks like an appointment or booking that needs rearranging.",
+    whyItMatters:
+      "Rebooking keeps the admin loop closed, but this is not a refund or money-back case.",
+    suggestedAction: moved
+      ? "Check the previous and replacement appointment dates, then keep the confirmation."
+      : "Rebook the appointment and save the confirmation.",
+    urgency: "low",
+    confidence: "medium",
+    status: "new",
+    createdAt: new Date().toISOString(),
+  };
+};
 
 const createDeliveryIssueFinding = (item: AdminItem, text: string): AdminFinding => ({
   id: `finding-${crypto.randomUUID()}`,

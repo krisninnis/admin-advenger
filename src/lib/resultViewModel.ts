@@ -14,7 +14,7 @@ import {
 } from "./safetyWording";
 import { resolveEvidenceKind } from "./evidenceKind";
 import { extractGeneralAdmin } from "./generalAdminExtraction";
-import type { DateRole, RelativePeriodRole } from "./generalAdminExtraction";
+import type { DateMeaning, DatePrecision, DateRelationship, DateRole, ExtractedTime, RelativePeriodRole } from "./generalAdminExtraction";
 import { SENSITIVE_INFORMATION_REQUEST_EVIDENCE_LABEL } from "./sensitiveInformationRequest";
 import { isSupportedBySource } from "./sourceSupport";
 import type { StrategicNextStepPlan } from "./strategicNextStep";
@@ -82,6 +82,11 @@ export type ResultDateView = {
   source: ResultViewSource;
   sourceQuote?: string;
   role?: ResultTimingRole;
+  meaning?: DateMeaning;
+  relationship?: DateRelationship;
+  precision?: DatePrecision;
+  time?: ExtractedTime;
+  sourceIdentity?: string;
 };
 
 export type ResultMoneyView = {
@@ -126,6 +131,7 @@ export type ResultViewModel = {
   primaryAction?: ResultPrimaryActionView;
   bestNextMove?: ResultBestNextMoveView;
   keyDates: ResultDateView[];
+  timingReviewRequired?: boolean;
   moneyMentioned: ResultMoneyView[];
   evidenceFound: ResultEvidenceView[];
   /**
@@ -344,28 +350,33 @@ const fromOpportunityDeadline = (opportunity?: OpportunityCard): ResultDateView 
       }
     : undefined;
 
-const fromGeneralAdminFallbackDate = (
-  date: NonNullable<AdminCase["generalAdminFallback"]>["dates"][number],
-  index: number,
-): ResultDateView => ({
-  id: `general-admin-date-${index + 1}`,
-  label: `Source date - ${date.role.replaceAll("_", " ")}`,
-  value: date.value,
-  caution: RESULT_DATE_CAUTION,
-  userMustCheck: true,
-  source: "main_result",
-  sourceQuote: date.sourceQuote,
-});
-
 // Honest labels for each role. They describe what the source said, and never
 // promise more: a window is described as a window, not as a date.
 const DATE_ROLE_LABELS: Record<DateRole, string> = {
   document_date: "Date on the message",
   stated_deadline: "Deadline stated in the message",
   event_date: "Date the message says this happens",
+  context_date: "Context date",
   period_boundary: "Period stated in the message",
   suggested_followup: "Suggested follow-up date",
   unknown: "Date stated in the message",
+};
+
+const labelForCaseTimingDate = (
+  date: NonNullable<AdminCase["timingFacts"]>["dates"][number],
+): string => {
+  if (date.meaning === "reply_deadline") return "Reply deadline";
+  if (date.meaning === "payment_due") return "Payment due date";
+  if (date.meaning === "effective_start") return "Effective or start date";
+  if (date.meaning === "statement_as_of") return "Balance as-of date";
+  if (date.meaning === "document_issued") return "Document date";
+  if (date.meaning === "appointment" && date.relationship === "previous") return "Previous appointment date";
+  if (date.meaning === "appointment" && date.relationship === "replacement") return "Replacement appointment date";
+  if (date.meaning === "appointment") return "Appointment date";
+  if (date.meaning === "period" && date.relationship === "start") return "Period start";
+  if (date.meaning === "period" && date.relationship === "end") return "Period end";
+  if (date.role === "event_date") return "Event date";
+  return DATE_ROLE_LABELS[date.role];
 };
 
 const PERIOD_ROLE_LABELS: Record<RelativePeriodRole, string> = {
@@ -378,24 +389,25 @@ const PERIOD_ROLE_LABELS: Record<RelativePeriodRole, string> = {
 // Roles that describe timing a person can act on. A document date and a period
 // boundary are real source facts but they are not something to act on, and the
 // timing step has always refused to be satisfied by them.
-const ACTIONABLE_DATE_ROLES = new Set<DateRole>([
-  "stated_deadline",
-  "event_date",
-  "suggested_followup",
-]);
-
 const fromCaseTimingDate = (
   date: NonNullable<AdminCase["timingFacts"]>["dates"][number],
   index: number,
 ): ResultDateView => ({
   id: `case-timing-date-${index + 1}`,
-  label: DATE_ROLE_LABELS[date.role],
+  label: labelForCaseTimingDate(date),
   value: date.value,
   caution: RESULT_DATE_CAUTION,
   userMustCheck: true,
   source: "main_result",
   sourceQuote: date.sourceQuote,
   role: date.role,
+  meaning: date.meaning,
+  relationship: date.relationship,
+  precision: date.precision,
+  time: date.time,
+  sourceIdentity: date.provenance
+    ? `${date.provenance.sourceDocumentId}:${date.provenance.sourceSegmentId ?? "document"}`
+    : undefined,
 });
 
 const fromCaseTimingPeriod = (
@@ -495,7 +507,9 @@ const dedupeEvidence = (items: ResultEvidenceView[]) =>
 const dedupeDates = (dates: ResultDateView[]) =>
   dedupeResultItems(
     dates.filter((date) => isSafeResultText(`${date.label} ${date.value}`)),
-    (date) => `${date.label}:${date.value}`,
+    (date) => date.sourceIdentity
+      ? `${date.value}:${date.role ?? ""}:${date.meaning ?? ""}:${date.relationship ?? ""}:${date.sourceIdentity}`
+      : `${date.label}:${date.value}`,
   );
 
 const dedupeMoney = (money: ResultMoneyView[]) =>
@@ -974,11 +988,19 @@ export const buildResultViewModel = ({
         source: bestNextMove.source,
       }
     : undefined;
+  const timingDates = adminCase?.timingFacts?.dates ?? [];
+  const timingReviewRequired = timingDates.some(
+    (date) => date.provenance?.reviewState === "review_required" || date.provenance?.reviewState === "unavailable",
+  );
+  const trustedCaseTimingDates = isHmrcTaxCodeResult
+    ? []
+    : timingDates
+        .filter((date) => date.role !== "unknown" && (!date.provenance || date.provenance.reviewState === "confirmed"))
+        .map(fromCaseTimingDate);
   const existingKeyDates = dedupeDates([
     ...(benefitsActionPack?.possibleDatesToCheck.map(fromBenefitsDate) ?? []),
     ...getDateFacts(decisionResult?.sourceFacts ?? []).map(fromDecisionDate),
     ...(decisionResult?.deadlines.map(fromDeadline) ?? []),
-    ...(adminCase?.generalAdminFallback?.dates.map(fromGeneralAdminFallbackDate) ?? []),
     fromOpportunityDeadline(opportunity),
   ].filter((date): date is ResultDateView => Boolean(date)));
   // Timing the existing producers cannot express. Relative periods had no route
@@ -986,12 +1008,9 @@ export const buildResultViewModel = ({
   // opportunity deadline contributed no timing even when the source clearly gave
   // some.
   //
-  // Existing producers win: a value they already carry is not repeated, so the
-  // labels and order every other document type relies on are unchanged. This
-  // only fills genuine gaps, in source order.
-  const alreadyPresent = new Set(
-    existingKeyDates.map((date) => normaliseResultText(date.value)),
-  );
+  // Typed case timing wins when a compatible legacy producer carries the same
+  // value, so the semantic label and precision survive without a duplicate.
+  // Independently meaningful typed facts remain in source order.
   const caseTimingDates = (
     // HMRC tax code notices govern their own timing: the module deliberately
     // emits no deadlines, and a tax-year boundary must never appear as a key
@@ -1000,18 +1019,17 @@ export const buildResultViewModel = ({
     isHmrcTaxCodeResult
       ? []
       : [
-          ...(adminCase?.timingFacts?.dates ?? [])
-            // A letter date or a period boundary is a source fact, not timing to
-            // act on, so neither is offered here. This is the same distinction
-            // the tax-year filter in case progress already makes.
-            .filter((date) => ACTIONABLE_DATE_ROLES.has(date.role))
-            .map(fromCaseTimingDate),
+          ...trustedCaseTimingDates,
           ...(adminCase?.timingFacts?.relativePeriods ?? [])
             .filter((period) => period.role !== "unknown")
             .map(fromCaseTimingPeriod),
         ]
-  ).filter((date) => !alreadyPresent.has(normaliseResultText(date.value)));
-  const keyDates = dedupeDates([...existingKeyDates, ...caseTimingDates]);
+  );
+  const caseTimingIdentity = new Set(caseTimingDates.map((date) => normaliseResultText(date.value)));
+  const keyDates = dedupeDates([
+    ...caseTimingDates,
+    ...existingKeyDates.filter((date) => !caseTimingIdentity.has(normaliseResultText(date.value))),
+  ]);
   const moneyMentioned = dedupeMoney([
     ...(benefitsActionPack?.moneyMentioned.map(fromBenefitsMoneyLine) ?? []),
     ...moneyImpactsFor(opportunity).map(fromOpportunityMoney),
@@ -1474,7 +1492,7 @@ export const buildResultViewModel = ({
     makeSection(
       "key-dates",
       "Key dates to check",
-      keyDates.map((date) => `${date.label}: ${date.value}. ${date.caution}`),
+      keyDates.map((date) => `${date.label}: ${date.value}${date.time ? ` at ${date.time.value}` : ""}. ${date.caution}`),
       keyDates[0]?.source ?? "main_result",
       "summary",
     ),
@@ -1616,6 +1634,7 @@ export const buildResultViewModel = ({
     primaryAction,
     bestNextMove,
     keyDates,
+    timingReviewRequired,
     moneyMentioned,
     evidenceFound,
     evidenceContext,
@@ -1646,7 +1665,7 @@ export const flattenResultViewModelText = (model: ResultViewModel) =>
     model.bestNextMove?.label ?? "",
     model.bestNextMove?.description ?? "",
     model.bestNextMove?.whyThisHelps ?? "",
-    ...model.keyDates.map((date) => `${date.label} ${date.value} ${date.caution} ${date.sourceQuote ?? ""}`),
+    ...model.keyDates.map((date) => `${date.label} ${date.value}${date.time ? ` at ${date.time.value}` : ""} ${date.caution} ${date.sourceQuote ?? ""}`),
     ...model.moneyMentioned.map((line) => `${line.label} ${line.amountText} ${line.caution} ${line.sourceQuote ?? ""}`),
     ...model.evidenceFound.map((item) => `${item.label} ${item.value} ${item.sourceQuote ?? ""}`),
     ...model.evidenceContext.map((item) => `${item.label} ${item.value}`),
@@ -1715,7 +1734,7 @@ export const validateResultViewModelSafety = (
     );
   };
   const datesSourceSupported = model.keyDates.every((date) =>
-    dateSupported(date.sourceQuote ?? date.value),
+    dateSupported(date.sourceQuote ?? date.value) && dateSupported(date.time?.sourceQuote),
   );
   const moneySourceSupported = model.moneyMentioned.every((line) =>
     moneySupported(line.sourceQuote, line.amountText),

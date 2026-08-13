@@ -190,10 +190,19 @@ const buildKeyDateItem = (
   const usableTiming = resultViewModel.keyDates.filter(
     (date) => !isTaxYearBoundaryDate(date),
   );
-  const hasExactDate = usableTiming.some((date) => !isPeriodTimingRole(date.role));
-  const hasPeriodOnly = !hasExactDate && usableTiming.length > 0;
+  const actionableRoles = new Set(["stated_deadline", "event_date", "suggested_followup"]);
+  const actionableDates = usableTiming.filter((date) =>
+    date.role ? actionableRoles.has(date.role) : !isPeriodTimingRole(date.role),
+  );
+  const hasFullActionableDate = actionableDates.some((date) => date.precision !== "day_month");
+  const hasYearlessActionableDate = actionableDates.some((date) => date.precision === "day_month");
+  const hasRelativePeriod = usableTiming.some((date) => isPeriodTimingRole(date.role));
+  const hasContextOnly =
+    actionableDates.length === 0 &&
+    usableTiming.length > 0 &&
+    usableTiming.every((date) => date.role === "document_date" || date.role === "context_date" || date.role === "period_boundary");
 
-  if (hasExactDate) {
+  if (hasFullActionableDate) {
     return buildItem(
       "key-date",
       label,
@@ -204,7 +213,31 @@ const buildKeyDateItem = (
     );
   }
 
-  if (hasPeriodOnly) {
+  if (hasYearlessActionableDate || resultViewModel.timingReviewRequired) {
+    return buildItem(
+      "key-date",
+      label,
+      hasYearlessActionableDate
+        ? "A meaningful date was found, but the source did not state a year. Check the original before relying on it."
+        : "A possible date was found in source text that still needs human review.",
+      "partial",
+      "result",
+      "Check the source date and year before acting.",
+    );
+  }
+
+  if (hasContextOnly) {
+    return buildItem(
+      "key-date",
+      label,
+      "The source contains contextual or period dates, but no action deadline or event date needs preparation.",
+      "not_needed",
+      "result",
+      "Keep these dates as context and check them against the source.",
+    );
+  }
+
+  if (hasRelativePeriod) {
     return buildItem(
       "key-date",
       label,

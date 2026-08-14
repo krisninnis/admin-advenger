@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  assessCommunicationSignals,
   assessRefundState,
   extractDates,
   extractGeneralAdmin,
@@ -133,5 +134,162 @@ describe("general admin appointment reminder detection", () => {
         "My dentist cancelled my appointment and asked me to rebook.",
       ),
     ).toBe(false);
+  });
+});
+
+describe("ordinary-message communication signal assessment", () => {
+  const signals = (text: string) => assessCommunicationSignals(text).signals;
+
+  it("keeps importance, urgency, reply and action as distinct source-grounded signals", () => {
+    expect(
+      signals("Important notice. Urgent: please reply. Action required."),
+    ).toEqual([
+      {
+        kind: "importance",
+        value: "Important notice",
+        sourceQuote: "Important notice",
+        start: 0,
+        end: 16,
+        negated: false,
+      },
+      expect.objectContaining({
+        kind: "urgency",
+        value: "Urgent",
+        sourceQuote: "Urgent",
+        negated: false,
+      }),
+      expect.objectContaining({
+        kind: "reply_request",
+        value: "reply",
+        sourceQuote: "reply",
+        negated: false,
+      }),
+      expect.objectContaining({
+        kind: "action_request",
+        value: "Action required",
+        sourceQuote: "Action required",
+        negated: false,
+      }),
+    ]);
+  });
+
+  it.each([
+    ["Please reply", "reply"],
+    ["Please respond", "respond"],
+    ["A response is required", "response is required"],
+  ])("recognises a positive reply/response request: %s", (text, value) => {
+    expect(signals(text)).toContainEqual(
+      expect.objectContaining({ kind: "reply_request", value, sourceQuote: value }),
+    );
+  });
+
+  it.each([
+    "Please do not reply",
+    "Do not reply",
+    "Don't reply",
+    "You do not need to reply",
+    "You don't need to reply",
+    "No reply is needed",
+    "No reply is required",
+    "No reply needed",
+    "No reply required",
+    "No-reply",
+    "Please do not respond",
+    "Do not respond",
+    "Don't respond",
+    "You do not need to respond",
+    "You don't need to respond",
+    "No response is needed",
+    "No response is required",
+    "No response needed",
+    "No response required",
+  ])("suppresses positive reply semantics for: %s", (text) => {
+    const assessment = assessCommunicationSignals(text);
+
+    expect(assessment.signals).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ kind: "reply_request" })]),
+    );
+    expect(assessment.negations).toContainEqual(
+      expect.objectContaining({ target: "reply_request" }),
+    );
+  });
+
+  it.each([
+    "No action is required",
+    "No action required",
+    "No action is needed",
+    "No action needed",
+    "No further action",
+    "You do not need to do anything",
+    "You do not need to take any action",
+  ])("suppresses positive action semantics for: %s", (text) => {
+    const assessment = assessCommunicationSignals(text);
+
+    expect(assessment.signals).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ kind: "action_request" })]),
+    );
+    expect(assessment.negations).toContainEqual(
+      expect.objectContaining({ target: "action_request" }),
+    );
+  });
+
+  it("ends reply negation at a sentence boundary", () => {
+    const assessment = assessCommunicationSignals(
+      "Do not reply to this email. Please respond through your secure account by 20 August.",
+    );
+
+    expect(assessment.signals).toContainEqual(
+      expect.objectContaining({ kind: "reply_request", value: "respond" }),
+    );
+    expect(timingShape("Do not reply to this email. Please respond through your secure account by 20 August.")).toContainEqual(
+      expect.objectContaining({ meaning: "reply_deadline", value: "20 August" }),
+    );
+  });
+
+  it.each([
+    "Do not reply; please respond through your account.",
+    "Do not reply\nPlease respond through your account.",
+    "Do not reply, but please respond through your account.",
+    "Do not reply, however please respond through your account.",
+  ])("ends reply negation at an approved clause boundary: %s", (text) => {
+    expect(signals(text)).toContainEqual(
+      expect.objectContaining({ kind: "reply_request", value: "respond" }),
+    );
+  });
+
+  it("suppresses only reply while preserving importance", () => {
+    expect(signals("Important notice. Please do not reply.")).toEqual([
+      expect.objectContaining({ kind: "importance", value: "Important notice" }),
+    ]);
+  });
+
+  it("suppresses only reply while preserving urgency", () => {
+    expect(signals("Urgent: check your account; no reply is needed.")).toEqual([
+      expect.objectContaining({ kind: "urgency", value: "Urgent" }),
+    ]);
+  });
+
+  it.each([
+    ["Action required: upload the form.", "Action required"],
+    ["Please upload the form.", "Please upload"],
+    ["Please pay by 20 August.", "Please pay"],
+    ["Please confirm the account details.", "Please confirm"],
+  ])("recognises a positive non-reply action: %s", (text, value) => {
+    expect(signals(text)).toContainEqual(
+      expect.objectContaining({ kind: "action_request", value, sourceQuote: value }),
+    );
+    expect(signals(text)).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ kind: "reply_request" })]),
+    );
+  });
+
+  it("preserves an explicit awaited response as a reply request", () => {
+    expect(signals("We are awaiting your response.")).toContainEqual(
+      expect.objectContaining({
+        kind: "reply_request",
+        value: "awaiting your response",
+        sourceQuote: "awaiting your response",
+      }),
+    );
   });
 });

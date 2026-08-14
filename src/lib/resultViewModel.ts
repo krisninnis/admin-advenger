@@ -592,6 +592,18 @@ const buildStructuredOpportunityBestNextMove = (
   };
 
   if (
+    opportunity.opportunityType === "needs_human_check" &&
+    /^Important message to check$/i.test(opportunity.title)
+  ) {
+    return {
+      ...common,
+      label: "Review what needs attention",
+      whyThisHelps:
+        "This preserves the source's importance wording without inventing urgency, a reply request, or an action requirement.",
+    };
+  }
+
+  if (
     (opportunity.opportunityType === "needs_human_check" || opportunity.opportunityType === "no_action_needed") &&
     /preserving what the source says/i.test(opportunity.opportunityNote ?? "")
   ) {

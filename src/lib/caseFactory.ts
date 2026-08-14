@@ -25,9 +25,11 @@ import {
 } from "./moneyParsers";
 import { assessPaymentReminder } from "./paymentReminderAssessment";
 import {
+  assessCommunicationSignals,
   assessAccountOutcome,
   assessRefundState,
   extractGeneralAdmin,
+  type CommunicationSignalKind,
   type RefundStage,
 } from "./generalAdminExtraction";
 import { countSupportedSourceOccurrences } from "./sourceSupport";
@@ -179,6 +181,38 @@ const createEvidence = (
   ...(kind ? { kind } : {}),
 });
 
+const communicationEvidenceLabels: Record<CommunicationSignalKind, string> = {
+  importance: "Importance wording",
+  urgency: "Urgency wording",
+  reply_request: "Reply request",
+  action_request: "Action request",
+};
+
+const communicationEvidenceForFinding = (
+  caseId: string,
+  finding: AdminFinding,
+  item: AdminItem,
+): EvidenceItem[] => {
+  if (isSuspiciousEmailFinding(finding, item)) return [];
+
+  const eligible =
+    finding.category === "important_reply" ||
+    finding.category === "unknown" ||
+    Boolean(finding.generalAdminFallback) ||
+    isPaymentReminderFinding(finding, item);
+
+  if (!eligible) return [];
+
+  return assessCommunicationSignals(item.rawText).signals.map((signal) =>
+    createEvidence(
+      caseId,
+      communicationEvidenceLabels[signal.kind],
+      signal.sourceQuote,
+      "detected",
+    ),
+  );
+};
+
 const dedupeNormalised = (items: string[]) => {
   const seen = new Set<string>();
 
@@ -215,6 +249,7 @@ const evidenceForFinding = (
   const text = `${item.title} ${item.rawText}`;
   const broadbandPriceRiseAssessment = assessBroadbandPriceRise(item);
   const delayRepayAssessment = assessUkTrainDelayRefund(item);
+  const communicationEvidence = communicationEvidenceForFinding(caseId, finding, item);
 
   if (finding.generalAdminFallback) {
     const fallback = finding.generalAdminFallback;
@@ -239,6 +274,7 @@ const evidenceForFinding = (
     };
 
     return [
+      ...communicationEvidence,
       createEvidence(caseId, "Source statement", fallback.sourceStatement, "user_text"),
       ...fallback.dates.map((date) =>
         createEvidence(caseId, `Source date - ${date.role.replaceAll("_", " ")}`, date.sourceQuote, "detected"),
@@ -387,6 +423,7 @@ const evidenceForFinding = (
     const paymentReminder = assessPaymentReminder(item);
 
     return [
+      ...communicationEvidence,
       ...(paymentReminder.sender
         ? [createEvidence(caseId, "Sender/provider clue", paymentReminder.sender)]
         : []),
@@ -1167,11 +1204,7 @@ const evidenceForFinding = (
 
   if (finding.category === "important_reply") {
     return [
-      createEvidence(
-        caseId,
-        "Urgent wording",
-        getEvidenceValue(text, /urgent|reply|action required|final notice|important|please confirm/i, "Reply or action wording found"),
-      ),
+      ...communicationEvidence,
       createEvidence(caseId, "Source", item.title, "user_text"),
     ];
   }
@@ -1195,6 +1228,7 @@ const evidenceForFinding = (
   }
 
   return [
+    ...communicationEvidence,
     createEvidence(caseId, "Source", item.title, "user_text"),
     createEvidence(caseId, "Review clue", "No exact evidence detected; review the pasted text manually.", "manual"),
   ];

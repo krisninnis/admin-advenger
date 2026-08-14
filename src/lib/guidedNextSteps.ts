@@ -1,6 +1,6 @@
 import type { DecisionDocumentType, DecisionResult } from "./decisionEngine/types";
 import type { AdminCase, AdminFinding, AdminItem, OpportunityCard } from "../types";
-import { assessRefundState } from "./generalAdminExtraction";
+import { assessCommunicationSignals, assessRefundState } from "./generalAdminExtraction";
 import { createPreparedMessageDraft } from "./messageDrafts";
 import { deriveOpportunityCard } from "./opportunityCards";
 
@@ -441,6 +441,62 @@ const deriveFromOpportunity = (
           ),
           ...opportunity.recommendedPathSteps,
         ]),
+      },
+      secondaryActions: opportunity.deadline
+        ? [
+            buildDeadlineAction(opportunity.title, [
+              opportunity.deadlineLabel
+                ? `${opportunity.deadlineLabel}: ${opportunity.deadline}`
+                : opportunity.deadline,
+            ]),
+          ].filter((action): action is NextStepAction => Boolean(action))
+        : [],
+    };
+  }
+
+  const communicationAssessment = assessCommunicationSignals(item?.rawText ?? "");
+  const hasReplyRequest = communicationAssessment.signals.some(
+    (signal) => signal.kind === "reply_request",
+  );
+  const importance = communicationAssessment.signals.find(
+    (signal) => signal.kind === "importance",
+  );
+  const urgency = communicationAssessment.signals.find(
+    (signal) => signal.kind === "urgency",
+  );
+  const actionRequest = communicationAssessment.signals.find(
+    (signal) => signal.kind === "action_request",
+  );
+  const publicPreparationOnly =
+    /^(?:This needs a careful human review|Specialist support may be needed)$/i.test(
+      adminCase.title,
+    );
+
+  if (
+    opportunity.opportunityType !== "suspicious_email_risk" &&
+    !hasReplyRequest &&
+    (importance ||
+      urgency ||
+      actionRequest ||
+      communicationAssessment.negations.length > 0 ||
+      publicPreparationOnly)
+  ) {
+    const label = importance
+      ? "Review what needs attention"
+      : actionRequest
+        ? "Review requested action"
+        : urgency
+          ? "Review urgent wording"
+          : publicPreparationOnly
+            ? "Review source and decide who should look at it"
+            : "Keep as a record";
+
+    return {
+      primaryAction: {
+        kind: "evidence_checklist",
+        label,
+        title: opportunity.title,
+        evidenceNeeded: dedupe(opportunity.recommendedPathSteps),
       },
       secondaryActions: opportunity.deadline
         ? [

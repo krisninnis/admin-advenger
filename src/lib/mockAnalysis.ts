@@ -35,14 +35,13 @@ import {
   shouldPrioritiseEmailSafety,
 } from "./suspiciousEmail";
 import {
+  assessCommunicationSignals,
   assessAccountOutcome,
   assessRefundState,
   extractGeneralAdmin,
-  findNegationSpans,
   isAppointmentReminderText,
   isBillReadyDirectDebitText,
   isDeliveryCompletedText,
-  isIndexNegated,
   isSecurityAlertText,
   getStructuredGeneralAdminFallbackTitle,
   selectRefundTotal,
@@ -414,6 +413,53 @@ const createUnknownFinding = (item: AdminItem): AdminFinding => ({
   status: "new",
   createdAt: new Date().toISOString(),
 });
+
+const createCommunicationFinding = (
+  item: AdminItem,
+  assessment: ReturnType<typeof assessCommunicationSignals>,
+): AdminFinding => {
+  const replyRequest = assessment.signals.find((signal) => signal.kind === "reply_request");
+  const actionRequest = assessment.signals.find((signal) => signal.kind === "action_request");
+  const importance = assessment.signals.find((signal) => signal.kind === "importance");
+  const urgency = assessment.signals.find((signal) => signal.kind === "urgency");
+
+  const title = replyRequest
+    ? "Important reply needed"
+    : actionRequest
+      ? "Action requested to check"
+      : importance
+        ? "Important message to check"
+        : "Urgent message to check";
+  const summary = replyRequest
+    ? "The source asks for a reply or response. Check the wording and any stated date before preparing one."
+    : actionRequest
+      ? "The source asks for a non-reply action. Check exactly what it requests before deciding what to do."
+      : importance
+        ? "The sender marks this message as important. That does not by itself mean a reply or other action is required."
+        : "The sender uses urgent wording. That does not by itself mean a reply or other action is required.";
+  const suggestedAction = replyRequest
+    ? "Prepare a clear response to the source request, then review it before deciding whether to use it."
+    : actionRequest
+      ? "Review the source request and prepare the stated action through a verified channel."
+      : importance
+        ? "Review what the sender marked as important and decide what, if anything, needs attention."
+        : "Review the source wording and any stated date before deciding what to do.";
+
+  return {
+    id: `finding-${crypto.randomUUID()}`,
+    itemId: item.id,
+    category: replyRequest ? "important_reply" : "unknown",
+    title,
+    summary,
+    whyItMatters:
+      "Importance, urgency, reply requests and action requests have different meanings. Keeping them separate avoids rushed or unsupported correspondence.",
+    suggestedAction,
+    urgency: urgency ? "high" : "medium",
+    confidence: "medium",
+    status: replyRequest || actionRequest ? "to_do" : "new",
+    createdAt: new Date().toISOString(),
+  };
+};
 
 const createStructuredGeneralAdminFallbackFinding = (
   item: AdminItem,
@@ -1110,26 +1156,13 @@ const createAccountOutcomeFinding = (item: AdminItem): AdminFinding => {
   };
 };
 
-// A reply is only genuinely requested when a reply/response mention sits outside
-// any negation span (so "do not reply" / "no-reply" never counts as one).
-const hasGenuineReplyRequest = (rawText: string): boolean => {
-  const spans = findNegationSpans(rawText);
-
-  for (const match of rawText.matchAll(/\b(?:reply|respond|response)\b/gi)) {
-    if (!isIndexNegated(match.index ?? 0, spans)) {
-      return true;
-    }
-  }
-
-  return false;
-};
-
 export const analyseAdminItem = (
   item: AdminItem,
   options: AdminAnalysisOptions = {},
 ): AdminFinding[] => {
   const text = `${item.title} ${item.rawText} ${sourceTypeLabels[item.sourceType]}`.toLowerCase();
   const generalAdminText = `${item.title}\n${item.rawText}`;
+  const communicationAssessment = assessCommunicationSignals(item.rawText);
   const accountOutcomeAssessment = assessAccountOutcome(generalAdminText);
   // Direct security signals must be assessed before topical public-scope
   // gating. A scam message can mention debt, employment, housing, or benefits
@@ -1344,18 +1377,38 @@ export const analyseAdminItem = (
     !appointmentTaskFinding &&
     !broadbandPriceRiseFinding &&
     !trainDelayFinding &&
+    structuredGeneralAdminFallback?.status !== "no_action_needed" &&
     !(accountOutcomeFinding &&
       !accountOutcomeAssessment.unresolvedFinancialOutcome &&
       !accountOutcomeAssessment.closurePending) &&
     isDecisionEngineDocument(item.rawText)
       ? createDecisionEngineFinding(item, item.rawText)
       : undefined;
-
-  // A reply is only genuinely requested when it is not inside a negation span,
-  // so "do not reply" / "no-reply" never keeps the important_reply rule alive.
-  const importantReplyAllowed =
-    containsAny(text, ["urgent", "action required", "final notice", "important"]) ||
-    hasGenuineReplyRequest(item.rawText);
+  const communicationFinding =
+    !highRiskEmailFinding &&
+    !securityAlertFinding &&
+    !deliveryCompletedFinding &&
+    !billReadyDirectDebitFinding &&
+    !appointmentReminderFinding &&
+    !promisedRefundFinding &&
+    !approvedRefundFinding &&
+    !travelRecoveryFinding &&
+    !travelEvidenceCheckFinding &&
+    !subscriptionFinding &&
+    !energyPriceChangeFinding &&
+    !noActionFinding &&
+    !paymentReminderFinding &&
+    !receiptFinding &&
+    !deliveryIssueFinding &&
+    !deliveryUpdateFinding &&
+    !appointmentTaskFinding &&
+    !broadbandPriceRiseFinding &&
+    !trainDelayFinding &&
+    !accountOutcomeFinding &&
+    !decisionEngineFinding &&
+    communicationAssessment.signals.length > 0
+      ? createCommunicationFinding(item, communicationAssessment)
+      : undefined;
 
   const findings = categoryRules
     .filter((rule) => {
@@ -1376,7 +1429,25 @@ export const analyseAdminItem = (
         return false;
       }
 
-      if (rule.category === "important_reply" && !importantReplyAllowed) {
+      // Communication meaning is decided once by the shared source-grounded
+      // assessment. The historical keyword rule conflated Important, urgent,
+      // reply and action wording, so it is no longer a second authority.
+      if (rule.category === "important_reply") {
+        return false;
+      }
+
+      if (
+        rule.category === "complaint" &&
+        communicationAssessment.negations.some(
+          (negation) => negation.target === "reply_request",
+        ) &&
+        !containsAny(
+          text,
+          [...rule.strongKeywords, ...rule.weakKeywords].filter(
+            (keyword) => keyword !== "no response",
+          ),
+        )
+      ) {
         return false;
       }
 
@@ -1394,7 +1465,7 @@ export const analyseAdminItem = (
 
       if (
         highRiskEmailFinding &&
-        (rule.category === "deadline" || rule.category === "important_reply")
+        rule.category === "deadline"
       ) {
         return false;
       }
@@ -1433,6 +1504,7 @@ export const analyseAdminItem = (
     appointmentTaskFinding,
     broadbandPriceRiseFinding,
     trainDelayFinding,
+    communicationFinding,
     decisionEngineFinding,
   ].filter((finding): finding is AdminFinding => Boolean(finding));
   const allFindings = [

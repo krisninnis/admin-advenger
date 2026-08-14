@@ -14,6 +14,7 @@ import {
   SENSITIVE_INFORMATION_WARNING,
 } from "./sensitiveInformationRequest";
 import {
+  assessCommunicationSignals,
   assessAccountOutcome,
   assessRefundState,
   extractGeneralAdmin,
@@ -119,6 +120,9 @@ const getRiskLevel = (adminCase: AdminCase): OpportunityCard["riskLevel"] => {
 
 const getOpportunityType = (adminCase: AdminCase, item?: AdminItem): OpportunityType => {
   const text = `${item?.title ?? ""} ${item?.rawText ?? ""}`.toLowerCase();
+  const hasReplyRequest = assessCommunicationSignals(item?.rawText ?? "").signals.some(
+    (signal) => signal.kind === "reply_request",
+  );
 
   if (adminCase.generalAdminFallback) {
     return adminCase.generalAdminFallback.status === "no_action_needed" ||
@@ -206,8 +210,14 @@ const getOpportunityType = (adminCase: AdminCase, item?: AdminItem): Opportunity
     return "warranty_or_fault";
   }
 
-  if (adminCase.category === "deadline" || adminCase.category === "important_reply") {
+  if (adminCase.category === "deadline") {
     return "deadline";
+  }
+
+  if (adminCase.category === "important_reply") {
+    return hasReplyRequest || /^Payment reminder to check$/i.test(adminCase.title)
+      ? "deadline"
+      : "needs_human_check";
   }
 
   if (adminCase.category === "unknown") {
@@ -289,6 +299,41 @@ export const deriveOpportunityCard = (
 ): OpportunityCard => {
   const opportunityType = getOpportunityType(adminCase, item);
   const text = `${item?.title ?? ""}\n${item?.rawText ?? ""}`;
+  const communicationAssessment = assessCommunicationSignals(item?.rawText ?? "");
+  const hasReplyRequest = communicationAssessment.signals.some(
+    (signal) => signal.kind === "reply_request",
+  );
+  const importance = communicationAssessment.signals.find(
+    (signal) => signal.kind === "importance",
+  );
+  const urgency = communicationAssessment.signals.find(
+    (signal) => signal.kind === "urgency",
+  );
+  const actionRequest = communicationAssessment.signals.find(
+    (signal) => signal.kind === "action_request",
+  );
+  const publicPreparationOnly =
+    /^(?:This needs a careful human review|Specialist support may be needed)$/i.test(
+      adminCase.title,
+    );
+  const communicationReviewOnly =
+    !hasReplyRequest &&
+    Boolean(
+      importance ||
+        urgency ||
+        actionRequest ||
+        communicationAssessment.negations.length > 0 ||
+        publicPreparationOnly,
+    );
+  const communicationNextAction = importance
+    ? "Review what the sender marked as important and decide what, if anything, needs attention."
+    : actionRequest
+      ? "Review the requested action and use a verified channel if you decide to complete it."
+      : urgency
+        ? "Review the urgent wording and any stated date before deciding what to do."
+        : publicPreparationOnly
+          ? "Review the source and decide who should look at it next."
+          : "Keep the source as a record and do not prepare a reply unless a separate request requires one.";
   const createdAt = adminCase.createdAt;
   const updatedAt = adminCase.updatedAt;
   const baseEvidence = adminCase.evidence.slice(0, 6).map((evidence) => `${evidence.label}: ${evidence.value}`);
@@ -1203,6 +1248,9 @@ export const deriveOpportunityCard = (
           ? "Warranty or faulty goods issue"
           : adminCase.title,
     plainEnglishSummary: adminCase.summary,
+    opportunityNote: communicationReviewOnly
+      ? "AdminAvenger is preserving what the source says without inferring a reply or correspondence action."
+      : undefined,
     // Only clearly recoverable amounts (refund/reimbursement/compensation/claim wording)
     // may become pending recovery. Total trip/booking/order costs never do.
     potentialRecovery: isRefund ? moneyImpact("Pending recovery", recoverableAmount, "one_off", "pending") : undefined,
@@ -1212,12 +1260,18 @@ export const deriveOpportunityCard = (
     deadlineLabel: isRefund ? "Chase if not received by" : "Deadline or chase date",
     evidenceFound: baseEvidence,
     missingInformation: missingEvidence,
-    nextBestAction: adminCase.nextAction,
-    recommendedPathSteps: [
-      "Check the evidence before acting.",
-      "Generate or edit the draft message if useful.",
-      "Update the outcome only after the result is confirmed by you.",
-    ],
+    nextBestAction: communicationReviewOnly ? communicationNextAction : adminCase.nextAction,
+    recommendedPathSteps: communicationReviewOnly
+      ? [
+          communicationNextAction,
+          "Keep the source wording with the case.",
+          "Only update the outcome after you have checked what actually happened.",
+        ]
+      : [
+          "Check the evidence before acting.",
+          "Generate or edit the draft message if useful.",
+          "Update the outcome only after the result is confirmed by you.",
+        ],
     riskLevel: getRiskLevel(adminCase),
     confidenceLabel: adminCase.confidence,
     sourceCaseType: adminCase.category,

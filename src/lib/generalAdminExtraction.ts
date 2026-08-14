@@ -113,6 +113,34 @@ export type ExtractedReference = {
 
 export type NegationSpan = { start: number; end: number; phrase: string };
 
+export type CommunicationSignalKind =
+  | "importance"
+  | "urgency"
+  | "reply_request"
+  | "action_request";
+
+export type CommunicationSignal = {
+  kind: CommunicationSignalKind;
+  value: string;
+  sourceQuote: string;
+  start: number;
+  end: number;
+  negated: false;
+};
+
+export type CommunicationNegation = {
+  target: "reply_request" | "action_request";
+  sourceQuote: string;
+  start: number;
+  end: number;
+  scopeEnd: number;
+};
+
+export type CommunicationAssessment = {
+  signals: CommunicationSignal[];
+  negations: CommunicationNegation[];
+};
+
 export type GeneralAdminExtraction = {
   dates: ExtractedDate[];
   amounts: ExtractedAmount[];
@@ -226,31 +254,159 @@ type AccountOutcomeAmountContext =
 
 // --- Negation -------------------------------------------------------------
 
-const NEGATION_PATTERNS: RegExp[] = [
-  /(?:please\s+)?do(?:\s+not|n['’]t)\s+reply/gi,
-  /(?:you\s+)?do(?:\s+not|n['’]t)\s+need\s+to\s+reply/gi,
-  /no\s+reply\s+(?:is\s+)?needed/gi,
-  /no[-\s]?reply/gi,
-  /no\s+action\s+(?:is\s+)?(?:required|needed)/gi,
-  /no\s+further\s+action/gi,
-  /you\s+do(?:\s+not|n['’]t)\s+need\s+to\s+do\s+anything/gi,
-  /you\s+do(?:\s+not|n['’]t)\s+need\s+to\s+(?:pay|take\s+any\s+action)/gi,
+const COMMUNICATION_NEGATION_PATTERNS: ReadonlyArray<{
+  target: CommunicationNegation["target"];
+  pattern: RegExp;
+}> = [
+  {
+    target: "reply_request",
+    pattern:
+      /\b(?:(?:please|you)\s+)?do(?:\s+not|n['’]t)\s+(?:need\s+to\s+)?(?:reply|respond)\b/gi,
+  },
+  {
+    target: "reply_request",
+    pattern: /\bno[-\s]?reply\b(?:\s+(?:is\s+)?(?:needed|required))?/gi,
+  },
+  {
+    target: "reply_request",
+    pattern: /\bno\s+response\s+(?:is\s+)?(?:needed|required)\b/gi,
+  },
+  {
+    target: "action_request",
+    pattern: /\bno\s+action\s+(?:is\s+)?(?:required|needed)\b/gi,
+  },
+  {
+    target: "action_request",
+    pattern: /\bno\s+further\s+action\b/gi,
+  },
+  {
+    target: "action_request",
+    pattern: /\byou\s+do(?:\s+not|n['’]t)\s+need\s+to\s+do\s+anything\b/gi,
+  },
+  {
+    target: "action_request",
+    pattern: /\byou\s+do(?:\s+not|n['’]t)\s+need\s+to\s+take\s+any\s+action\b/gi,
+  },
+];
+
+const OTHER_NEGATION_PATTERNS: RegExp[] = [
+  /you\s+do(?:\s+not|n['’]t)\s+need\s+to\s+pay/gi,
   /no\s+(?:manual\s+)?payment\s+(?:is\s+)?(?:required|needed)/gi,
   /nothing\s+(?:more\s+)?to\s+pay/gi,
 ];
 
-export const findNegationSpans = (text: string): NegationSpan[] => {
-  const spans: NegationSpan[] = [];
+const findNegationScopeEnd = (text: string, afterPhrase: number): number => {
+  const remaining = text.slice(afterPhrase);
+  const boundary = remaining.search(/[.!?;\n]|(?:,\s*)?\b(?:but|however|although|yet)\b/i);
 
-  for (const pattern of NEGATION_PATTERNS) {
+  return boundary === -1
+    ? Math.min(text.length, afterPhrase + 100)
+    : afterPhrase + boundary;
+};
+
+export const findCommunicationNegations = (text: string): CommunicationNegation[] => {
+  const negations: CommunicationNegation[] = [];
+
+  for (const { target, pattern } of COMMUNICATION_NEGATION_PATTERNS) {
+    for (const match of text.matchAll(pattern)) {
+      const start = match.index ?? 0;
+      const end = start + match[0].length;
+      negations.push({
+        target,
+        sourceQuote: match[0],
+        start,
+        end,
+        scopeEnd: findNegationScopeEnd(text, end),
+      });
+    }
+  }
+
+  return negations.sort((first, second) => first.start - second.start);
+};
+
+const isCommunicationIndexNegated = (
+  index: number,
+  target: CommunicationNegation["target"],
+  negations: readonly CommunicationNegation[],
+): boolean =>
+  negations.some(
+    (negation) =>
+      negation.target === target && index >= negation.start && index <= negation.scopeEnd,
+  );
+
+const COMMUNICATION_SIGNAL_PATTERNS: ReadonlyArray<{
+  kind: CommunicationSignalKind;
+  target?: CommunicationNegation["target"];
+  pattern: RegExp;
+}> = [
+  { kind: "importance", pattern: /\bimportant(?:\s+notice)?\b/gi },
+  { kind: "urgency", pattern: /\b(?:urgent|final\s+notice)\b/gi },
+  {
+    kind: "reply_request",
+    target: "reply_request",
+    pattern: /\bresponse\s+(?:is\s+)?(?:required|needed)\b/gi,
+  },
+  {
+    kind: "reply_request",
+    target: "reply_request",
+    pattern: /\bawaiting\s+(?:your\s+)?response\b/gi,
+  },
+  {
+    kind: "reply_request",
+    target: "reply_request",
+    pattern: /\b(?:reply|respond)\b/gi,
+  },
+  {
+    kind: "action_request",
+    target: "action_request",
+    pattern: /\baction\s+(?:is\s+)?required\b/gi,
+  },
+  {
+    kind: "action_request",
+    target: "action_request",
+    pattern: /\bplease\s+(?:confirm|upload|pay)\b/gi,
+  },
+];
+
+export const assessCommunicationSignals = (text: string): CommunicationAssessment => {
+  const negations = findCommunicationNegations(text);
+  const signals: CommunicationSignal[] = [];
+
+  for (const { kind, target, pattern } of COMMUNICATION_SIGNAL_PATTERNS) {
+    for (const match of text.matchAll(pattern)) {
+      const start = match.index ?? 0;
+      if (target && isCommunicationIndexNegated(start, target, negations)) continue;
+
+      const value = match[0];
+      signals.push({
+        kind,
+        value,
+        sourceQuote: value,
+        start,
+        end: start + value.length,
+        negated: false,
+      });
+    }
+  }
+
+  return {
+    signals: signals.sort((first, second) => first.start - second.start),
+    negations,
+  };
+};
+
+export const findNegationSpans = (text: string): NegationSpan[] => {
+  const spans: NegationSpan[] = findCommunicationNegations(text).map((negation) => ({
+    start: negation.start,
+    end: negation.scopeEnd,
+    phrase: negation.sourceQuote,
+  }));
+
+  for (const pattern of OTHER_NEGATION_PATTERNS) {
     for (const match of text.matchAll(pattern)) {
       const start = match.index ?? 0;
       const afterPhrase = start + match[0].length;
-      const terminator = text.slice(afterPhrase).search(/[.!?\n]/);
-      const end =
-        terminator === -1
-          ? Math.min(text.length, afterPhrase + 100)
-          : afterPhrase + terminator + 1;
+      const end = findNegationScopeEnd(text, afterPhrase);
       spans.push({ start, end, phrase: match[0] });
     }
   }
@@ -1360,7 +1516,12 @@ export const buildStructuredGeneralAdminFallback = (
   const promisedReview = acknowledgedReviewFrom(text);
   const possibleCollection = detectPossibleCollection(text);
   const evidenceToGather = evidenceToGatherFrom(text);
-  const explicitNoAction = /\b(?:no\s+action\s+(?:is\s+)?required|no\s+response\s+(?:is\s+)?needed|do\s+not\s+need\s+to\s+reply|no\s+reply\s+is\s+needed)\b/i.test(text);
+  const communicationAssessment = assessCommunicationSignals(text);
+  const explicitNoAction =
+    communicationAssessment.negations.length > 0 &&
+    !communicationAssessment.signals.some(
+      (signal) => signal.kind === "reply_request" || signal.kind === "action_request",
+    );
   const completed = /\b(?:is\s+complete|has\s+been\s+(?:completed|closed)|is\s+operating\s+normally|payment\s+received|received\s+your\s+[^.\n]*payment|added\s+it\s+to\s+the\s+record)\b/i.test(text);
   const clearAction = Boolean(
     requestedDocument ||

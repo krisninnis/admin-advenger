@@ -38,6 +38,17 @@ const firstCase = (item: AdminItem) => {
   return { item, finding, adminCase };
 };
 
+const firstPublicCase = (item: AdminItem) => {
+  const findings = analyseAdminItem(item, { accessMode: "public" });
+  const finding = findings[0];
+
+  if (!finding) {
+    throw new Error("Expected at least one public finding");
+  }
+
+  return { item, finding, adminCase: createAdminCase(finding, item) };
+};
+
 // A minimal case literal for scenarios that don't need to go through the
 // full classifier - e.g. asserting how guidedNextSteps reacts to a
 // decisionResult of a specific documentType, or to no decisionResult and no
@@ -661,6 +672,48 @@ Your payment this month: £813.45`;
       if (guided.primaryAction.kind === "draft_message") {
         expect(guided.primaryAction.body.length).toBeGreaterThan(0);
       }
+    });
+  });
+
+  describe("public-scope communication action integrity", () => {
+    const guidedFor = (title: string, text: string) => {
+      const { item, finding, adminCase } = firstPublicCase(makeItem(title, text));
+      return deriveGuidedNextStep(adminCase, item, finding);
+    };
+
+    const hasDraft = (guided: ReturnType<typeof deriveGuidedNextStep>) =>
+      [guided.primaryAction, ...guided.secondaryActions].some(
+        (action) => action.kind === "draft_message",
+      );
+
+    it.each([
+      ["Bare no reply", "Please do not reply"],
+      ["No reply needed", "No reply is needed"],
+      ["No response required", "No response is required"],
+      ["Importance only", "Important: your account needs attention"],
+      ["Importance and no reply", "Important notice. Please do not reply."],
+      ["Passive PIP", "My PIP is being reviewed."],
+    ])("never offers correspondence for %s", (title, text) => {
+      const guided = guidedFor(title, text);
+
+      expect(hasDraft(guided)).toBe(false);
+    });
+
+    it("keeps an editable draft for a genuine reply request", () => {
+      const guided = guidedFor("Genuine reply", "Please reply by 20 August");
+
+      expect(hasDraft(guided)).toBe(true);
+      expect(guided.primaryAction.kind).toBe("draft_message");
+    });
+
+    it.each([
+      ["Action required", "Action required: upload the completed form through your account."],
+      ["Polite upload", "Please upload the document by Friday."],
+    ])("uses a checklist rather than correspondence for %s", (title, text) => {
+      const guided = guidedFor(title, text);
+
+      expect(guided.primaryAction.kind).toBe("evidence_checklist");
+      expect(hasDraft(guided)).toBe(false);
     });
   });
 });

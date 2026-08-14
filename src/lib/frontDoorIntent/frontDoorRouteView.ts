@@ -14,6 +14,10 @@
 
 import { classifyFrontDoorIntent } from "./classifyFrontDoorIntent";
 import {
+  isBareBenefitsClaimantPrompt,
+  resolveBenefitsClaimant,
+} from "./benefitsClaimantResolution";
+import {
   confirmationShapeOf,
   frontDoorPersonLabelOf,
 } from "./frontDoorConfirmationShape";
@@ -94,20 +98,14 @@ export type FrontDoorRouteView =
   // The orientation page, shown after the one question is answered. It carries
   // its own copy of the prohibitions, so it satisfies FrontDoorRouteCommon
   // without needing to be told to.
-  | (FrontDoorOrientationView & { readonly questionsAskedFirst: 1 });
+  | (FrontDoorOrientationView & { readonly questionsAskedFirst: 0 | 1 });
 
 /**
- * Everything the router can decide on its own, before anyone has answered
- * anything.
- *
- * Orientation is deliberately excluded. It is only reachable by answering the
- * question, so a function that classifies text must not be able to return it,
- * and the compiler now enforces that rather than a comment asking nicely.
+ * Everything the router can decide on its own. A benefits orientation may be
+ * reached with zero questions only when the source itself resolves the
+ * claimant. That does not confirm a help target or open a specialist route.
  */
-export type FrontDoorResolvedRouteView = Exclude<
-  FrontDoorRouteView,
-  { readonly kind: "orientation" }
->;
+export type FrontDoorResolvedRouteView = FrontDoorRouteView;
 
 const COMMON = {
   backAvailable: true,
@@ -285,6 +283,26 @@ const confirmationView = (
   }
 };
 
+const resolvedBenefitsOrientationView = (
+  classification: FrontDoorIntentClassification,
+  originalInput: string,
+): FrontDoorResolvedRouteView | undefined => {
+  if (confirmationShapeOf(classification) !== "benefits") return undefined;
+
+  const claimant = resolveBenefitsClaimant(originalInput, classification);
+  if (claimant.status !== "resolved") return undefined;
+
+  return {
+    ...deriveFrontDoorOrientationView(
+      classification,
+      claimant.claimant === "user" ? "self" : "other_person",
+      originalInput,
+      claimant.claimant === "user" ? null : claimant.subject,
+    ),
+    questionsAskedFirst: 0,
+  };
+};
+
 /**
  * The single routing decision of this slice.
  *
@@ -334,10 +352,32 @@ export const resolveFrontDoorRouteView = (
     return documentAnalysisView(originalInput);
   }
 
-  return deriveFrontDoorRouteView(
-    classifyFrontDoorIntent(originalInput),
-    originalInput,
-  );
+  const classification = classifyFrontDoorIntent(originalInput);
+  const claimant = resolveBenefitsClaimant(originalInput, classification);
+
+  // A bare claimant-less phrase can contain the document noun "letter" or
+  // "form" without supplying an analysable document. Keep the existing closed
+  // claimant question for that narrow shape. Resolved relationship letters and
+  // substantive documents continue to document analysis unchanged.
+  if (
+    classification.documentAnalysisSelected &&
+    claimant.status !== "resolved" &&
+    isBareBenefitsClaimantPrompt(originalInput)
+  ) {
+    return confirmationView(
+      {
+        ...classification,
+        documentAnalysisSelected: false,
+        signals: ["possible_money_or_benefits_need", "person_target_unclear"],
+      },
+      originalInput,
+    );
+  }
+
+  const routed = deriveFrontDoorRouteView(classification, originalInput);
+  if (routed.kind !== "confirmation") return routed;
+
+  return resolvedBenefitsOrientationView(classification, originalInput) ?? routed;
 };
 
 export type FrontDoorRouteState = {

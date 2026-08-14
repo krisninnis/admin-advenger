@@ -22,7 +22,7 @@ import type { FrontDoorSubmissionSource } from "./submissionSource";
 /** A view that has something to show. Document analysis is not one of these. */
 export type FrontDoorInterruptingView = Extract<
   FrontDoorRouteView,
-  { kind: "urgent_support" } | { kind: "confirmation" }
+  { kind: "urgent_support" } | { kind: "confirmation" } | { kind: "orientation" }
 >;
 
 export type FrontDoorSubmissionDecision =

@@ -24,6 +24,14 @@
 // the slice claims to offer and should be a deliberate choice each time.
 
 export { classifyFrontDoorIntent } from "./classifyFrontDoorIntent";
+export {
+  isBareBenefitsClaimantPrompt,
+  resolveBenefitsClaimant,
+} from "./benefitsClaimantResolution";
+export type {
+  BenefitsClaimantEvidence,
+  BenefitsClaimantResolution,
+} from "./benefitsClaimantResolution";
 export { isSecurityShapedInput } from "./securityShapedInput";
 export {
   decideFrontDoorSubmission,

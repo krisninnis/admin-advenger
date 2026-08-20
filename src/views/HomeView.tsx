@@ -73,6 +73,7 @@ import {
 } from "../lib/fileIntakeAccept";
 import { FILE_SIZE_LIMIT_HELPER, getFileTooLargeMessage, isFileWithinSizeLimit } from "../lib/fileSizeLimit";
 import { DocumentAttachmentArea } from "../components/DocumentAttachmentArea";
+import { CareFeeClaimConfirmationPanel } from "../components/CareFeeClaimConfirmationPanel";
 import {
   ATTACHMENT_READ_FAILED_MESSAGE,
   buildAttachedFilesCombinedText,
@@ -143,6 +144,7 @@ import {
 } from "../lib/sourceProvenance";
 import type { GuidedDraftToSave } from "../lib/guidedDraftSave";
 import { submitAcceptedText } from "../lib/submissionHandoff";
+import { isControlledFeatureEnabled } from "../lib/publicScopePolicy";
 
 export type HomeAnalysisResult = {
   item: AdminItem;
@@ -608,6 +610,10 @@ export function HomeView({
   // paste/check flow via attachmentCombinedText below.
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
   const [isDraggingOverAttachment, setIsDraggingOverAttachment] = useState(false);
+  const [careFeeFlowActive, setCareFeeFlowActive] = useState(false);
+  const [careFeeReviewActive, setCareFeeReviewActive] = useState(false);
+  const [careFeeIntakeMessage, setCareFeeIntakeMessage] = useState("");
+  const careFeeControlledEntryEnabled = isControlledFeatureEnabled(import.meta.env);
   const isChecking = analysisStatus === "loading";
   const isAiReading = aiStatus === "loading";
   const isReadingPhoto = ocrStatus === "reading";
@@ -662,6 +668,10 @@ export function HomeView({
   // separately from attachedFiles itself.
   const attachmentCombinedText = useMemo(
     () => buildAttachedFilesCombinedText(attachedFiles),
+    [attachedFiles],
+  );
+  const careFeeSourceDocuments = useMemo(
+    () => buildSourceDocuments(attachedFiles),
     [attachedFiles],
   );
   const showAttachmentCombinedTextNote =
@@ -1770,7 +1780,22 @@ export function HomeView({
       return;
     }
 
-    const newEntries = newFiles.map((file) => createAttachedFile(file));
+    const remainingCareFeeSlots = Math.max(0, 3 - attachedFiles.length);
+    const acceptedFiles = careFeeFlowActive
+      ? newFiles.slice(0, remainingCareFeeSlots)
+      : newFiles;
+
+    if (careFeeFlowActive && acceptedFiles.length < newFiles.length) {
+      setCareFeeIntakeMessage("This controlled journey accepts up to three records.");
+    } else if (careFeeFlowActive) {
+      setCareFeeIntakeMessage("");
+    }
+
+    if (acceptedFiles.length === 0) {
+      return;
+    }
+
+    const newEntries = acceptedFiles.map((file) => createAttachedFile(file));
     setAttachedFiles((current) => [...current, ...newEntries]);
     const queuedImageIds = newEntries
       .filter((entry) => entry.kind === "image" && entry.status === "waiting")
@@ -1847,6 +1872,7 @@ export function HomeView({
   };
 
   const handleRemoveAttachedFile = (id: string) => {
+    setCareFeeIntakeMessage("");
     setPendingAttachmentImageIds((current) =>
       current.filter((attachmentId) => attachmentId !== id),
     );
@@ -1903,6 +1929,31 @@ export function HomeView({
         </p>
       </header>
 
+      {careFeeControlledEntryEnabled &&
+      !careFeeFlowActive &&
+      !frontDoorRoute.view &&
+      !walesCarePathActive &&
+      !result ? (
+        <section className="rounded-lg border border-cyan-300/25 bg-cyan-300/[0.06] p-4 sm:p-5">
+          <p className="text-sm leading-6 text-cyan-50/90">
+            Controlled testing is available for preparing two local care-fee records.
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              dispatchFrontDoorRoute({ type: "dismissed" });
+              setInputMessage("");
+              setCareFeeIntakeMessage("");
+              setCareFeeReviewActive(false);
+              setCareFeeFlowActive(true);
+            }}
+            className="mt-3 min-h-11 rounded-lg border border-cyan-200/30 bg-slate-950 px-4 py-3 text-sm font-bold text-cyan-50 transition hover:border-cyan-200/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-200"
+          >
+            Compare care-fee records
+          </button>
+        </section>
+      ) : null}
+
       {walesCarePathActive && careOrientation ? (
         <CompactSubmittedMessage
           submittedText={careOrientation.originalInput}
@@ -1912,6 +1963,87 @@ export function HomeView({
         />
       ) : null}
 
+      {careFeeFlowActive ? (
+        <section aria-labelledby="care-fee-intake-heading" className="min-w-0 space-y-5">
+          <div className="rounded-lg border border-white/10 bg-slate-900/85 p-4 shadow-xl shadow-slate-950/20 sm:p-6">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-widest text-cyan-300">
+                  Controlled local journey
+                </p>
+                <h2 id="care-fee-intake-heading" className="mt-2 text-2xl font-bold text-white">
+                  Prepare care-fee records
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setCareFeeReviewActive(false);
+                  setCareFeeFlowActive(false);
+                  setCareFeeIntakeMessage("");
+                }}
+                className="min-h-11 rounded-lg border border-white/15 px-4 py-2 text-sm font-bold text-slate-200 transition hover:border-white/30 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300"
+              >
+                Exit care-fee preparation
+              </button>
+            </div>
+            {!careFeeReviewActive ? (
+              <>
+                <p className="mt-2 text-sm leading-6 text-slate-300">
+                  Attach up to three local records. They stay in this browser and are not saved by this journey.
+                </p>
+                <DocumentAttachmentArea
+                  files={attachedFiles}
+                  isDraggingOver={isDraggingOverAttachment}
+                  disabled={
+                    isChecking ||
+                    isAiReading ||
+                    isReadingPhoto ||
+                    isReadingAttachments ||
+                    attachedFiles.length >= 3
+                  }
+                  showCombinedTextNote={false}
+                  onFilesSelected={(files) => void handleAttachmentFilesSelected(files)}
+                  onRemoveFile={handleRemoveAttachedFile}
+                  onDragOver={handleAttachmentDragOver}
+                  onDragLeave={handleAttachmentDragLeave}
+                  onDrop={handleAttachmentDrop}
+                />
+                {careFeeIntakeMessage ? (
+                  <p role="status" aria-live="polite" className="mt-3 rounded-lg border border-amber-300/30 bg-amber-300/10 p-3 text-sm text-amber-50">
+                    {careFeeIntakeMessage}
+                  </p>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => setCareFeeReviewActive(true)}
+                  disabled={attachedFiles.length === 0 || isReadingAttachments}
+                  className="mt-5 min-h-11 w-full rounded-lg bg-emerald-400 px-5 py-3 font-bold text-slate-950 transition hover:bg-emerald-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+                >
+                  Review record candidates
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setCareFeeReviewActive(false)}
+                className="mt-4 min-h-11 rounded-lg border border-white/15 px-4 py-2 text-sm font-bold text-slate-200 transition hover:border-white/30 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300"
+              >
+                Change attached records
+              </button>
+            )}
+          </div>
+          {careFeeReviewActive ? (
+            <CareFeeClaimConfirmationPanel
+              sourceDocuments={careFeeSourceDocuments}
+              showExit={false}
+              onExit={() => setCareFeeReviewActive(false)}
+            />
+          ) : null}
+        </section>
+      ) : null}
+
+      {!careFeeFlowActive ? (
       <section
         id={originalInputDisclosureId}
         hidden={compactOriginalInput}
@@ -2636,6 +2768,7 @@ export function HomeView({
           </p>
         ) : null}
       </section>
+      ) : null}
 
       {frontDoorRoute.view ? (
         <FrontDoorConfirmationPanel

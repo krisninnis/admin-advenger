@@ -138,8 +138,13 @@ describe("CareFeeClaimConfirmationPanel", () => {
 
   it("clears tentative selection and context when source documents are replaced", async () => {
     const user = userEvent.setup();
+    const onInvalidated = vi.fn();
     const { rerender } = render(
-      <CareFeeClaimConfirmationPanel sourceDocuments={documents.slice(0, 2)} onExit={vi.fn()} />,
+      <CareFeeClaimConfirmationPanel
+        sourceDocuments={documents.slice(0, 2)}
+        onExit={vi.fn()}
+        onInvalidated={onInvalidated}
+      />,
     );
 
     await user.click(screen.getByRole("button", { name: "Use suggested pair" }));
@@ -148,11 +153,13 @@ describe("CareFeeClaimConfirmationPanel", () => {
         (item) => (item as HTMLInputElement).checked,
       ),
     ).toBe(true);
+    onInvalidated.mockClear();
 
     rerender(
       <CareFeeClaimConfirmationPanel
         sourceDocuments={[documents[0], sourceDocument("replacement", 530, 2)]}
         onExit={vi.fn()}
+        onInvalidated={onInvalidated}
       />,
     );
 
@@ -164,5 +171,6 @@ describe("CareFeeClaimConfirmationPanel", () => {
       ).toBe(true);
     });
     expect(screen.getByText("replacement.pdf")).toBeTruthy();
+    expect(onInvalidated).toHaveBeenCalledTimes(1);
   });
 });

@@ -74,6 +74,12 @@ import {
 import { FILE_SIZE_LIMIT_HELPER, getFileTooLargeMessage, isFileWithinSizeLimit } from "../lib/fileSizeLimit";
 import { DocumentAttachmentArea } from "../components/DocumentAttachmentArea";
 import { CareFeeClaimConfirmationPanel } from "../components/CareFeeClaimConfirmationPanel";
+import { CareFeeSafeComparisonResultPanel } from "../components/CareFeeSafeComparisonResultPanel";
+import type { ConfirmedCareFeeComparisonRequestV1 } from "../lib/careFeeClaimConfirmation";
+import {
+  runCareFeeSafeComparison,
+  type CareFeeSafeComparisonResultViewModel,
+} from "../lib/careFeeSafeComparison";
 import {
   ATTACHMENT_READ_FAILED_MESSAGE,
   buildAttachedFilesCombinedText,
@@ -613,6 +619,13 @@ export function HomeView({
   const [careFeeFlowActive, setCareFeeFlowActive] = useState(false);
   const [careFeeReviewActive, setCareFeeReviewActive] = useState(false);
   const [careFeeIntakeMessage, setCareFeeIntakeMessage] = useState("");
+  const [careFeeConfirmedRequest, setCareFeeConfirmedRequest] =
+    useState<ConfirmedCareFeeComparisonRequestV1>();
+  const [careFeeComparison, setCareFeeComparison] =
+    useState<CareFeeSafeComparisonResultViewModel>();
+  const [careFeeComparisonError, setCareFeeComparisonError] = useState("");
+  const [careFeeComparisonInProgress, setCareFeeComparisonInProgress] = useState(false);
+  const [careFeeConfirmationResetKey, setCareFeeConfirmationResetKey] = useState(0);
   const careFeeControlledEntryEnabled = isControlledFeatureEnabled(import.meta.env);
   const isChecking = analysisStatus === "loading";
   const isAiReading = aiStatus === "loading";
@@ -674,6 +687,12 @@ export function HomeView({
     () => buildSourceDocuments(attachedFiles),
     [attachedFiles],
   );
+  useEffect(() => {
+    setCareFeeConfirmedRequest(undefined);
+    setCareFeeComparison(undefined);
+    setCareFeeComparisonError("");
+    setCareFeeComparisonInProgress(false);
+  }, [careFeeSourceDocuments]);
   const showAttachmentCombinedTextNote =
     rawText.trim().length > 0 && hasReadableAttachedText(attachedFiles);
   // Front-Door Intent Routing v1, UI wiring slice. Everything the front door
@@ -1899,6 +1918,75 @@ export function HomeView({
     void handleAttachmentFilesSelected(droppedFiles);
   };
 
+  const invalidateCareFeeComparison = () => {
+    setCareFeeConfirmedRequest(undefined);
+    setCareFeeComparison(undefined);
+    setCareFeeComparisonError("");
+    setCareFeeComparisonInProgress(false);
+  };
+
+  const handleCareFeeReady = (request: ConfirmedCareFeeComparisonRequestV1) => {
+    setCareFeeConfirmedRequest(request);
+    setCareFeeComparison(undefined);
+    setCareFeeComparisonError("");
+  };
+
+  const handleCompareCareFeeRecords = () => {
+    setCareFeeComparison(undefined);
+    setCareFeeComparisonError("");
+    if (!careFeeConfirmedRequest) {
+      setCareFeeComparisonError(
+        "These records changed or could not be verified. Review and confirm them again.",
+      );
+      return;
+    }
+
+    setCareFeeComparisonInProgress(true);
+    const outcome = runCareFeeSafeComparison(
+      careFeeConfirmedRequest,
+      careFeeSourceDocuments,
+    );
+    setCareFeeComparisonInProgress(false);
+    if (outcome.status === "failed") {
+      setCareFeeComparisonError(outcome.message);
+      return;
+    }
+
+    setCareFeeComparison(outcome.model);
+  };
+
+  const handleChangeCareFeeRecords = () => {
+    invalidateCareFeeComparison();
+    setCareFeeConfirmationResetKey((current) => current + 1);
+  };
+
+  const handleBackToCareFeeDocuments = () => {
+    invalidateCareFeeComparison();
+    setCareFeeReviewActive(false);
+    setCareFeeConfirmationResetKey((current) => current + 1);
+  };
+
+  const handleStartOverCareFee = () => {
+    invalidateCareFeeComparison();
+    setCareFeeReviewActive(false);
+    setCareFeeIntakeMessage("");
+    setAttachedFiles([]);
+    setPendingAttachmentImageIds([]);
+    setActiveAttachmentImageId(undefined);
+    setPendingPhotoFile(undefined);
+    setShowPhotoCapturePanel(false);
+    setPhotoCaptureIntent("replace");
+    setCareFeeConfirmationResetKey((current) => current + 1);
+  };
+
+  const handleExitCareFee = () => {
+    invalidateCareFeeComparison();
+    setCareFeeReviewActive(false);
+    setCareFeeFlowActive(false);
+    setCareFeeIntakeMessage("");
+    setCareFeeConfirmationResetKey((current) => current + 1);
+  };
+
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       <header className="mx-auto flex max-w-2xl flex-col items-center space-y-3 pt-1 text-center sm:pt-4">
@@ -1945,6 +2033,7 @@ export function HomeView({
               setInputMessage("");
               setCareFeeIntakeMessage("");
               setCareFeeReviewActive(false);
+              invalidateCareFeeComparison();
               setCareFeeFlowActive(true);
             }}
             className="mt-3 min-h-11 rounded-lg border border-cyan-200/30 bg-slate-950 px-4 py-3 text-sm font-bold text-cyan-50 transition hover:border-cyan-200/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-200"
@@ -1977,11 +2066,7 @@ export function HomeView({
               </div>
               <button
                 type="button"
-                onClick={() => {
-                  setCareFeeReviewActive(false);
-                  setCareFeeFlowActive(false);
-                  setCareFeeIntakeMessage("");
-                }}
+                onClick={handleExitCareFee}
                 className="min-h-11 rounded-lg border border-white/15 px-4 py-2 text-sm font-bold text-slate-200 transition hover:border-white/30 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300"
               >
                 Exit care-fee preparation
@@ -2026,7 +2111,7 @@ export function HomeView({
             ) : (
               <button
                 type="button"
-                onClick={() => setCareFeeReviewActive(false)}
+                onClick={handleBackToCareFeeDocuments}
                 className="mt-4 min-h-11 rounded-lg border border-white/15 px-4 py-2 text-sm font-bold text-slate-200 transition hover:border-white/30 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300"
               >
                 Change attached records
@@ -2035,9 +2120,45 @@ export function HomeView({
           </div>
           {careFeeReviewActive ? (
             <CareFeeClaimConfirmationPanel
+              key={careFeeConfirmationResetKey}
               sourceDocuments={careFeeSourceDocuments}
               showExit={false}
-              onExit={() => setCareFeeReviewActive(false)}
+              onExit={handleBackToCareFeeDocuments}
+              onReady={handleCareFeeReady}
+              onInvalidated={invalidateCareFeeComparison}
+            />
+          ) : null}
+          {careFeeReviewActive && careFeeConfirmedRequest && !careFeeComparison ? (
+            <section className="rounded-lg border border-cyan-300/25 bg-cyan-300/[0.06] p-4 sm:p-5">
+              <h2 className="text-xl font-bold text-cyan-50">Run the local comparison</h2>
+              <p className="mt-2 text-sm leading-6 text-cyan-50/90">
+                The records are ready, but nothing has been compared yet. This stays in this browser session.
+              </p>
+              <button
+                type="button"
+                onClick={handleCompareCareFeeRecords}
+                disabled={careFeeComparisonInProgress}
+                className="mt-4 min-h-11 w-full rounded-lg bg-emerald-400 px-5 py-3 font-bold text-slate-950 transition hover:bg-emerald-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200 disabled:cursor-wait disabled:bg-slate-700 disabled:text-slate-300"
+              >
+                {careFeeComparisonInProgress ? "Comparing records…" : "Compare these records"}
+              </button>
+            </section>
+          ) : null}
+          {careFeeComparisonError ? (
+            <p
+              role="alert"
+              aria-live="assertive"
+              className="rounded-lg border border-amber-300/30 bg-amber-300/10 p-4 text-sm leading-6 text-amber-50"
+            >
+              {careFeeComparisonError}
+            </p>
+          ) : null}
+          {careFeeComparison ? (
+            <CareFeeSafeComparisonResultPanel
+              model={careFeeComparison}
+              onChangeRecords={handleChangeCareFeeRecords}
+              onBackToDocuments={handleBackToCareFeeDocuments}
+              onStartOver={handleStartOverCareFee}
             />
           ) : null}
         </section>

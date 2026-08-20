@@ -73,6 +73,7 @@ describe("Care Fee controlled entry", () => {
 
     expect(screen.getByRole("heading", { name: "Prepare care-fee records" })).toBeTruthy();
     expect(screen.getByText(/Attach up to three local records\./)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Compare these records" })).toBeNull();
     expect(screen.queryByLabelText("Paste text or drop a document here")).toBeNull();
     expect(props.onCheck).not.toHaveBeenCalled();
     expect(props.onSaveCase).not.toHaveBeenCalled();

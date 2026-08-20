@@ -17,6 +17,7 @@ type CareFeeClaimConfirmationPanelProps = {
   sourceDocuments: readonly SourceDocument[];
   onExit: () => void;
   onReady?: (request: ConfirmedCareFeeComparisonRequestV1) => void;
+  onInvalidated?: () => void;
   showExit?: boolean;
 };
 
@@ -246,6 +247,7 @@ export function CareFeeClaimConfirmationPanel({
   sourceDocuments,
   onExit,
   onReady,
+  onInvalidated,
   showExit = true,
 }: CareFeeClaimConfirmationPanelProps) {
   const [step, setStep] = useState<FlowStep>("candidates");
@@ -255,6 +257,7 @@ export function CareFeeClaimConfirmationPanel({
   const [request, setRequest] = useState<ConfirmedCareFeeComparisonRequestV1>();
   const [error, setError] = useState("");
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const onInvalidatedRef = useRef(onInvalidated);
   const documentsKey = sourceSetKey(sourceDocuments);
   const candidates = useMemo(
     () => buildCareFeeClaimCandidates(sourceDocuments),
@@ -280,19 +283,30 @@ export function CareFeeClaimConfirmationPanel({
     : [];
 
   useEffect(() => {
+    onInvalidatedRef.current = onInvalidated;
+  }, [onInvalidated]);
+
+  useEffect(() => {
     setStep("candidates");
     setSelectedClaimIds([]);
     setContextAnswers({});
     setConfirmedContext([]);
     setRequest(undefined);
     setError("");
+    onInvalidatedRef.current?.();
   }, [documentsKey]);
 
   useEffect(() => {
     headingRef.current?.focus();
   }, [step, documentsKey]);
 
+  const invalidateRequest = () => {
+    setRequest(undefined);
+    onInvalidatedRef.current?.();
+  };
+
   const toggleCandidate = (id: string) => {
+    invalidateRequest();
     setError("");
     setConfirmedContext([]);
     setContextAnswers({});
@@ -406,7 +420,10 @@ export function CareFeeClaimConfirmationPanel({
         {showExit ? (
           <button
             type="button"
-            onClick={onExit}
+            onClick={() => {
+              invalidateRequest();
+              onExit();
+            }}
             className="min-h-11 rounded-lg border border-white/15 px-4 py-2 text-sm font-bold text-slate-200 transition hover:border-white/30 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300"
           >
             Exit care-fee preparation
@@ -433,6 +450,7 @@ export function CareFeeClaimConfirmationPanel({
               <button
                 type="button"
                 onClick={() => {
+                  invalidateRequest();
                   setSelectedClaimIds([...suggestion.claimIds]);
                   setConfirmedContext([]);
                   setContextAnswers({});
@@ -544,7 +562,10 @@ export function CareFeeClaimConfirmationPanel({
                             name={key}
                             value={value}
                             checked={contextAnswers[key] === value}
-                            onChange={() => setContextAnswers((current) => ({ ...current, [key]: value }))}
+                            onChange={() => {
+                              invalidateRequest();
+                              setContextAnswers((current) => ({ ...current, [key]: value }));
+                            }}
                             className="h-5 w-5 accent-emerald-400"
                           />
                           {label}
@@ -569,7 +590,10 @@ export function CareFeeClaimConfirmationPanel({
                           name={key}
                           value={role}
                           checked={contextAnswers[key] === role}
-                          onChange={() => setContextAnswers((current) => ({ ...current, [key]: role }))}
+                          onChange={() => {
+                            invalidateRequest();
+                            setContextAnswers((current) => ({ ...current, [key]: role }));
+                          }}
                           className="h-5 w-5 accent-emerald-400"
                         />
                         {roleLabels[role]}
@@ -581,7 +605,10 @@ export function CareFeeClaimConfirmationPanel({
                         name={key}
                         value="unsure"
                         checked={contextAnswers[key] === "unsure"}
-                        onChange={() => setContextAnswers((current) => ({ ...current, [key]: "unsure" }))}
+                        onChange={() => {
+                          invalidateRequest();
+                          setContextAnswers((current) => ({ ...current, [key]: "unsure" }));
+                        }}
                         className="h-5 w-5 accent-emerald-400"
                       />
                       Not sure
@@ -592,7 +619,10 @@ export function CareFeeClaimConfirmationPanel({
             })}
           </div>
           <div className="mt-6 grid gap-3 sm:grid-cols-2">
-            <button type="button" onClick={() => setStep("candidates")} className="min-h-11 rounded-lg border border-white/15 px-4 py-3 font-bold text-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300">
+            <button type="button" onClick={() => {
+              invalidateRequest();
+              setStep("candidates");
+            }} className="min-h-11 rounded-lg border border-white/15 px-4 py-3 font-bold text-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300">
               Back to record choices
             </button>
             <button type="button" onClick={reviewContext} className="min-h-11 rounded-lg bg-emerald-400 px-4 py-3 font-bold text-slate-950 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200">
@@ -630,7 +660,10 @@ export function CareFeeClaimConfirmationPanel({
             </section>
           ) : null}
           <div className="mt-6 grid gap-3 sm:grid-cols-2">
-            <button type="button" onClick={() => setStep(contextQuestions.length > 0 ? "context" : "candidates")} className="min-h-11 rounded-lg border border-white/15 px-4 py-3 font-bold text-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300">
+            <button type="button" onClick={() => {
+              invalidateRequest();
+              setStep(contextQuestions.length > 0 ? "context" : "candidates");
+            }} className="min-h-11 rounded-lg border border-white/15 px-4 py-3 font-bold text-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300">
               Back
             </button>
             <button type="button" onClick={confirmPair} className="min-h-11 rounded-lg bg-emerald-400 px-4 py-3 font-bold text-slate-950 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200">
@@ -646,7 +679,7 @@ export function CareFeeClaimConfirmationPanel({
             The two records and your separate confirmations are prepared for this browser session.
           </p>
           <p className="mt-2 text-sm leading-6 text-emerald-100/80">
-            No further action has been taken.
+            No comparison has run yet. Choose Compare these records to continue.
           </p>
         </div>
       ) : null}

@@ -1,3 +1,5 @@
+import type { ComparableApplicability } from "../financialClaimComparability";
+
 export type DecisionDocumentType =
   | "parking_ticket"
   | "debt_collection"
@@ -39,11 +41,76 @@ export type DecisionAmountTreatment =
   | "possible_refund_or_reduction"
   | "no_money_counted";
 
-export type DecisionSourceFact = {
-  label: string;
-  value: string;
-  sourceQuote?: string;
+export type DecisionSourceTrace = {
+  readonly claimId: string;
+  readonly sourceDocumentId: string;
+  /** Presentation metadata only; never use this as stable provenance identity. */
+  readonly sourceDocumentName: string;
+  readonly sourceSegmentId?: string;
+  readonly pageNumber?: number;
+  readonly photoNumber?: number;
 };
+
+export type DecisionSourceFact = {
+  /** Optional only so existing merged producers remain source-compatible. */
+  readonly kind?: "source";
+  readonly label: string;
+  readonly value: string;
+  readonly sourceQuote?: string;
+  /** Optional stable source identity for a fact that originated as a typed claim. */
+  readonly trace?: DecisionSourceTrace;
+  readonly inputClaimIds?: never;
+  readonly decisionContext?: never;
+  readonly applicability?: never;
+};
+
+export type DecisionDerivedContext =
+  | {
+      readonly kind: "financial_reconciliation";
+      readonly state: "agreement";
+    }
+  | {
+      readonly kind: "financial_reconciliation";
+      readonly state: "disagreement";
+      readonly differenceKind: "absolute";
+    }
+  | {
+      readonly kind: "deterministic";
+      readonly outputType: string;
+      readonly outputValue: string;
+    };
+
+type DecisionDerivedFactBase = {
+  readonly kind: "decision_derived";
+  readonly label: string;
+  readonly value: string;
+  /** Exact source claims used by the deterministic layer that produced this value. */
+  readonly inputClaimIds: readonly [string, string];
+  readonly sourceQuote?: never;
+  readonly trace?: never;
+  readonly sourceDocumentId?: never;
+  readonly sourceDocumentName?: never;
+  readonly sourceSegmentId?: never;
+  readonly pageNumber?: never;
+  readonly photoNumber?: never;
+};
+
+/**
+ * Deterministic context is kept separate from source facts. Reconciliation
+ * facts must retain the exact Phase 4 applicability that authorised them.
+ */
+export type DecisionDerivedFact =
+  | (DecisionDerivedFactBase & {
+      readonly decisionContext: Extract<
+        DecisionDerivedContext,
+        { readonly kind: "financial_reconciliation" }
+      >;
+      readonly applicability: ComparableApplicability;
+    })
+  | (DecisionDerivedFactBase & {
+      readonly decisionContext: Extract<DecisionDerivedContext, { readonly kind: "deterministic" }>;
+      readonly applicability?: ComparableApplicability;
+    });
 
 export type DecisionConfidenceLevel = "low" | "medium" | "high";
 
@@ -85,6 +152,8 @@ export type DecisionResult = {
   amountMentioned?: string;
   amountTreatment: DecisionAmountTreatment;
   sourceFacts: DecisionSourceFact[];
+  /** Calculations or other deterministic context, kept separate from source facts. */
+  derivedFacts?: DecisionDerivedFact[];
   // Optional "Questions to answer" section. Only benefits-family results set this
   // today; other modules simply omit it and the UI folds it into the
   // missing-information list.

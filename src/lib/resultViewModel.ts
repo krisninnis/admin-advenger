@@ -2,7 +2,15 @@ import type { AdminCase, EvidenceKind, MoneyImpact, OpportunityCard } from "../t
 import type { BenefitsActionPack, BenefitsKeyDate, BenefitsMoneyLine } from "./benefitsActionPack";
 import type { CareerRequirementEvidenceMapItem, CareerSupportPack } from "./careerSupportPack";
 import type { CommunityHelperPack } from "./communityHelperPack";
-import type { DecisionAmountTreatment, DecisionResult, DecisionSourceFact } from "./decisionEngine/types";
+import type {
+  DecisionAmountTreatment,
+  DecisionDerivedContext,
+  DecisionDerivedFact,
+  DecisionResult,
+  DecisionSourceFact,
+  DecisionSourceTrace,
+} from "./decisionEngine/types";
+import type { ComparableApplicability } from "./financialClaimComparability";
 import {
   FORBIDDEN_ADVERSARIAL_LANGUAGE,
   FORBIDDEN_ADVICE_CLAIMS,
@@ -100,13 +108,45 @@ export type ResultMoneyView = {
   sourceQuote?: string;
 };
 
-export type ResultEvidenceView = {
+type ResultEvidenceBase = {
   id: string;
   label: string;
   value: string;
   source: ResultViewSource;
-  sourceQuote?: string;
 };
+
+export type ResultSourceEvidenceView = ResultEvidenceBase & {
+  kind: "source";
+  sourceQuote?: string;
+  trace?: DecisionSourceTrace;
+  inputClaimIds?: never;
+  decisionContext?: never;
+  applicability?: never;
+};
+
+export type ResultDecisionDerivedEvidenceView = ResultEvidenceBase & {
+  kind: "decision_derived";
+  inputClaimIds: readonly [string, string];
+  decisionContext: DecisionDerivedContext;
+  applicability?: ComparableApplicability;
+  sourceQuote?: never;
+  trace?: never;
+};
+
+export type ResultSupportingEvidenceView = ResultEvidenceBase & {
+  /** Existing non-DecisionResult evidence keeps its published runtime shape. */
+  kind?: never;
+  sourceQuote?: string;
+  trace?: never;
+  inputClaimIds?: never;
+  decisionContext?: never;
+  applicability?: never;
+};
+
+export type ResultEvidenceView =
+  | ResultSourceEvidenceView
+  | ResultDecisionDerivedEvidenceView
+  | ResultSupportingEvidenceView;
 
 export type ResultDraftView = {
   title: string;
@@ -462,12 +502,128 @@ const fromOpportunityMoney = (money: MoneyImpact, index: number): ResultMoneyVie
   source: "main_result",
 });
 
+const hasOwn = (value: object, key: PropertyKey): boolean =>
+  Object.prototype.hasOwnProperty.call(value, key);
+
+const isRecord = (value: unknown): value is Record<PropertyKey, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const isExactIdentifier = (value: unknown): value is string => {
+  if (typeof value !== "string" || value.length === 0 || value.trim() !== value) return false;
+
+  return !Array.from(value).some((character) => {
+    const codePoint = character.codePointAt(0);
+    return codePoint !== undefined && (codePoint <= 31 || codePoint === 127);
+  });
+};
+
+const isNonEmptyText = (value: unknown): value is string =>
+  typeof value === "string" && value.trim().length > 0;
+
+const isPositiveInteger = (value: unknown): value is number =>
+  Number.isSafeInteger(value) && (value as number) > 0;
+
+const isIsoCalendarDate = (value: unknown): value is string => {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/u.test(value)) return false;
+
+  const [year, month, day] = value.split("-").map(Number);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  return parsed.getUTCFullYear() === year &&
+    parsed.getUTCMonth() === month - 1 &&
+    parsed.getUTCDate() === day;
+};
+
+const isValidSourceTrace = (value: unknown): value is DecisionSourceTrace => {
+  if (!isRecord(value)) return false;
+  if (!isExactIdentifier(value.claimId) || !isExactIdentifier(value.sourceDocumentId)) return false;
+  if (!isNonEmptyText(value.sourceDocumentName)) return false;
+  if (value.sourceSegmentId !== undefined && !isExactIdentifier(value.sourceSegmentId)) return false;
+  if (value.pageNumber !== undefined && !isPositiveInteger(value.pageNumber)) return false;
+  if (value.photoNumber !== undefined && !isPositiveInteger(value.photoNumber)) return false;
+  return true;
+};
+
+const isValidApplicability = (value: unknown): value is ComparableApplicability => {
+  if (!isRecord(value)) return false;
+
+  if (value.kind === "same_effective_date") {
+    return isIsoCalendarDate(value.effectiveDate);
+  }
+
+  if (value.kind === "same_explicit_period" || value.kind === "overlapping_explicit_periods") {
+    return isIsoCalendarDate(value.periodStart) &&
+      isIsoCalendarDate(value.periodEnd) &&
+      value.periodStart <= value.periodEnd;
+  }
+
+  return false;
+};
+
+const isValidDecisionContext = (value: unknown): value is DecisionDerivedContext => {
+  if (!isRecord(value)) return false;
+
+  if (value.kind === "financial_reconciliation") {
+    return (value.state === "agreement" && value.differenceKind === undefined) ||
+      (value.state === "disagreement" && value.differenceKind === "absolute");
+  }
+
+  return value.kind === "deterministic" &&
+    isExactIdentifier(value.outputType) &&
+    isExactIdentifier(value.outputValue);
+};
+
+const isValidSourceFact = (fact: DecisionSourceFact): boolean => {
+  const value = fact as unknown;
+  if (!isRecord(value)) return false;
+  if (typeof value.label !== "string" || typeof value.value !== "string") return false;
+  if (value.kind !== undefined && value.kind !== "source") return false;
+  if (hasOwn(value, "inputClaimIds") || hasOwn(value, "decisionContext") || hasOwn(value, "applicability")) {
+    return false;
+  }
+  if (value.sourceQuote !== undefined && !isNonEmptyText(value.sourceQuote)) return false;
+  return value.trace === undefined || isValidSourceTrace(value.trace);
+};
+
+const isValidDerivedFact = (fact: DecisionDerivedFact): boolean => {
+  const value = fact as unknown;
+  if (!isRecord(value) || value.kind !== "decision_derived") return false;
+  if (typeof value.label !== "string" || typeof value.value !== "string") return false;
+  if (hasOwn(value, "sourceQuote") || hasOwn(value, "trace")) return false;
+  if (
+    hasOwn(value, "sourceDocumentId") ||
+    hasOwn(value, "sourceDocumentName") ||
+    hasOwn(value, "sourceSegmentId") ||
+    hasOwn(value, "pageNumber") ||
+    hasOwn(value, "photoNumber")
+  ) return false;
+  if (!Array.isArray(value.inputClaimIds) || value.inputClaimIds.length !== 2) return false;
+  const [firstId, secondId] = value.inputClaimIds;
+  if (!isExactIdentifier(firstId) || !isExactIdentifier(secondId) || firstId === secondId) return false;
+  if (!isValidDecisionContext(value.decisionContext)) return false;
+  if (value.applicability !== undefined && !isValidApplicability(value.applicability)) return false;
+  if (value.decisionContext.kind === "financial_reconciliation" && value.applicability === undefined) return false;
+  return true;
+};
+
 const fromSourceFactEvidence = (fact: DecisionSourceFact, index: number): ResultEvidenceView => ({
   id: `source-fact-${index + 1}`,
+  kind: "source",
   label: safeText(fact.label, "Evidence found"),
   value: safeText(fact.value, "Check the original document"),
   source: "main_result",
   sourceQuote: fact.sourceQuote,
+  trace: fact.trace,
+});
+
+const fromDecisionDerivedFact = (fact: DecisionDerivedFact, index: number): ResultEvidenceView => ({
+  id: `derived-fact-${index + 1}`,
+  kind: "decision_derived",
+  label: safeText(fact.label, "Calculation"),
+  value: safeText(fact.value, "Check the source figures"),
+  source: "main_result",
+  inputClaimIds: fact.inputClaimIds,
+  decisionContext: fact.decisionContext,
+  ...(fact.applicability === undefined ? {} : { applicability: fact.applicability }),
 });
 
 const fromCaseEvidence = (adminCase: AdminCase, index: number): ResultEvidenceView => ({
@@ -498,10 +654,56 @@ const fromMissingEvidence = (value: string, index: number, source: ResultViewSou
   source,
 });
 
+const traceIdentity = (trace?: DecisionSourceTrace) => trace
+  ? [
+      trace.claimId,
+      trace.sourceDocumentId,
+      trace.sourceSegmentId ?? null,
+      trace.pageNumber ?? null,
+      trace.photoNumber ?? null,
+    ]
+  : null;
+
+const applicabilityIdentity = (value?: ComparableApplicability) => {
+  if (!value) return null;
+  if (value.kind === "same_effective_date") return [value.kind, value.effectiveDate];
+  return [value.kind, value.periodStart, value.periodEnd];
+};
+
+const decisionContextIdentity = (value: DecisionDerivedContext) =>
+  value.kind === "financial_reconciliation"
+    ? [value.kind, value.state, value.state === "disagreement" ? value.differenceKind : null]
+    : [value.kind, value.outputType, value.outputValue];
+
+const evidenceIdentity = (item: ResultEvidenceView): string => {
+  const display = [normaliseResultText(item.label), normaliseResultText(item.value)];
+
+  if (item.kind === "source") {
+    return JSON.stringify([
+      item.kind,
+      ...display,
+      normaliseResultText(item.sourceQuote ?? ""),
+      traceIdentity(item.trace),
+    ]);
+  }
+
+  if (item.kind === "decision_derived") {
+    return JSON.stringify([
+      item.kind,
+      ...display,
+      item.inputClaimIds,
+      decisionContextIdentity(item.decisionContext),
+      applicabilityIdentity(item.applicability),
+    ]);
+  }
+
+  return JSON.stringify(display);
+};
+
 const dedupeEvidence = (items: ResultEvidenceView[]) =>
   dedupeResultItems(
     items.filter((item) => isSafeResultText(`${item.label} ${item.value}`)),
-    (item) => `${item.label}:${item.value}`,
+    evidenceIdentity,
   );
 
 const dedupeDates = (dates: ResultDateView[]) =>
@@ -1088,7 +1290,7 @@ export const buildResultViewModel = ({
       source: "benefits_action_pack" as const,
       sourceQuote: item.sourceQuote,
     })) ?? []),
-    ...(decisionResult?.sourceFacts.map(fromSourceFactEvidence) ?? []),
+    ...(decisionResult?.sourceFacts.filter(isValidSourceFact).map(fromSourceFactEvidence) ?? []),
     // decisionResult.sourceFacts already carries the genuine parsed facts for a
     // decision-engine result. For HMRC tax code notices, adminCase.evidence
     // re-derives those same facts and additionally bundles possible grounds,
@@ -1100,9 +1302,10 @@ export const buildResultViewModel = ({
   ]);
   // Derived figures and caveats stay visible, separately from the facts that
   // were actually read from the source.
-  const evidenceContext = dedupeEvidence(
-    isHmrcTaxCodeResult ? [] : caseEvidenceOfKind(adminCase, ["derived", "informational"]),
-  );
+  const evidenceContext = dedupeEvidence([
+    ...(decisionResult?.derivedFacts?.filter(isValidDerivedFact).map(fromDecisionDerivedFact) ?? []),
+    ...(isHmrcTaxCodeResult ? [] : caseEvidenceOfKind(adminCase, ["derived", "informational"])),
+  ]);
   // For HMRC tax code notices, decisionResult.evidenceNeeded is the single
   // authoritative "still to gather" list. The opportunity card's
   // missingInformation (and the strategic plan derived from it) deliberately

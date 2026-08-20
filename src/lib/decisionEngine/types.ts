@@ -26,6 +26,7 @@ export type DecisionDocumentType =
   | "council_tax_reduction"
   | "benefits_crisis_support"
   | "hmrc_tax_code_notice"
+  | "care_fee_reconciliation"
   | "unknown_admin_dispute";
 
 export type DecisionCaseStrength =

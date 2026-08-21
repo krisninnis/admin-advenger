@@ -24,7 +24,10 @@ vi.mock("../../lib/careFeeSafeComparison", async (importOriginal) => ({
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { CareFeeSafeComparisonResultViewModel } from "../../lib/careFeeSafeComparison";
+import type {
+  CareFeeComparisonSaveCandidateV1,
+  CareFeeSafeComparisonResultViewModel,
+} from "../../lib/careFeeSafeComparison";
 import { HomeView } from "../HomeView";
 
 const defaultInboxScanSettings = {
@@ -101,6 +104,11 @@ const comparisonModel = (
   allowedActions: ["change_records", "back_to_documents", "start_over"],
 });
 
+const saveCandidate = {
+  kind: "care_fee_comparison_save_candidate",
+  version: 1,
+} as unknown as CareFeeComparisonSaveCandidateV1;
+
 const renderHomeView = () => {
   const props = {
     onCheck: vi.fn().mockResolvedValue(true),
@@ -111,6 +119,10 @@ const renderHomeView = () => {
     onIgnoreInboxScanItem: vi.fn(),
     onSaveScannedItem: vi.fn(),
     onSaveEmailSafetyCase: vi.fn(),
+    onSaveCareFeeCase: vi.fn().mockResolvedValue({
+      status: "saved" as const,
+      caseId: "care-fee-case-1",
+    }),
   };
   render(
     <HomeView
@@ -179,6 +191,30 @@ describe("HomeView Care Fee safe comparison result", () => {
     await waitFor(() => expect(document.activeElement).toBe(heading));
     expect(runCareFeeSafeComparisonMock).toHaveBeenCalledTimes(1);
     expect(props.onCheck).not.toHaveBeenCalled();
+    expect(props.onSaveCase).not.toHaveBeenCalled();
+    expect(props.onSaveRecord).not.toHaveBeenCalled();
+  });
+
+  it("offers the separate two-step local case save only after a ready comparison", async () => {
+    const user = userEvent.setup();
+    const props = renderHomeView();
+    await attachAndConfirmPair(user);
+    runCareFeeSafeComparisonMock.mockReturnValue({
+      status: "ready",
+      model: comparisonModel("agreement"),
+      saveCandidate,
+    });
+
+    await user.click(screen.getByRole("button", { name: "Compare these records" }));
+    expect(props.onSaveCareFeeCase).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Save this comparison as a case" }));
+    expect(screen.getByText(/localStorage is not encrypted/)).toBeTruthy();
+    expect(props.onSaveCareFeeCase).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Save local case" }));
+
+    await waitFor(() => expect(props.onSaveCareFeeCase).toHaveBeenCalledTimes(1));
+    expect(props.onSaveCareFeeCase.mock.calls[0]?.[0]).toBe(saveCandidate);
+    expect(props.onSaveCareFeeCase.mock.calls[0]?.[1]).toHaveLength(2);
     expect(props.onSaveCase).not.toHaveBeenCalled();
     expect(props.onSaveRecord).not.toHaveBeenCalled();
   });

@@ -3,16 +3,19 @@ import { FindingsList } from "../components/FindingsList";
 import { StatusBadge } from "../components/StatusBadge";
 import { formatMoneyImpact } from "../lib/impactLedger";
 import { deriveOpportunityCard } from "../lib/opportunityCards";
+import type { CareFeeComparisonCaseV1 } from "../lib/careFeeCase";
 import type { AdminCase, AdminFinding, AdminCaseStatus, FindingCategory, ImpactEntry } from "../types";
 
 type CasesViewProps = {
   findings: AdminFinding[];
   cases: AdminCase[];
+  careFeeCases?: readonly CareFeeComparisonCaseV1[];
   selectedFindingId?: string;
   selectedCaseId?: string;
   impactEntries: ImpactEntry[];
   onOpenFinding: (findingId: string) => void;
   onOpenCase: (caseId: string) => void;
+  onOpenCareFeeCase?: (caseId: string) => void;
 };
 
 const statusOptions: Array<{ value: "all" | AdminCaseStatus; label: string }> = [
@@ -195,11 +198,13 @@ const matchesQuickFilter = (
 export function CasesView({
   findings,
   cases,
+  careFeeCases = [],
   selectedFindingId,
   selectedCaseId,
   impactEntries,
   onOpenFinding,
   onOpenCase,
+  onOpenCareFeeCase,
 }: CasesViewProps) {
   const [statusFilter, setStatusFilter] = useState<"all" | AdminCaseStatus>("all");
   const [categoryFilter, setCategoryFilter] = useState<"all" | FindingCategory>("all");
@@ -227,6 +232,30 @@ export function CasesView({
         }),
     [cases, categoryFilter, impactEntries, quickFilter, searchTerm, statusFilter],
   );
+  const filteredCareFeeCases = useMemo(() => {
+    if (statusFilter !== "all" || categoryFilter !== "all" || quickFilter !== "all") {
+      return [];
+    }
+    const query = searchTerm.trim().toLowerCase();
+    return careFeeCases
+      .slice()
+      .sort(
+        (leftCase, rightCase) =>
+          new Date(rightCase.updatedAt).getTime() - new Date(leftCase.updatedAt).getTime(),
+      )
+      .filter((caseRecord) =>
+        !query ||
+        [
+          caseRecord.title,
+          caseRecord.summary,
+          caseRecord.reconciliation.state,
+          ...caseRecord.sourceRecords.map((record) => record.document.displayName),
+        ]
+          .join(" ")
+          .toLowerCase()
+          .includes(query),
+      );
+  }, [careFeeCases, categoryFilter, quickFilter, searchTerm, statusFilter]);
 
   return (
     <div className="space-y-6">
@@ -256,7 +285,7 @@ export function CasesView({
               </p>
             </div>
             <span className="w-fit rounded-full bg-slate-800 px-3 py-1 text-sm text-slate-300">
-              {filteredCases.length} shown
+              {filteredCases.length + filteredCareFeeCases.length} shown
             </span>
           </div>
 
@@ -321,8 +350,44 @@ export function CasesView({
             </label>
           </div>
 
-          {filteredCases.length > 0 ? (
+          {filteredCases.length + filteredCareFeeCases.length > 0 ? (
             <div className="mt-5 grid gap-4">
+              {filteredCareFeeCases.map((caseRecord) => {
+                const isSelected = caseRecord.id === selectedCaseId;
+                return (
+                  <article
+                    key={caseRecord.id}
+                    className={`rounded-lg border p-5 transition ${
+                      isSelected
+                        ? "border-emerald-300/70 bg-emerald-300/10"
+                        : "border-white/10 bg-slate-900/75"
+                    }`}
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wider text-cyan-200">
+                          Care Fee comparison
+                        </p>
+                        <h4 className="mt-1 text-lg font-semibold text-white">{caseRecord.title}</h4>
+                      </div>
+                      <span className="rounded-full border border-white/10 bg-slate-950 px-2.5 py-1 text-xs font-semibold text-slate-200">
+                        Saved locally
+                      </span>
+                    </div>
+                    <p className="mt-3 text-sm leading-6 text-slate-400">{caseRecord.summary}</p>
+                    <p className="mt-3 text-xs leading-5 text-slate-500">
+                      Source snapshot: {caseRecord.sourceRecords.map((record) => record.document.displayName).join(" and ")}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => (onOpenCareFeeCase ?? onOpenCase)(caseRecord.id)}
+                      className="mt-5 min-h-11 w-full rounded-lg bg-emerald-400 px-4 py-3 text-sm font-bold text-slate-950 shadow-lg shadow-emerald-950/25 transition hover:bg-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:ring-offset-2 focus:ring-offset-slate-950"
+                    >
+                      Review saved comparison
+                    </button>
+                  </article>
+                );
+              })}
               {filteredCases.map((adminCase) => {
                 const isSelected = adminCase.id === selectedCaseId;
                 const opportunity = deriveOpportunityCard(adminCase);

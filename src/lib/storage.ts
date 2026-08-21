@@ -5,6 +5,10 @@ import { INBOX_SCAN_SETTINGS_STORAGE_KEY } from "./inboxScanStorage";
 import { hydrateSourceDocuments } from "./sourceProvenance";
 import { TERMS_ACCEPTANCE_STORAGE_KEY } from "./termsAcceptance";
 import { FEEDBACK_STORAGE_KEY, VALIDATION_STORAGE_KEY } from "./validationStorage";
+import {
+  hydrateCareFeeComparisonCases,
+  type CareFeeComparisonCaseV1,
+} from "./careFeeCase";
 
 export const ADMIN_AVENGER_STORAGE_KEY = "admin-avenger-state-v1";
 
@@ -30,6 +34,7 @@ export type StoredAdminAvengerState = {
   adminCases: AdminCase[];
   drafts: AdminDraft[];
   impactEntries: ImpactEntry[];
+  careFeeCases?: CareFeeComparisonCaseV1[];
   selectedFindingId?: string;
   selectedCaseId?: string;
 };
@@ -125,6 +130,7 @@ const emptyStoredState = (): StoredAdminAvengerState => ({
   adminCases: [],
   drafts: [],
   impactEntries: [],
+  careFeeCases: [],
 });
 
 const getStorageKeysToTry = () => [ADMIN_AVENGER_STORAGE_KEY, ...LEGACY_STORAGE_KEYS];
@@ -148,6 +154,7 @@ export const sanitizeStoredAdminAvengerState = (
     ...entry,
     proofImageDataUrl: undefined,
   })),
+  careFeeCases: hydrateCareFeeComparisonCases(state.careFeeCases),
 });
 
 const readStoredRawState = () => {
@@ -191,6 +198,7 @@ const hydrateStoredState = (
   const casesValue = getFirstValue(parsedState, ["adminCases", "cases"]);
   const draftsValue = getFirstValue(parsedState, ["drafts", "adminDrafts"]);
   const impactEntriesValue = getFirstValue(parsedState, ["impactEntries", "impacts", "impactRecords"]);
+  const careFeeCasesValue = getFirstValue(parsedState, ["careFeeCases"]);
 
   const hydratedState: StoredAdminAvengerState = {
     adminItems: hydrateItems(itemsValue, fallback.adminItems),
@@ -198,6 +206,9 @@ const hydrateStoredState = (
     adminCases: hydrateCases(casesValue, fallback.adminCases),
     drafts: hydrateDrafts(draftsValue, fallback.drafts),
     impactEntries: hydrateImpactEntries(impactEntriesValue, []),
+    careFeeCases: hydrateCareFeeComparisonCases(
+      careFeeCasesValue ?? fallback.careFeeCases,
+    ),
     selectedFindingId: asOptionalString(
       parsedState.selectedFindingId,
       fallback.selectedFindingId,
@@ -208,9 +219,13 @@ const hydrateStoredState = (
   const hasSelectedFinding = hydratedState.findings.some(
     (finding) => finding.id === hydratedState.selectedFindingId,
   );
-  const hasSelectedCase = hydratedState.adminCases.some(
-    (adminCase) => adminCase.id === hydratedState.selectedCaseId,
-  );
+  const hasSelectedCase =
+    hydratedState.adminCases.some(
+      (adminCase) => adminCase.id === hydratedState.selectedCaseId,
+    ) ||
+    (hydratedState.careFeeCases ?? []).some(
+      (caseRecord) => caseRecord.id === hydratedState.selectedCaseId,
+    );
 
   return {
     ...hydratedState,
@@ -227,7 +242,9 @@ const hydrateStoredState = (
     selectedFindingId: hasSelectedFinding
       ? hydratedState.selectedFindingId
       : hydratedState.findings[0]?.id,
-    selectedCaseId: hasSelectedCase ? hydratedState.selectedCaseId : hydratedState.adminCases[0]?.id,
+    selectedCaseId: hasSelectedCase
+      ? hydratedState.selectedCaseId
+      : hydratedState.adminCases[0]?.id ?? hydratedState.careFeeCases?.[0]?.id,
   };
 };
 

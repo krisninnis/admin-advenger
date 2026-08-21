@@ -69,6 +69,21 @@ export type CareFeeSafeComparisonResultViewModel = {
   readonly allowedActions: readonly CareFeeSafeComparisonAction[];
 };
 
+/**
+ * Transient, typed input for the separately confirmed local-case boundary.
+ * Original source claims and documents remain authoritative. The comparison-
+ * only adapted claims and opaque identity keys are deliberately not exposed.
+ */
+export type CareFeeComparisonSaveCandidateV1 = {
+  readonly kind: "care_fee_comparison_save_candidate";
+  readonly version: 1;
+  readonly request: ConfirmedCareFeeComparisonRequestV1;
+  readonly resolutionLedger: CareFeeResolutionLedger;
+  readonly reconciliation: ReconciliationResult;
+  readonly blockingExplanations: readonly string[];
+  readonly safetyBoundary: string;
+};
+
 export type CareFeeSafeComparisonFailureReason =
   | "invalid_request"
   | "context_resolution_failed"
@@ -82,6 +97,7 @@ export type CareFeeSafeComparisonOutcome =
   | {
       readonly status: "ready";
       readonly model: CareFeeSafeComparisonResultViewModel;
+      readonly saveCandidate: CareFeeComparisonSaveCandidateV1;
     }
   | {
       readonly status: "failed";
@@ -491,15 +507,18 @@ export const runCareFeeSafeComparison = (
       return fail("unsafe_formatting");
     }
 
-    return {
-      status: "ready",
-      model: {
+    const blockingReasons =
+      reconciliation.state === "not_safely_comparable"
+        ? composition.resultViewModel.uncertainty
+        : [];
+    const safetyBoundary =
+      composition.resultViewModel.cannotKnow[0] ??
+      "This comparison does not establish what should apply or what anyone should do next.";
+    const model: CareFeeSafeComparisonResultViewModel = {
         state: reconciliation.state,
         heading: stateHeading(reconciliation.state),
         summary: composition.resultViewModel.summary,
-        safetyBoundary:
-          composition.resultViewModel.cannotKnow[0] ??
-          "This comparison does not establish what should apply or what anyone should do next.",
+        safetyBoundary,
         records: [firstSource, secondSource],
         confirmedContext: contextViews(request),
         resolutionLedger: resolved.ledger,
@@ -510,11 +529,21 @@ export const runCareFeeSafeComparison = (
             ? {}
             : { applicabilityText: formatBackendApplicability(reconciliation.applicability) }),
         },
-        blockingReasons:
-          reconciliation.state === "not_safely_comparable"
-            ? composition.resultViewModel.uncertainty
-            : [],
+        blockingReasons,
         allowedActions,
+      };
+
+    return {
+      status: "ready",
+      model,
+      saveCandidate: {
+        kind: "care_fee_comparison_save_candidate",
+        version: 1,
+        request,
+        resolutionLedger: resolved.ledger,
+        reconciliation,
+        blockingExplanations: blockingReasons,
+        safetyBoundary,
       },
     };
   } catch {

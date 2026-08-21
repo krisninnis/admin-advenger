@@ -50,6 +50,7 @@ import { generateDraftWithService } from "./services/draftService";
 import type { ServiceStatus } from "./services/analysisService";
 import { AddItemView } from "./views/AddItemView";
 import { CaseFileView } from "./views/CaseFileView";
+import { CareFeeComparisonCaseView } from "./components/CareFeeComparisonCaseView";
 import { CasesView } from "./views/CasesView";
 import { CovenantView } from "./views/CovenantView";
 import { DashboardView } from "./views/DashboardView";
@@ -74,6 +75,14 @@ import type {
 } from "./types";
 import type { SourceDocument } from "./lib/sourceProvenance";
 import type { OutcomeConfirmationValues } from "./components/OutcomeConfirmation";
+import {
+  createCareFeeComparisonCase,
+  findDuplicateCareFeeCase,
+  type CareFeeCaseDeleteResult,
+  type CareFeeCaseSaveResult,
+  type CareFeeComparisonCaseV1,
+} from "./lib/careFeeCase";
+import type { CareFeeComparisonSaveCandidateV1 } from "./lib/careFeeSafeComparison";
 
 const findingStatusByCaseStatus: Record<AdminCaseStatus, FindingStatus> = {
   new: "new",
@@ -140,6 +149,7 @@ const createEmptyState = (): StoredAdminAvengerState => ({
   adminCases: [],
   drafts: [],
   impactEntries: [],
+  careFeeCases: [],
   selectedFindingId: undefined,
   selectedCaseId: undefined,
 });
@@ -160,6 +170,7 @@ const createDemoState = (): StoredAdminAvengerState => {
       );
       return deriveImpactFromCase(adminCase, item, finding);
     }),
+    careFeeCases: [],
     selectedFindingId: sampleFindings[0]?.id,
     selectedCaseId: adminCases[0]?.id,
   };
@@ -186,6 +197,9 @@ function App() {
   const [impactEntries, setImpactEntries] = useState<ImpactEntry[]>(
     initialState.impactEntries,
   );
+  const [careFeeCases, setCareFeeCases] = useState<CareFeeComparisonCaseV1[]>(
+    initialState.careFeeCases ?? [],
+  );
   const [selectedFindingId, setSelectedFindingId] = useState(
     initialState.selectedFindingId,
   );
@@ -208,6 +222,8 @@ function App() {
       : "",
   );
   const [storageSaveError, setStorageSaveError] = useState("");
+  const [careFeeCaseNotice, setCareFeeCaseNotice] = useState("");
+  const [startCareFeeFlowOnHome, setStartCareFeeFlowOnHome] = useState(false);
   // Blocking pre-use legal/safety gate - the app is not usable at all until
   // this is true. See src/lib/termsAcceptance.ts and
   // src/components/TermsSafetyGate.tsx.
@@ -224,9 +240,13 @@ function App() {
     typeof window !== "undefined" &&
     window.location.pathname === CAMERA_LAB_ROUTE_PATH;
 
-  const selectedCase =
-    adminCases.find((adminCase) => adminCase.id === selectedCaseId) ??
-    adminCases.find((adminCase) => adminCase.findingId === selectedFindingId);
+  const selectedCareFeeCase = careFeeCases.find(
+    (caseRecord) => caseRecord.id === selectedCaseId,
+  );
+  const selectedCase = selectedCareFeeCase
+    ? undefined
+    : adminCases.find((adminCase) => adminCase.id === selectedCaseId) ??
+      adminCases.find((adminCase) => adminCase.findingId === selectedFindingId);
   const selectedItem = items.find((item) => item.id === selectedCase?.itemId);
   const selectedFinding = findings.find(
     (finding) => finding.id === selectedCase?.findingId,
@@ -244,6 +264,7 @@ function App() {
     adminCases,
     drafts,
     impactEntries,
+    careFeeCases,
     selectedFindingId,
     selectedCaseId: selectedCase?.id ?? selectedCaseId,
   });
@@ -278,11 +299,13 @@ function App() {
       adminCases,
       drafts,
       impactEntries,
+      careFeeCases,
       selectedFindingId,
       selectedCaseId: selectedCase?.id ?? selectedCaseId,
     });
   }, [
     adminCases,
+    careFeeCases,
     drafts,
     findings,
     impactEntries,
@@ -427,6 +450,14 @@ function App() {
   };
 
   const handleOpenCase = (caseId: string) => {
+    const careFeeCase = careFeeCases.find((caseRecord) => caseRecord.id === caseId);
+    if (careFeeCase) {
+      setSelectedCaseId(careFeeCase.id);
+      setSelectedFindingId(undefined);
+      setCareFeeCaseNotice("");
+      handleNavigate("case_file");
+      return;
+    }
     const relatedCase = adminCases.find((adminCase) => adminCase.id === caseId);
 
     if (!relatedCase) {
@@ -436,6 +467,80 @@ function App() {
     setSelectedCaseId(relatedCase.id);
     setSelectedFindingId(relatedCase.findingId);
     handleNavigate("case_file");
+  };
+
+  const handleSaveCareFeeCase = async (
+    candidate: CareFeeComparisonSaveCandidateV1,
+    currentSourceDocuments: readonly SourceDocument[],
+  ): Promise<CareFeeCaseSaveResult> => {
+    const creation = createCareFeeComparisonCase({ candidate, currentSourceDocuments });
+    if (creation.status === "failed") {
+      return { status: "failed", message: creation.message };
+    }
+
+    const duplicate = findDuplicateCareFeeCase(careFeeCases, creation.caseRecord);
+    if (duplicate) {
+      setSelectedCaseId(duplicate.id);
+      setSelectedFindingId(undefined);
+      setCareFeeCaseNotice("This comparison is already saved.");
+      handleNavigate("case_file");
+      return { status: "duplicate", caseId: duplicate.id };
+    }
+
+    const nextCareFeeCases = [creation.caseRecord, ...careFeeCases];
+    const saveResult = saveAdminAvengerState({
+      adminItems: items,
+      findings,
+      adminCases,
+      drafts,
+      impactEntries,
+      careFeeCases: nextCareFeeCases,
+      selectedFindingId: undefined,
+      selectedCaseId: creation.caseRecord.id,
+    });
+    if (!saveResult.ok) {
+      return { status: "failed", message: saveResult.message };
+    }
+
+    skipNextStorageSaveRef.current = true;
+    setCareFeeCases(nextCareFeeCases);
+    setSelectedFindingId(undefined);
+    setSelectedCaseId(creation.caseRecord.id);
+    setCareFeeCaseNotice("Saved locally in this browser.");
+    handleNavigate("case_file");
+    return { status: "saved", caseId: creation.caseRecord.id };
+  };
+
+  const handleDeleteCareFeeCase = async (
+    caseId: string,
+  ): Promise<CareFeeCaseDeleteResult> => {
+    if (!careFeeCases.some((caseRecord) => caseRecord.id === caseId)) {
+      return { status: "failed", message: "This saved comparison could not be found." };
+    }
+    const nextCareFeeCases = careFeeCases.filter((caseRecord) => caseRecord.id !== caseId);
+    const nextSelectedCaseId = adminCases[0]?.id ?? nextCareFeeCases[0]?.id;
+    const nextSelectedFindingId = adminCases[0]?.findingId;
+    const saveResult = saveAdminAvengerState({
+      adminItems: items,
+      findings,
+      adminCases,
+      drafts,
+      impactEntries,
+      careFeeCases: nextCareFeeCases,
+      selectedFindingId: nextSelectedFindingId,
+      selectedCaseId: nextSelectedCaseId,
+    });
+    if (!saveResult.ok) {
+      return { status: "failed", message: saveResult.message };
+    }
+
+    skipNextStorageSaveRef.current = true;
+    setCareFeeCases(nextCareFeeCases);
+    setSelectedFindingId(nextSelectedFindingId);
+    setSelectedCaseId(nextSelectedCaseId);
+    setCareFeeCaseNotice("Care Fee case deleted from this browser.");
+    handleNavigate("cases");
+    return { status: "deleted" };
   };
 
   const runAnalysis = async (
@@ -1261,6 +1366,7 @@ function App() {
     setAdminCases(demoState.adminCases);
     setDrafts(demoState.drafts);
     setImpactEntries(demoState.impactEntries);
+    setCareFeeCases([]);
     setSelectedFindingId(demoState.selectedFindingId);
     setSelectedCaseId(demoState.selectedCaseId);
     setHomeResult(undefined);
@@ -1302,6 +1408,7 @@ function App() {
     setAdminCases([]);
     setDrafts([]);
     setImpactEntries([]);
+    setCareFeeCases([]);
     setSelectedFindingId(undefined);
     setSelectedCaseId(undefined);
     setInboxScanSettings(defaultInboxScanSettings);
@@ -1340,7 +1447,7 @@ function App() {
     <AppShell
       currentView={currentView}
       onNavigate={handleNavigate}
-      caseCount={adminCases.length}
+      caseCount={adminCases.length + careFeeCases.length}
       findingCount={findings.length}
     >
       {showTermsReview ? (
@@ -1391,6 +1498,9 @@ function App() {
           onIgnoreInboxScanItem={handleIgnoreInboxScanItem}
           onSaveScannedItem={handleSaveScannedItem}
           onSaveEmailSafetyCase={handleSaveEmailSafetyCase}
+          onSaveCareFeeCase={handleSaveCareFeeCase}
+          startCareFeeFlow={startCareFeeFlowOnHome}
+          onCareFeeFlowStarted={() => setStartCareFeeFlowOnHome(false)}
         />
       ) : null}
 
@@ -1441,15 +1551,41 @@ function App() {
         <CasesView
           findings={sortedFindings}
           cases={adminCases}
+          careFeeCases={careFeeCases}
           selectedFindingId={selectedFindingId}
-          selectedCaseId={selectedCase?.id}
+          selectedCaseId={selectedCaseId}
           impactEntries={impactEntries}
           onOpenFinding={handleOpenFinding}
           onOpenCase={handleOpenCase}
+          onOpenCareFeeCase={handleOpenCase}
         />
       ) : null}
 
-      {currentView === "case_file" ? (
+      {currentView === "case_file" && selectedCareFeeCase ? (
+        <CareFeeComparisonCaseView
+          caseRecord={selectedCareFeeCase}
+          notice={careFeeCaseNotice}
+          onDelete={handleDeleteCareFeeCase}
+          onBackToCases={() => handleNavigate("cases")}
+          onReturnToCareFee={() => {
+            setStartCareFeeFlowOnHome(true);
+            handleNavigate("home");
+          }}
+        />
+      ) : null}
+
+      {careFeeCaseNotice && currentView === "cases" ? (
+        <p
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          className="mb-5 rounded-lg border border-emerald-300/30 bg-emerald-300/10 px-4 py-3 text-sm font-semibold text-emerald-100"
+        >
+          {careFeeCaseNotice}
+        </p>
+      ) : null}
+
+      {currentView === "case_file" && !selectedCareFeeCase ? (
         <CaseFileView
           adminCase={selectedCase}
           cases={adminCases}

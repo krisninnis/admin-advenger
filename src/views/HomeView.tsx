@@ -75,9 +75,12 @@ import { FILE_SIZE_LIMIT_HELPER, getFileTooLargeMessage, isFileWithinSizeLimit }
 import { DocumentAttachmentArea } from "../components/DocumentAttachmentArea";
 import { CareFeeClaimConfirmationPanel } from "../components/CareFeeClaimConfirmationPanel";
 import { CareFeeSafeComparisonResultPanel } from "../components/CareFeeSafeComparisonResultPanel";
+import { CareFeeOptionalCaseSavePanel } from "../components/CareFeeOptionalCaseSavePanel";
+import type { CareFeeCaseSaveResult } from "../lib/careFeeCase";
 import type { ConfirmedCareFeeComparisonRequestV1 } from "../lib/careFeeClaimConfirmation";
 import {
   runCareFeeSafeComparison,
+  type CareFeeComparisonSaveCandidateV1,
   type CareFeeSafeComparisonResultViewModel,
 } from "../lib/careFeeSafeComparison";
 import {
@@ -177,6 +180,12 @@ type HomeViewProps = {
   onIgnoreInboxScanItem: (sampleId: string) => void;
   onSaveScannedItem: (item: AdminItem, findings: AdminFinding[], cases: AdminCase[]) => void;
   onSaveEmailSafetyCase: (item: AdminItem, assessment: EmailSafetyAssessment) => void;
+  onSaveCareFeeCase?: (
+    candidate: CareFeeComparisonSaveCandidateV1,
+    currentSourceDocuments: readonly SourceDocument[],
+  ) => Promise<CareFeeCaseSaveResult>;
+  startCareFeeFlow?: boolean;
+  onCareFeeFlowStarted?: () => void;
 };
 
 const categoryLabels: Record<AdminCase["category"], string> = {
@@ -553,6 +562,9 @@ export function HomeView({
   onIgnoreInboxScanItem,
   onSaveScannedItem,
   onSaveEmailSafetyCase,
+  onSaveCareFeeCase,
+  startCareFeeFlow = false,
+  onCareFeeFlowStarted,
 }: HomeViewProps) {
   const [rawText, setRawText] = useState("");
   const [inboxScanOpen, setInboxScanOpen] = useState(false);
@@ -616,17 +628,24 @@ export function HomeView({
   // paste/check flow via attachmentCombinedText below.
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
   const [isDraggingOverAttachment, setIsDraggingOverAttachment] = useState(false);
-  const [careFeeFlowActive, setCareFeeFlowActive] = useState(false);
+  const [careFeeFlowActive, setCareFeeFlowActive] = useState(startCareFeeFlow);
   const [careFeeReviewActive, setCareFeeReviewActive] = useState(false);
   const [careFeeIntakeMessage, setCareFeeIntakeMessage] = useState("");
   const [careFeeConfirmedRequest, setCareFeeConfirmedRequest] =
     useState<ConfirmedCareFeeComparisonRequestV1>();
   const [careFeeComparison, setCareFeeComparison] =
     useState<CareFeeSafeComparisonResultViewModel>();
+  const [careFeeSaveCandidate, setCareFeeSaveCandidate] =
+    useState<CareFeeComparisonSaveCandidateV1>();
   const [careFeeComparisonError, setCareFeeComparisonError] = useState("");
   const [careFeeComparisonInProgress, setCareFeeComparisonInProgress] = useState(false);
   const [careFeeConfirmationResetKey, setCareFeeConfirmationResetKey] = useState(0);
   const careFeeControlledEntryEnabled = isControlledFeatureEnabled(import.meta.env);
+  useEffect(() => {
+    if (!startCareFeeFlow || !careFeeControlledEntryEnabled) return;
+    setCareFeeFlowActive(true);
+    onCareFeeFlowStarted?.();
+  }, [careFeeControlledEntryEnabled, onCareFeeFlowStarted, startCareFeeFlow]);
   const isChecking = analysisStatus === "loading";
   const isAiReading = aiStatus === "loading";
   const isReadingPhoto = ocrStatus === "reading";
@@ -690,6 +709,7 @@ export function HomeView({
   useEffect(() => {
     setCareFeeConfirmedRequest(undefined);
     setCareFeeComparison(undefined);
+    setCareFeeSaveCandidate(undefined);
     setCareFeeComparisonError("");
     setCareFeeComparisonInProgress(false);
   }, [careFeeSourceDocuments]);
@@ -1921,6 +1941,7 @@ export function HomeView({
   const invalidateCareFeeComparison = () => {
     setCareFeeConfirmedRequest(undefined);
     setCareFeeComparison(undefined);
+    setCareFeeSaveCandidate(undefined);
     setCareFeeComparisonError("");
     setCareFeeComparisonInProgress(false);
   };
@@ -1928,11 +1949,13 @@ export function HomeView({
   const handleCareFeeReady = (request: ConfirmedCareFeeComparisonRequestV1) => {
     setCareFeeConfirmedRequest(request);
     setCareFeeComparison(undefined);
+    setCareFeeSaveCandidate(undefined);
     setCareFeeComparisonError("");
   };
 
   const handleCompareCareFeeRecords = () => {
     setCareFeeComparison(undefined);
+    setCareFeeSaveCandidate(undefined);
     setCareFeeComparisonError("");
     if (!careFeeConfirmedRequest) {
       setCareFeeComparisonError(
@@ -1953,6 +1976,7 @@ export function HomeView({
     }
 
     setCareFeeComparison(outcome.model);
+    setCareFeeSaveCandidate(outcome.saveCandidate);
   };
 
   const handleChangeCareFeeRecords = () => {
@@ -2159,6 +2183,13 @@ export function HomeView({
               onChangeRecords={handleChangeCareFeeRecords}
               onBackToDocuments={handleBackToCareFeeDocuments}
               onStartOver={handleStartOverCareFee}
+            />
+          ) : null}
+          {careFeeComparison && careFeeSaveCandidate && onSaveCareFeeCase ? (
+            <CareFeeOptionalCaseSavePanel
+              onSave={() =>
+                onSaveCareFeeCase(careFeeSaveCandidate, careFeeSourceDocuments)
+              }
             />
           ) : null}
         </section>

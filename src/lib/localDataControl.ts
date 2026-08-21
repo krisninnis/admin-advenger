@@ -37,12 +37,12 @@ export const KNOWN_LOCAL_DATA_ITEMS: readonly LocalDataItem[] = [
   {
     id: "saved-workspace",
     label: "Saved workspace",
-    description: "Saved admin items, cases, findings, drafts, money tracker entries, and selection state.",
+    description: "Saved admin items, cases, Care Fee comparison snapshots, findings, drafts, money tracker entries, and selection state.",
     storageType: "localStorage",
     key: ADMIN_AVENGER_STORAGE_KEY,
     sensitivity: "high",
     userFacingExplanation:
-      "Your saved checks, cases, draft records, and manually recorded progress.",
+      "Your saved checks, cases, Care Fee comparison snapshots, draft records, and manually recorded progress.",
   },
   ...LEGACY_STORAGE_KEYS.map(
     (key): LocalDataItem => ({

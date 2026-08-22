@@ -95,10 +95,16 @@ const caseRecord: CareFeeComparisonCaseV1 = {
       appliesToClaimIds: ["claim-a", "claim-b"],
       answer: "yes",
     },
+    {
+      kind: "user_confirmed_context",
+      dimension: "same_provider",
+      appliesToClaimIds: ["claim-a", "claim-b"],
+      answer: "yes",
+    },
   ],
   resolutionLedger: {
     subject: ["user_confirmed", "user_confirmed"],
-    provider: ["source_derived", "source_derived"],
+    provider: ["user_confirmed", "user_confirmed"],
     payerRoles: ["source_derived", "source_derived"],
     payeeRoles: ["source_derived", "source_derived"],
   },
@@ -136,9 +142,38 @@ describe("CareFeeComparisonCaseView", () => {
     expect(screen.getByText("Absolute comparison difference")).toBeTruthy();
     expect(screen.getByText(/14\.00/)).toBeTruthy();
     expect(screen.getByRole("status").textContent).toContain("saved locally");
+    expect(screen.getByRole("button", { name: "Prepare a message" })).toBeTruthy();
     expect(
-      screen.queryByRole("button", { name: /draft|chase|export|outcome|money|send|contact/i }),
+      screen.queryByRole("button", { name: /chase|export|outcome|money|send|contact/i }),
     ).toBeNull();
+  });
+
+  it("opens draft preparation explicitly and discards transient state when returning", async () => {
+    const user = userEvent.setup();
+    render(
+      <CareFeeComparisonCaseView
+        caseRecord={caseRecord}
+        onDelete={vi.fn()}
+        onBackToCases={vi.fn()}
+        onReturnToCareFee={vi.fn()}
+      />,
+    );
+
+    const trigger = screen.getByRole("button", { name: "Prepare a message" });
+    expect(screen.queryByRole("heading", { name: "Prepare a message" })).toBeNull();
+    await user.click(trigger);
+    const preparationHeading = screen.getByRole("heading", { name: "Prepare a message" });
+    await waitFor(() => expect(document.activeElement).toBe(preparationHeading));
+    await user.click(screen.getByRole("radio", { name: /explanation of the difference/i }));
+    await user.click(screen.getByRole("button", { name: "Prepare draft" }));
+    expect(screen.getByRole("heading", { name: "Review and edit your prepared draft" })).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Return to saved case" }));
+    expect(screen.queryByRole("heading", { name: "Prepare a message" })).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+
+    await user.click(trigger);
+    expect(screen.queryByRole("heading", { name: "Review and edit your prepared draft" })).toBeNull();
   });
 
   it.each(["agreement", "not_safely_comparable"] as const)(
@@ -224,5 +259,24 @@ describe("CareFeeComparisonCaseView", () => {
     await user.click(screen.getByRole("button", { name: "Cancel" }));
     expect(onDelete).not.toHaveBeenCalled();
     expect(document.activeElement).toBe(trigger);
+  });
+
+  it("discards an open transient draft after successful saved-case deletion", async () => {
+    const user = userEvent.setup();
+    const onDelete = vi.fn().mockResolvedValue({ status: "deleted" });
+    render(
+      <CareFeeComparisonCaseView
+        caseRecord={caseRecord}
+        onDelete={onDelete}
+        onBackToCases={vi.fn()}
+        onReturnToCareFee={vi.fn()}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "Prepare a message" }));
+    expect(screen.getByRole("heading", { name: "Prepare a message" })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Delete saved case" }));
+    await user.click(screen.getByRole("button", { name: "Delete local case" }));
+    await waitFor(() => expect(onDelete).toHaveBeenCalledWith(caseRecord.id));
+    expect(screen.queryByRole("heading", { name: "Prepare a message" })).toBeNull();
   });
 });

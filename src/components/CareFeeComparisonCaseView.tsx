@@ -7,6 +7,7 @@ import {
   type CareFeeComparisonCaseV1,
 } from "../lib/careFeeCase";
 import type { UserConfirmedCareFeeContext } from "../lib/careFeeClaimConfirmation";
+import { CareFeeDraftPreparationPanel } from "./CareFeeDraftPreparationPanel";
 
 type CareFeeComparisonCaseViewProps = {
   readonly caseRecord: CareFeeComparisonCaseV1;
@@ -104,8 +105,10 @@ export function CareFeeComparisonCaseView({
   onReturnToCareFee,
 }: CareFeeComparisonCaseViewProps) {
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const prepareMessageTriggerRef = useRef<HTMLButtonElement>(null);
   const deleteTriggerRef = useRef<HTMLButtonElement>(null);
   const deleteHeadingRef = useRef<HTMLHeadingElement>(null);
+  const [draftPreparationCaseId, setDraftPreparationCaseId] = useState<string>();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
@@ -132,7 +135,19 @@ export function CareFeeComparisonCaseView({
     if (result.status === "failed") {
       setDeleteError(result.message);
       setDeleting(false);
+    } else {
+      setDraftPreparationCaseId(undefined);
     }
+  };
+
+  const closeDraftPreparation = () => {
+    setDraftPreparationCaseId(undefined);
+    prepareMessageTriggerRef.current?.focus();
+  };
+
+  const leaveCase = (action: () => void) => {
+    setDraftPreparationCaseId(undefined);
+    action();
   };
 
   const reconciliation = caseRecord.reconciliation;
@@ -255,11 +270,21 @@ export function CareFeeComparisonCaseView({
 
       <section aria-labelledby="care-fee-case-actions-heading" className="rounded-xl border border-white/10 bg-white/[0.04] p-4 sm:p-6">
         <h3 id="care-fee-case-actions-heading" className="text-xl font-bold text-white">Case actions</h3>
+        <button
+          ref={prepareMessageTriggerRef}
+          type="button"
+          onClick={() => setDraftPreparationCaseId(caseRecord.id)}
+          aria-expanded={draftPreparationCaseId === caseRecord.id}
+          aria-controls="care-fee-draft-preparation-panel"
+          className="mt-4 min-h-11 w-full rounded-lg bg-violet-300 px-4 py-3 font-bold text-slate-950 transition hover:bg-violet-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-100 sm:w-auto"
+        >
+          Prepare a message
+        </button>
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          <button type="button" onClick={onBackToCases} className="min-h-11 rounded-lg border border-white/20 px-4 py-3 font-bold text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300">
+          <button type="button" onClick={() => leaveCase(onBackToCases)} className="min-h-11 rounded-lg border border-white/20 px-4 py-3 font-bold text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300">
             Back to saved things
           </button>
-          <button type="button" onClick={onReturnToCareFee} className="min-h-11 rounded-lg border border-cyan-300/30 px-4 py-3 font-bold text-cyan-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300">
+          <button type="button" onClick={() => leaveCase(onReturnToCareFee)} className="min-h-11 rounded-lg border border-cyan-300/30 px-4 py-3 font-bold text-cyan-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300">
             Return to Care Fee flow
           </button>
         </div>
@@ -294,6 +319,13 @@ export function CareFeeComparisonCaseView({
         ) : null}
         {deleteError ? <p role="alert" className="mt-3 text-sm font-semibold text-rose-100">{deleteError}</p> : null}
       </section>
+
+      {draftPreparationCaseId === caseRecord.id ? (
+        <CareFeeDraftPreparationPanel
+          caseRecord={caseRecord}
+          onClose={closeDraftPreparation}
+        />
+      ) : null}
     </div>
   );
 }

@@ -170,7 +170,7 @@ describe("PhotoCapturePanel scanner v2", () => {
     expect(screen.getByRole("button", { name: "Reset corners" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Use full image" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Original / Colour" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Clean" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Clean" }).getAttribute("aria-pressed")).toBe("true");
     expect(onUsePhotos).not.toHaveBeenCalled();
 
     await waitFor(() => expect(renderMock).toHaveBeenCalled());

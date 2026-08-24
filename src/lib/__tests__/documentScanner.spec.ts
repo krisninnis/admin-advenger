@@ -1,8 +1,12 @@
-import { describe, it, expect } from 'vitest';
-import { detectDocumentFromPixels, orderCornerPoints, validateDocumentQuad } from '../../src/lib/documentScanner';
+import { describe, expect, it } from "vitest";
+import {
+  detectDocumentFromPixels,
+  orderCornerPoints,
+  validateDocumentQuad,
+} from "../documentScanner";
 
-describe('documentScanner basic tests', () => {
-  it('orderCornerPoints orders 4 points into a quad', () => {
+describe("documentScanner basic tests", () => {
+  it("orderCornerPoints orders 4 points into a quad", () => {
     const points = [
       { x: 100, y: 100 },
       { x: 200, y: 100 },
@@ -17,7 +21,7 @@ describe('documentScanner basic tests', () => {
     expect(quad.bottomRight.y).toBe(300);
   });
 
-  it('validateDocumentQuad rejects invalid dimensions', () => {
+  it("validateDocumentQuad rejects invalid dimensions", () => {
     const quad = {
       topLeft: { x: 0, y: 0 },
       topRight: { x: 10, y: 0 },
@@ -25,13 +29,13 @@ describe('documentScanner basic tests', () => {
       bottomLeft: { x: 0, y: 10 },
     };
 
-    const result = validateDocumentQuad(quad as any, 0, 0);
+    const result = validateDocumentQuad(quad, 0, 0);
     expect(result.valid).toBe(false);
   });
 
-  it('detectDocumentFromPixels rejects empty image', () => {
+  it("detectDocumentFromPixels rejects empty image", () => {
     const pixels = new Uint8ClampedArray([]);
     const result = detectDocumentFromPixels(pixels, 0, 0);
-    expect(result.status).toBe('rejected');
+    expect(result.status).toBe("rejected");
   });
 });

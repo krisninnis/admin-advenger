@@ -139,6 +139,7 @@ describe("CareFeeDraftPreparationPanel", () => {
     const heading = screen.getByRole("heading", { name: "Prepare a message" });
     await waitFor(() => expect(document.activeElement).toBe(heading));
     expect(screen.queryByRole("heading", { name: "Review and edit your prepared draft" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Review evidence used" })).toBeNull();
     const intentGroup = screen.getByRole("group", { name: "What should the message ask for?" });
     const explanation = within(intentGroup).getByRole("radio", {
       name: /Ask for an explanation of the difference/,
@@ -160,6 +161,8 @@ describe("CareFeeDraftPreparationPanel", () => {
     const preparedHeading = screen.getByRole("heading", { name: "Review and edit your prepared draft" });
     await waitFor(() => expect(document.activeElement).toBe(preparedHeading));
     expect(screen.getAllByText("Nothing has been sent.")).toHaveLength(2);
+    expect(screen.getByText("Matches the saved Care Fee snapshot used to prepare this message.")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Review evidence used" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: /send|email|contact/i })).toBeNull();
   });
 
@@ -269,9 +272,54 @@ describe("CareFeeDraftPreparationPanel", () => {
     await user.click(screen.getByRole("button", { name: "Copy text" }));
 
     expect(writeText).toHaveBeenCalledWith("Edited subject\n\nEdited body");
-    expect(screen.getByRole("status").textContent).toBe(
-      "Copied to your clipboard. Nothing has been sent.",
+    expect(screen.getByText("Copied to your clipboard. Nothing has been sent.")).toBeTruthy();
+  });
+
+  it("fails closed before copy when the same case ID has a changed saved snapshot and preserves edits", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    const original = caseRecord("agreement");
+    const { rerender } = render(
+      <CareFeeDraftPreparationPanel
+        caseRecord={original}
+        onClose={vi.fn()}
+        clipboard={{ writeText }}
+      />,
     );
+    await user.click(screen.getByRole("radio", { name: /confirm or break down the figure/i }));
+    await user.click(screen.getByRole("button", { name: "Prepare draft" }));
+    const subject = screen.getByLabelText("Subject") as HTMLInputElement;
+    const body = screen.getByLabelText("Message") as HTMLTextAreaElement;
+    await user.clear(subject);
+    await user.type(subject, "My preserved subject");
+    await user.clear(body);
+    await user.type(body, "My preserved message");
+
+    const first = original.sourceRecords[0];
+    const sourceQuote = `${first.sourceQuote} revised`;
+    const changed: CareFeeComparisonCaseV1 = {
+      ...original,
+      sourceRecords: [{
+        ...first,
+        sourceQuote,
+        claim: { ...first.claim, provenance: { ...first.claim.provenance, sourceQuote } },
+      }, original.sourceRecords[1]],
+    };
+    rerender(
+      <CareFeeDraftPreparationPanel
+        caseRecord={changed}
+        onClose={vi.fn()}
+        clipboard={{ writeText }}
+      />,
+    );
+
+    expect(screen.getByRole("alert").textContent).toContain("no longer matches the saved Care Fee snapshot");
+    expect(subject.value).toBe("My preserved subject");
+    expect(body.value).toBe("My preserved message");
+    const copy = screen.getByRole("button", { name: "Copy text" }) as HTMLButtonElement;
+    expect(copy.disabled).toBe(true);
+    await user.click(copy);
+    expect(writeText).not.toHaveBeenCalled();
   });
 
   it("preserves selectable edited text and raises an alert when copy fails", async () => {

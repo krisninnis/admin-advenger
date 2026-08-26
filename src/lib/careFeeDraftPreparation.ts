@@ -1,6 +1,8 @@
 import {
+  createCareFeeCaseSnapshotIdentity,
   formatCareFeeMinorAmount,
   validateCareFeeComparisonCase,
+  type CareFeeCaseSnapshotIdentityV1,
   type CareFeeComparisonCaseV1,
 } from "./careFeeCase";
 import type { UserConfirmedCareFeeContext } from "./careFeeClaimConfirmation";
@@ -146,6 +148,41 @@ export type CareFeeDraftUserEnteredInputReferenceV1 = {
   readonly field: "recipient_label";
 };
 
+export const CARE_FEE_PREPARED_STATEMENT_CLASSIFICATIONS = [
+  "source_grounded_statement",
+  "user_confirmed_input",
+  "derived_comparison_statement",
+  "user_entered_recipient",
+  "adminavenger_template_wording",
+] as const;
+
+export type CareFeePreparedStatementClassificationV1 =
+  (typeof CARE_FEE_PREPARED_STATEMENT_CLASSIFICATIONS)[number];
+
+export type CareFeePreparedStatementSupportReferenceV1 =
+  | CareFeeDraftSourceFactReferenceV1
+  | CareFeeDraftUserConfirmedFactReferenceV1
+  | CareFeeDraftDerivedFactReferenceV1
+  | CareFeeDraftUserEnteredInputReferenceV1;
+
+export type CareFeePreparedStatementSeparatorV1 =
+  | "none"
+  | "space"
+  | "line_break"
+  | "paragraph_break";
+
+export type CareFeePreparedMessageStatementV1 = {
+  readonly kind: "care_fee_prepared_message_statement";
+  readonly version: 1;
+  readonly id: string;
+  readonly location: "subject" | "body";
+  readonly order: number;
+  readonly separatorBefore: CareFeePreparedStatementSeparatorV1;
+  readonly text: string;
+  readonly classification: CareFeePreparedStatementClassificationV1;
+  readonly supportReferences: readonly CareFeePreparedStatementSupportReferenceV1[];
+};
+
 export type CareFeePreparedDraftV1 = {
   readonly kind: "care_fee_prepared_draft";
   readonly version: 1;
@@ -155,6 +192,7 @@ export type CareFeePreparedDraftV1 = {
   readonly recipient?: CareFeeDraftRecipientV1;
   readonly preparedSubject: string;
   readonly preparedBody: string;
+  readonly preparedStatements: readonly CareFeePreparedMessageStatementV1[];
   readonly createdAt: string;
   readonly audit: {
     readonly templateVersion: 1;
@@ -196,6 +234,7 @@ export type CareFeeDraftPreparationOutcome =
       readonly status: "prepared";
       readonly draft: CareFeePreparedDraftV1;
       readonly context: ValidatedCareFeeDraftPreparationContextV1;
+      readonly preparedAgainstSnapshotIdentity: CareFeeCaseSnapshotIdentityV1;
     }
   | {
       readonly status: "failed";
@@ -640,63 +679,184 @@ const sourceDescription = (
     : undefined;
 };
 
-const uniqueMappedText = (
-  reasons: readonly ComparabilityReason[],
-  field: "statement" | "request",
-): readonly string[] => {
-  const seen = new Set<string>();
-  const values: string[] = [];
-  for (const reason of reasons) {
-    const value = CARE_FEE_NSC_DRAFT_RULES[reason][field];
-    if (!seen.has(value)) {
-      seen.add(value);
-      values.push(value);
-    }
-  }
-  return values;
-};
-
 type PreparedText = {
   readonly subject: string;
   readonly body: string;
 };
 
-const greetingOf = (context: ValidatedCareFeeDraftPreparationContextV1): string =>
-  context.recipient ? `Hello ${context.recipient.label},` : "Hello,";
+type PreparedStatementInput = Omit<CareFeePreparedMessageStatementV1, "kind" | "version" | "order">;
 
-const comparablePreparedText = (
+const sourceReferenceFor = (
   context: ValidatedCareFeeDraftPreparationContextV1,
-): PreparedText | undefined => {
+  recordLabel: "Record 1" | "Record 2",
+  field: CareFeeDraftSourceFieldV1,
+): CareFeeDraftSourceFactReferenceV1 | undefined => {
+  const fact = context.sourceFacts.find(
+    (candidate) => candidate.recordLabel === recordLabel && candidate.field === field,
+  );
+  return fact
+    ? {
+        partition: "source_fact",
+        recordLabel: fact.recordLabel,
+        claimId: fact.claimId,
+        field: fact.field,
+        sourceDocumentId: fact.sourceDocumentId,
+        ...(fact.sourceSegmentId ? { sourceSegmentId: fact.sourceSegmentId } : {}),
+      }
+    : undefined;
+};
+
+const sourceAmountAndCadenceReferences = (
+  context: ValidatedCareFeeDraftPreparationContextV1,
+  recordLabel: "Record 1" | "Record 2",
+): readonly CareFeeDraftSourceFactReferenceV1[] => {
+  const amount = sourceReferenceFor(context, recordLabel, "amount_minor");
+  const cadence = sourceReferenceFor(context, recordLabel, "cadence");
+  return amount && cadence ? [amount, cadence] : [];
+};
+
+const derivedReference = (
+  context: ValidatedCareFeeDraftPreparationContextV1,
+  field: CareFeeDraftDerivedFieldV1,
+): CareFeeDraftDerivedFactReferenceV1 => ({
+  partition: "derived_comparison_fact",
+  field,
+  claimIds: [...context.derivedComparisonFacts.claimIds],
+});
+
+const greetingStatements = (
+  context: ValidatedCareFeeDraftPreparationContextV1,
+): readonly PreparedStatementInput[] => context.recipient
+  ? [
+      {
+        id: "body-greeting-prefix",
+        location: "body",
+        separatorBefore: "none",
+        text: "Hello ",
+        classification: "adminavenger_template_wording",
+        supportReferences: [],
+      },
+      {
+        id: "body-recipient-label",
+        location: "body",
+        separatorBefore: "none",
+        text: context.recipient.label,
+        classification: "user_entered_recipient",
+        supportReferences: [{ partition: "user_entered_drafting_input", field: "recipient_label" }],
+      },
+      {
+        id: "body-greeting-punctuation",
+        location: "body",
+        separatorBefore: "none",
+        text: ",",
+        classification: "adminavenger_template_wording",
+        supportReferences: [],
+      },
+    ]
+  : [{
+      id: "body-greeting",
+      location: "body",
+      separatorBefore: "none",
+      text: "Hello,",
+      classification: "adminavenger_template_wording",
+      supportReferences: [],
+    }];
+
+const finalizeStatements = (
+  statements: readonly PreparedStatementInput[],
+): readonly CareFeePreparedMessageStatementV1[] => statements.map((statement, order) => ({
+  kind: "care_fee_prepared_message_statement",
+  version: 1,
+  ...statement,
+  order,
+}));
+
+const comparablePreparedStatements = (
+  context: ValidatedCareFeeDraftPreparationContextV1,
+): readonly CareFeePreparedMessageStatementV1[] | undefined => {
   const derived = context.derivedComparisonFacts;
   if (derived.state === "not_safely_comparable") return undefined;
   const first = sourceDescription(context, "Record 1");
   const second = sourceDescription(context, "Record 2");
   if (!first || !second) return undefined;
   const applicability = formatCareFeeDraftApplicability(derived.applicability);
-  const greeting = greetingOf(context);
 
   if (derived.state === "agreement") {
     const request = context.intent === "confirm_or_break_down_figure"
       ? "Please confirm the figure and provide a breakdown of how it was reached."
       : "Please confirm the applicable rate or period and explain the basis for it.";
-    return {
-      subject: context.intent === "confirm_or_break_down_figure"
-        ? "Request for a care fee figure breakdown"
-        : "Request to clarify an applicable care fee figure",
-      body: [
-        greeting,
-        "",
-        "I am writing to ask for clarification about two care fee records.",
-        "",
-        `Record 1 shows ${first}, and Record 2 shows ${second}. The two safely comparable figures agree ${applicability}.`,
-        "",
-        request,
-        "",
-        "Please reply with the relevant explanation or record details when you can.",
-        "",
-        "Kind regards,",
-      ].join("\n"),
-    };
+    return finalizeStatements([
+      {
+        id: "subject",
+        location: "subject",
+        separatorBefore: "none",
+        text: context.intent === "confirm_or_break_down_figure"
+          ? "Request for a care fee figure breakdown"
+          : "Request to clarify an applicable care fee figure",
+        classification: "adminavenger_template_wording",
+        supportReferences: [],
+      },
+      ...greetingStatements(context),
+      {
+        id: "body-purpose",
+        location: "body",
+        separatorBefore: "paragraph_break",
+        text: "I am writing to ask for clarification about two care fee records.",
+        classification: "adminavenger_template_wording",
+        supportReferences: [],
+      },
+      {
+        id: "body-record-1",
+        location: "body",
+        separatorBefore: "paragraph_break",
+        text: `Record 1 shows ${first}`,
+        classification: "source_grounded_statement",
+        supportReferences: sourceAmountAndCadenceReferences(context, "Record 1"),
+      },
+      {
+        id: "body-record-2",
+        location: "body",
+        separatorBefore: "none",
+        text: `, and Record 2 shows ${second}.`,
+        classification: "source_grounded_statement",
+        supportReferences: sourceAmountAndCadenceReferences(context, "Record 2"),
+      },
+      {
+        id: "body-agreement",
+        location: "body",
+        separatorBefore: "space",
+        text: `The two safely comparable figures agree ${applicability}.`,
+        classification: "derived_comparison_statement",
+        supportReferences: [
+          derivedReference(context, "state"),
+          derivedReference(context, "applicability"),
+        ],
+      },
+      {
+        id: "body-request",
+        location: "body",
+        separatorBefore: "paragraph_break",
+        text: request,
+        classification: "adminavenger_template_wording",
+        supportReferences: [],
+      },
+      {
+        id: "body-response-request",
+        location: "body",
+        separatorBefore: "paragraph_break",
+        text: "Please reply with the relevant explanation or record details when you can.",
+        classification: "adminavenger_template_wording",
+        supportReferences: [],
+      },
+      {
+        id: "body-signoff",
+        location: "body",
+        separatorBefore: "paragraph_break",
+        text: "Kind regards,",
+        classification: "adminavenger_template_wording",
+        supportReferences: [],
+      },
+    ]);
   }
 
   const difference = amountWithCadence(
@@ -714,55 +874,216 @@ const comparablePreparedText = (
     : context.intent === "explain_comparison_difference"
       ? "Request for an explanation of care fee figures"
       : "Request to clarify an applicable care fee figure";
-  return {
-    subject,
-    body: [
-      greeting,
-      "",
-      "I am writing to ask for clarification about two care fee records.",
-      "",
-      `Record 1 shows ${first}, and Record 2 shows ${second}. The figures were safely comparable ${applicability}.`,
-      `The absolute difference between the two safely comparable figures is ${difference}.`,
-      "",
-      request,
-      "",
-      "Please reply with the relevant explanation or record details when you can.",
-      "",
-      "Kind regards,",
-    ].join("\n"),
-  };
+  return finalizeStatements([
+    {
+      id: "subject",
+      location: "subject",
+      separatorBefore: "none",
+      text: subject,
+      classification: "adminavenger_template_wording",
+      supportReferences: [],
+    },
+    ...greetingStatements(context),
+    {
+      id: "body-purpose",
+      location: "body",
+      separatorBefore: "paragraph_break",
+      text: "I am writing to ask for clarification about two care fee records.",
+      classification: "adminavenger_template_wording",
+      supportReferences: [],
+    },
+    {
+      id: "body-record-1",
+      location: "body",
+      separatorBefore: "paragraph_break",
+      text: `Record 1 shows ${first}`,
+      classification: "source_grounded_statement",
+      supportReferences: sourceAmountAndCadenceReferences(context, "Record 1"),
+    },
+    {
+      id: "body-record-2",
+      location: "body",
+      separatorBefore: "none",
+      text: `, and Record 2 shows ${second}.`,
+      classification: "source_grounded_statement",
+      supportReferences: sourceAmountAndCadenceReferences(context, "Record 2"),
+    },
+    {
+      id: "body-comparability",
+      location: "body",
+      separatorBefore: "space",
+      text: `The figures were safely comparable ${applicability}.`,
+      classification: "derived_comparison_statement",
+      supportReferences: [
+        derivedReference(context, "state"),
+        derivedReference(context, "applicability"),
+      ],
+    },
+    {
+      id: "body-absolute-difference",
+      location: "body",
+      separatorBefore: "line_break",
+      text: `The absolute difference between the two safely comparable figures is ${difference}.`,
+      classification: "derived_comparison_statement",
+      supportReferences: [
+        derivedReference(context, "difference_minor"),
+        derivedReference(context, "difference_kind"),
+        derivedReference(context, "currency"),
+        derivedReference(context, "cadence"),
+      ],
+    },
+    {
+      id: "body-request",
+      location: "body",
+      separatorBefore: "paragraph_break",
+      text: request,
+      classification: "adminavenger_template_wording",
+      supportReferences: [],
+    },
+    {
+      id: "body-response-request",
+      location: "body",
+      separatorBefore: "paragraph_break",
+      text: "Please reply with the relevant explanation or record details when you can.",
+      classification: "adminavenger_template_wording",
+      supportReferences: [],
+    },
+    {
+      id: "body-signoff",
+      location: "body",
+      separatorBefore: "paragraph_break",
+      text: "Kind regards,",
+      classification: "adminavenger_template_wording",
+      supportReferences: [],
+    },
+  ]);
 };
 
-const nscPreparedText = (
+const uniqueMappedEntries = (
+  reasons: readonly ComparabilityReason[],
+  field: "statement" | "request",
+): readonly { readonly text: string; readonly reasons: readonly ComparabilityReason[] }[] => {
+  const entries = new Map<string, ComparabilityReason[]>();
+  for (const reason of reasons) {
+    const text = CARE_FEE_NSC_DRAFT_RULES[reason][field];
+    entries.set(text, [...(entries.get(text) ?? []), reason]);
+  }
+  return [...entries].map(([text, mappedReasons]) => ({ text, reasons: mappedReasons }));
+};
+
+const nscPreparedStatements = (
   context: ValidatedCareFeeDraftPreparationContextV1,
-): PreparedText | undefined => {
+): readonly CareFeePreparedMessageStatementV1[] | undefined => {
   const derived = context.derivedComparisonFacts;
   if (derived.state !== "not_safely_comparable") return undefined;
   const relevantReasons = context.intent === "clarify_rate_or_period"
     ? derived.reasons.filter((reason) => NSC_RATE_OR_PERIOD_REASONS.has(reason))
     : derived.reasons;
   if (relevantReasons.length === 0) return undefined;
-  const statements = uniqueMappedText(relevantReasons, "statement");
-  const requests = uniqueMappedText(relevantReasons, "request");
-  return {
-    subject: context.intent === "clarify_rate_or_period"
-      ? "Request to clarify care fee rates or periods"
-      : "Request for information about care fee records",
-    body: [
-      greetingOf(context),
-      "",
-      "I am writing about two care fee records that could not be safely compared.",
-      "",
-      statements.join(" "),
-      "",
-      requests.join(" "),
-      "",
-      "Please reply with the requested information when you can.",
-      "",
-      "Kind regards,",
-    ].join("\n"),
-  };
+  const statements = uniqueMappedEntries(relevantReasons, "statement");
+  const requests = uniqueMappedEntries(relevantReasons, "request");
+  return finalizeStatements([
+    {
+      id: "subject",
+      location: "subject",
+      separatorBefore: "none",
+      text: context.intent === "clarify_rate_or_period"
+        ? "Request to clarify care fee rates or periods"
+        : "Request for information about care fee records",
+      classification: "adminavenger_template_wording",
+      supportReferences: [],
+    },
+    ...greetingStatements(context),
+    {
+      id: "body-purpose-prefix",
+      location: "body",
+      separatorBefore: "paragraph_break",
+      text: "I am writing about two care fee records that",
+      classification: "adminavenger_template_wording",
+      supportReferences: [],
+    },
+    {
+      id: "body-not-safely-comparable",
+      location: "body",
+      separatorBefore: "space",
+      text: "could not be safely compared.",
+      classification: "derived_comparison_statement",
+      supportReferences: [derivedReference(context, "state")],
+    },
+    ...statements.map((entry, index): PreparedStatementInput => ({
+      id: `body-blocker-${index + 1}`,
+      location: "body",
+      separatorBefore: index === 0 ? "paragraph_break" : "space",
+      text: entry.text,
+      classification: "derived_comparison_statement",
+      supportReferences: [
+        derivedReference(context, "reasons"),
+        derivedReference(context, "blocking_explanations"),
+      ],
+    })),
+    ...requests.map((entry, index): PreparedStatementInput => ({
+      id: `body-blocker-request-${index + 1}`,
+      location: "body",
+      separatorBefore: index === 0 ? "paragraph_break" : "space",
+      text: entry.text,
+      classification: "adminavenger_template_wording",
+      supportReferences: [],
+    })),
+    {
+      id: "body-response-request",
+      location: "body",
+      separatorBefore: "paragraph_break",
+      text: "Please reply with the requested information when you can.",
+      classification: "adminavenger_template_wording",
+      supportReferences: [],
+    },
+    {
+      id: "body-signoff",
+      location: "body",
+      separatorBefore: "paragraph_break",
+      text: "Kind regards,",
+      classification: "adminavenger_template_wording",
+      supportReferences: [],
+    },
+  ]);
 };
+
+const separatorText = (separator: CareFeePreparedStatementSeparatorV1): string => {
+  if (separator === "space") return " ";
+  if (separator === "line_break") return "\n";
+  if (separator === "paragraph_break") return "\n\n";
+  return "";
+};
+
+export const renderCareFeePreparedMessageStatements = (
+  statements: readonly CareFeePreparedMessageStatementV1[],
+): PreparedText | undefined => {
+  if (statements.length === 0 || new Set(statements.map(({ id }) => id)).size !== statements.length) {
+    return undefined;
+  }
+  if (statements.some((statement, index) =>
+    statement.kind !== "care_fee_prepared_message_statement" ||
+    statement.version !== 1 ||
+    statement.order !== index ||
+    statement.text.length === 0)) {
+    return undefined;
+  }
+  const renderLocation = (location: "subject" | "body"): string | undefined => {
+    const located = statements.filter((statement) => statement.location === location);
+    if (located.length === 0 || located[0].separatorBefore !== "none") return undefined;
+    return located.map((statement) => `${separatorText(statement.separatorBefore)}${statement.text}`).join("");
+  };
+  const subject = renderLocation("subject");
+  const body = renderLocation("body");
+  return subject && body ? { subject, body } : undefined;
+};
+
+export const buildCareFeePreparedMessageStatements = (
+  context: ValidatedCareFeeDraftPreparationContextV1,
+): readonly CareFeePreparedMessageStatementV1[] | undefined =>
+  context.derivedComparisonFacts.state === "not_safely_comparable"
+    ? nscPreparedStatements(context)
+    : comparablePreparedStatements(context);
 
 const derivedFieldsOf = (
   facts: CareFeeDraftDerivedComparisonFactsV1,
@@ -784,7 +1105,7 @@ const derivedFieldsOf = (
   return ["state", "reasons", "blocking_explanations"];
 };
 
-const auditOf = (
+export const createCareFeeDraftAudit = (
   context: ValidatedCareFeeDraftPreparationContextV1,
 ): CareFeePreparedDraftV1["audit"] => ({
   templateVersion: 1,
@@ -901,10 +1222,11 @@ export const prepareCareFeeDraft = (
     if (id.trim().length === 0 || Number.isNaN(Date.parse(createdAt))) {
       return preparationFailure("invalid_generation_metadata");
     }
-    const prepared = validation.context.derivedComparisonFacts.state === "not_safely_comparable"
-      ? nscPreparedText(validation.context)
-      : comparablePreparedText(validation.context);
-    if (!prepared) return preparationFailure("missing_source_fact");
+    const preparedStatements = buildCareFeePreparedMessageStatements(validation.context);
+    const prepared = preparedStatements
+      ? renderCareFeePreparedMessageStatements(preparedStatements)
+      : undefined;
+    if (!preparedStatements || !prepared) return preparationFailure("missing_source_fact");
     const safety = validateCareFeePreparedTextSafety(prepared, validation.context);
     if (!safety.safe) return preparationFailure("unsafe_output");
     const draft: CareFeePreparedDraftV1 = {
@@ -916,11 +1238,17 @@ export const prepareCareFeeDraft = (
       ...(validation.context.recipient ? { recipient: { ...validation.context.recipient } } : {}),
       preparedSubject: prepared.subject,
       preparedBody: prepared.body,
+      preparedStatements,
       createdAt,
-      audit: auditOf(validation.context),
+      audit: createCareFeeDraftAudit(validation.context),
       safetyBoundary: "preparation_only_no_send_no_claim_conclusion",
     };
-    return { status: "prepared", draft, context: validation.context };
+    return {
+      status: "prepared",
+      draft,
+      context: validation.context,
+      preparedAgainstSnapshotIdentity: createCareFeeCaseSnapshotIdentity(validation.request.savedCase),
+    };
   } catch {
     return preparationFailure("unexpected_error");
   }

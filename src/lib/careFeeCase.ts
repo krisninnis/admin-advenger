@@ -78,6 +78,12 @@ export type CareFeeComparisonCaseV1 = {
   readonly safetyBoundary: string;
 };
 
+declare const careFeeCaseSnapshotIdentityBrand: unique symbol;
+
+export type CareFeeCaseSnapshotIdentityV1 = string & {
+  readonly [careFeeCaseSnapshotIdentityBrand]: "care_fee_case_snapshot_identity_v1";
+};
+
 export type CareFeeCaseCreationFailureReason =
   | "invalid_candidate"
   | "stale_source"
@@ -528,6 +534,25 @@ export const validateCareFeeComparisonCase = (value: unknown): CareFeeCaseValida
   }
   return { valid: true, caseRecord: value as unknown as CareFeeComparisonCaseV1 };
 };
+
+const canonicalSnapshotValue = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map(canonicalSnapshotValue);
+  if (!isRecord(value)) return value;
+  return Object.fromEntries(
+    Object.keys(value)
+      .sort()
+      .map((key) => [key, canonicalSnapshotValue(value[key])]),
+  );
+};
+
+/**
+ * Creates a transient identity for the complete immutable saved-case snapshot.
+ * The returned value must stay in component memory and must not be persisted or logged.
+ */
+export const createCareFeeCaseSnapshotIdentity = (
+  caseRecord: CareFeeComparisonCaseV1,
+): CareFeeCaseSnapshotIdentityV1 =>
+  JSON.stringify(canonicalSnapshotValue(caseRecord)) as CareFeeCaseSnapshotIdentityV1;
 
 const canonicalContext = (context: readonly UserConfirmedCareFeeContext[]) =>
   [...context].sort((first, second) =>

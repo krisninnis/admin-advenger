@@ -10,6 +10,7 @@ import {
   formatCareFeeDraftApplicability,
   getAllowedCareFeeDraftIntents,
   prepareCareFeeDraft,
+  renderCareFeePreparedMessageStatements,
   validateCareFeeDraftPreparationRequest,
   validateCareFeePreparedTextSafety,
   type CareFeeDraftIntentV1,
@@ -385,7 +386,7 @@ describe("Care Fee transient draft preparation domain", () => {
     expect(body).not.toMatch(/owed|overcharg|refund|reimburse|fault|correct|wrong/i);
   });
 
-  it("keeps the four fact origins separate and emits exact typed audit references", () => {
+  it("keeps the five statement origins separate and emits exact typed audit references", () => {
     const outcome = prepared(
       careFeeCase("disagreement"),
       "explain_comparison_difference",
@@ -401,6 +402,21 @@ describe("Care Fee transient draft preparation domain", () => {
     );
     expect(outcome.context.derivedComparisonFacts.partition).toBe("derived_comparison_fact");
     expect(outcome.context.recipient?.origin).toBe("user_entered_drafting_input");
+    expect(outcome.draft.preparedStatements.some(
+      ({ classification }) => classification === "source_grounded_statement",
+    )).toBe(true);
+    expect(outcome.draft.preparedStatements.some(
+      ({ classification }) => classification === "derived_comparison_statement",
+    )).toBe(true);
+    expect(outcome.draft.preparedStatements.some(
+      ({ classification }) => classification === "user_entered_recipient",
+    )).toBe(true);
+    expect(outcome.draft.preparedStatements.some(
+      ({ classification }) => classification === "adminavenger_template_wording",
+    )).toBe(true);
+    expect(outcome.draft.preparedStatements.some(
+      ({ classification }) => classification === "user_confirmed_input",
+    )).toBe(false);
     expect(outcome.draft.audit).toMatchObject({
       templateVersion: 1,
       userEnteredInputReferences: [{
@@ -441,6 +457,12 @@ describe("Care Fee transient draft preparation domain", () => {
     expect(first.draft.preparedSubject).toBe(second.draft.preparedSubject);
     expect(first.draft.preparedBody).toBe(second.draft.preparedBody);
     expect(first.draft.audit).toEqual(second.draft.audit);
+    expect(first.draft.preparedStatements).toEqual(second.draft.preparedStatements);
+    expect(first.preparedAgainstSnapshotIdentity).toBe(second.preparedAgainstSnapshotIdentity);
+    expect(renderCareFeePreparedMessageStatements(first.draft.preparedStatements)).toEqual({
+      subject: first.draft.preparedSubject,
+      body: first.draft.preparedBody,
+    });
   });
 
   it("rejects prohibited assertions while allowing neutral payment-period wording", () => {

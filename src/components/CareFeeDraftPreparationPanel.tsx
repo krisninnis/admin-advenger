@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   formatCareFeeMinorAmount,
   validateCareFeeComparisonCase,
+  type CareFeeCaseSnapshotIdentityV1,
   type CareFeeComparisonCaseV1,
 } from "../lib/careFeeCase";
 import {
@@ -16,6 +17,7 @@ import {
   type CareFeePreparedDraftV1,
   type ValidatedCareFeeDraftPreparationContextV1,
 } from "../lib/careFeeDraftPreparation";
+import { createCareFeePreparedMessageEvidenceReview } from "../lib/careFeePreparedMessageEvidenceReview";
 import {
   COPY_BUTTON_FAILURE_MESSAGE,
   COPY_BUTTON_SUCCESS_STATUS_MESSAGE,
@@ -23,6 +25,7 @@ import {
   type ClipboardLike,
   type CopyResult,
 } from "../lib/copyToClipboard";
+import { CareFeePreparedMessageEvidenceReview } from "./CareFeePreparedMessageEvidenceReview";
 
 type CareFeeDraftPreparationPanelProps = {
   readonly caseRecord: CareFeeComparisonCaseV1;
@@ -150,6 +153,9 @@ export function CareFeeDraftPreparationPanel({
   const [intent, setIntent] = useState<CareFeeDraftIntentV1 | "">("");
   const [recipientLabel, setRecipientLabel] = useState("");
   const [preparedDraft, setPreparedDraft] = useState<CareFeePreparedDraftV1>();
+  const [preparedContext, setPreparedContext] = useState<ValidatedCareFeeDraftPreparationContextV1>();
+  const [preparedAgainstSnapshotIdentity, setPreparedAgainstSnapshotIdentity] =
+    useState<CareFeeCaseSnapshotIdentityV1>();
   const [preparedInputKey, setPreparedInputKey] = useState("");
   const [editedSubject, setEditedSubject] = useState("");
   const [editedBody, setEditedBody] = useState("");
@@ -176,6 +182,25 @@ export function CareFeeDraftPreparationPanel({
   );
   const currentInputKey = intent ? JSON.stringify([intent, recipientLabel.trim()]) : "";
   const inputsChanged = Boolean(preparedDraft && currentInputKey !== preparedInputKey);
+  const evidenceReview = useMemo(() =>
+    preparedDraft && preparedContext && preparedAgainstSnapshotIdentity
+      ? createCareFeePreparedMessageEvidenceReview({
+          currentSavedCase: caseRecord,
+          preparedDraft,
+          preparedContext,
+          preparedAgainstSnapshotIdentity,
+          editedSubject,
+          editedBody,
+        })
+      : undefined,
+  [
+    caseRecord,
+    editedBody,
+    editedSubject,
+    preparedAgainstSnapshotIdentity,
+    preparedContext,
+    preparedDraft,
+  ]);
 
   useEffect(() => {
     panelHeadingRef.current?.focus();
@@ -192,7 +217,8 @@ export function CareFeeDraftPreparationPanel({
   const prepareNow = () => {
     if (!intent) return;
     const inputKey = JSON.stringify([intent, recipientLabel.trim()]);
-    if (preparedDraft && preparedInputKey === inputKey && !hasEdits) {
+    if (preparedDraft && preparedInputKey === inputKey && !hasEdits &&
+        evidenceReview?.savedSnapshotMatchStatus === "matches_saved_snapshot") {
       preparedHeadingRef.current?.focus();
       return;
     }
@@ -203,6 +229,8 @@ export function CareFeeDraftPreparationPanel({
       return;
     }
     setPreparedDraft(outcome.draft);
+    setPreparedContext(outcome.context);
+    setPreparedAgainstSnapshotIdentity(outcome.preparedAgainstSnapshotIdentity);
     setPreparedInputKey(inputKey);
     setEditedSubject(outcome.draft.preparedSubject);
     setEditedBody(outcome.draft.preparedBody);
@@ -226,11 +254,21 @@ export function CareFeeDraftPreparationPanel({
   };
 
   const copyEditedDraft = async () => {
+    if (!preparedDraft || !preparedContext || !preparedAgainstSnapshotIdentity) return;
+    const currentReview = createCareFeePreparedMessageEvidenceReview({
+      currentSavedCase: caseRecord,
+      preparedDraft,
+      preparedContext,
+      preparedAgainstSnapshotIdentity,
+      editedSubject,
+      editedBody,
+    });
+    if (currentReview.savedSnapshotMatchStatus !== "matches_saved_snapshot") return;
     const result = await copyTextToClipboard(`${editedSubject}\n\n${editedBody}`, clipboard);
     setCopyStatus(result);
   };
 
-  if (!caseValidation.valid) {
+  if (!caseValidation.valid && !preparedDraft) {
     return (
       <section id="care-fee-draft-preparation-panel" aria-labelledby="care-fee-draft-preparation-heading" className="rounded-xl border border-rose-300/30 bg-rose-300/[0.06] p-4 sm:p-6">
         <h3
@@ -450,6 +488,13 @@ export function CareFeeDraftPreparationPanel({
             Nothing has been sent.
           </p>
 
+          {evidenceReview ? (
+            <CareFeePreparedMessageEvidenceReview
+              review={evidenceReview}
+              currentSavedCase={caseRecord}
+            />
+          ) : null}
+
           <label htmlFor="care-fee-draft-subject" className="mt-5 block text-sm font-bold text-white">
             Subject
           </label>
@@ -491,6 +536,7 @@ export function CareFeeDraftPreparationPanel({
           <button
             type="button"
             onClick={() => void copyEditedDraft()}
+            disabled={evidenceReview?.savedSnapshotMatchStatus !== "matches_saved_snapshot"}
             className="mt-5 min-h-11 w-full rounded-lg bg-emerald-300 px-4 py-3 font-bold text-slate-950 transition hover:bg-emerald-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-100 sm:w-auto"
           >
             Copy text
@@ -506,32 +552,6 @@ export function CareFeeDraftPreparationPanel({
             </p>
           ) : null}
 
-          <details className="mt-5 rounded-lg border border-white/15 p-3">
-            <summary className="min-h-11 cursor-pointer rounded-lg px-2 py-2 font-bold text-cyan-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-200">
-              Why did this draft say that?
-            </summary>
-            <dl className="mt-3 grid gap-3 text-sm leading-6 text-slate-300 sm:grid-cols-2">
-              <div>
-                <dt className="font-bold text-white">Source fact references</dt>
-                <dd>{preparedDraft.audit.sourceFactReferences.length}</dd>
-              </div>
-              <div>
-                <dt className="font-bold text-white">User-confirmed references</dt>
-                <dd>{preparedDraft.audit.userConfirmedFactReferences.length}</dd>
-              </div>
-              <div>
-                <dt className="font-bold text-white">Derived comparison references</dt>
-                <dd>{preparedDraft.audit.derivedFactReferences.length}</dd>
-              </div>
-              <div>
-                <dt className="font-bold text-white">Template version</dt>
-                <dd>{preparedDraft.audit.templateVersion}</dd>
-              </div>
-            </dl>
-            <p className="mt-3 text-xs leading-5 text-slate-400">
-              These references describe the AdminAvenger-prepared version only. They do not classify your edits as source evidence.
-            </p>
-          </details>
         </section>
       ) : null}
     </section>

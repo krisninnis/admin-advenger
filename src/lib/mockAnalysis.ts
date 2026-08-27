@@ -1247,6 +1247,7 @@ export const analyseAdminItem = (
   // keyword categories such as "application" or "delay". Keep it below the
   // dedicated security/specialist reads, but above generic keyword fallbacks.
   const structuredDocumentRequestFinding =
+    !accountOutcomeFinding &&
     structuredGeneralAdminFallback?.topic === "document_request" &&
     structuredGeneralAdminFallback.requestedDocument
       ? createStructuredGeneralAdminFallbackFinding(item, structuredGeneralAdminFallback)

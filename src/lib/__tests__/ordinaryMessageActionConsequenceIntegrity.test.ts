@@ -11,6 +11,12 @@ const APPOINTMENT =
 const APPLICATION_DOCUMENT_REQUEST =
   "Your application has been received. We need a copy of your latest bank statement to continue processing it. Please send this by 4 September 2026. If we do not receive it by then, your application may be delayed. This is not a decision on your application.";
 
+const CONDITIONAL_ACCOUNT_CLOSURE = `Once we receive the death certificate, we will be able to close the account.
+
+Until then, the account remains active and monthly charges will continue. Please send the document by 12 August 2026.
+
+Reference DOC-12884.`;
+
 describe("ordinary message action and consequence integrity v1", () => {
   it("preserves moved-appointment practical and conditional reply instructions", () => {
     const journey = run("appointment-instructions", APPOINTMENT);
@@ -47,6 +53,17 @@ describe("ordinary message action and consequence integrity v1", () => {
     expect(fallback?.dates.some((date) => date.role === "stated_deadline" && date.value === "4 September 2026")).toBe(true);
     expect(fallback?.consequence).toMatch(/application may be delayed/i);
     expect(fallback?.nextAction).toMatch(/provide the requested latest bank statement by 4 September 2026/i);
+  });
+
+  it("preserves specialist account-outcome precedence over the generic document-request path", () => {
+    const journey = run("conditional-account-closure", CONDITIONAL_ACCOUNT_CLOSURE);
+
+    expect(journey.resultViewModel.title).toBe("Account closure needs a document");
+    expect(journey.visibleText).toMatch(/account remains active/i);
+    expect(journey.visibleText).toMatch(/monthly charges will continue/i);
+    expect(journey.visibleText).toMatch(/death certificate/i);
+    expect(journey.visibleText).toContain("12 August 2026");
+    expect(journey.visibleText).toContain("DOC-12884");
   });
 
   it("does not let the bare word delayed create a refund category", () => {

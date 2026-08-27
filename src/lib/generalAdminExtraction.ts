@@ -1323,7 +1323,7 @@ const firstMatchingStatement = (text: string, pattern: RegExp): string | undefin
     .find((part) => pattern.test(part));
 
 const requestedDocumentFrom = (text: string): string | undefined => {
-  const match = text.match(/\b(?:send|provide|upload|return|include|asks?\s+for|requests?)\b[^.\n]{0,80}?\b((?:current\s+)?fit\s+note|death\s+certificate|identity\s+document|tenancy\s+and\s+earnings\s+evidence|rent\s+evidence|household\s+income\s+evidence|right-to-work\s+evidence|final\s+statement|invoice\s+and\s+photographs|invoice|photographs?|meter\s+reading|document|evidence|form)\b/i);
+  const match = text.match(/\b(?:send|provide|upload|return|include|need(?:\s+a\s+copy\s+of)?|asks?\s+for|requests?)\b[^.\n]{0,80}?\b((?:(?:latest|recent|current)\s+)?bank\s+statement|(?:current\s+)?fit\s+note|death\s+certificate|identity\s+document|tenancy\s+and\s+earnings\s+evidence|rent\s+evidence|household\s+income\s+evidence|right-to-work\s+evidence|final\s+statement|invoice\s+and\s+photographs|invoice|photographs?|meter\s+reading|document|evidence|form)\b/i);
   return match?.[1];
 };
 
@@ -1419,7 +1419,7 @@ const dependencyFrom = (text: string): string | undefined =>
 const consequenceFrom = (text: string): string | undefined =>
   firstMatchingStatement(
     text,
-    /\b(?:may|might|could|will)\b[^.\n]{0,70}\b(?:suspend|suspended|collection|payable|continue|follow|reduce|close|end)|\bcharges?\s+continue|\baccount\s+remains?\s+active/i,
+    /\b(?:may|might|could|will)\b[^.\n]{0,70}\b(?:suspend|suspended|collection|payable|continue|follow|reduce|close|end|delay|delayed)|\bcharges?\s+continue|\baccount\s+remains?\s+active/i,
   );
 
 // Records the person is likely to need, taken only from nouns the source itself

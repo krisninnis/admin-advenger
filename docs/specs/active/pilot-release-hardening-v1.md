@@ -31,15 +31,13 @@ The direct `pdfjs-dist` dependency must resolve to at least `6.2.108`.
 
 The remediation remains within PDF.js major version 6.
 
-### Scripting disabled
+### Scripting surface
 
-AdminAvenger uses PDF.js only to extract selectable text from a user-selected local file. Embedded PDF JavaScript, actions, and scripting are not product requirements.
+AdminAvenger uses PDF.js only to extract selectable text from a user-selected local file.
 
-The production `getDocument` call used by public PDF text extraction must explicitly set:
+In PDF.js 6.2.108, `enableScripting` is not a `getDocument` initialization parameter. Scripting is a viewer-layer capability associated with viewer/scripting-manager surfaces. AdminAvenger's public PDF extraction path does not instantiate `PDFViewer`, `PDFScriptingManager`, or another PDF scripting surface.
 
-`enableScripting: false`
-
-Focused tests must enforce this option.
+Do not add unsupported viewer options to `getDocument`. The security remediation for this path is the patched PDF.js release while preserving the existing document/text-only architecture.
 
 ### Local-only boundary
 
@@ -116,7 +114,7 @@ After implementation:
 
 1. verify the resolved PDF.js version is patched;
 2. run focused PDF/document-file tests;
-3. verify `getDocument` receives local `data` and `enableScripting: false`;
+3. verify `getDocument` receives local `data`, not a URL, and that the public extraction path remains document/text-only without viewer scripting surfaces;
 4. retain coverage for successful multi-page extraction, scanned/no-text PDFs, encrypted/corrupt PDFs, and mid-document failures;
 5. run relevant document-attachment/file-intake regressions;
 6. run a complete full test suite using low concurrency if the default Vitest worker startup stalls;

@@ -107,7 +107,13 @@ type PdfTextContentItem = { str?: string };
 export const extractPdfText = async (file: File): Promise<DocumentFileReadResult> => {
   try {
     const arrayBuffer = await file.arrayBuffer();
-    const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+    const loadingTask = pdfjsLib.getDocument({
+      data: arrayBuffer,
+      // AdminAvenger only extracts selectable text. Embedded PDF JavaScript
+      // is never needed for this preparation-only flow, so disable scripting
+      // explicitly as defence in depth at the untrusted-document boundary.
+      enableScripting: false,
+    });
     const pdfDocument = await loadingTask.promise;
 
     const segments: DocumentFileTextSegment[] = [];

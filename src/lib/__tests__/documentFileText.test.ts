@@ -191,6 +191,7 @@ describe("extractPdfText", () => {
     expect(getDocumentMock).toHaveBeenCalledTimes(1);
     const [options] = getDocumentMock.mock.calls[0] as [Record<string, unknown>];
     expect(options).toHaveProperty("data");
+    expect(options).toHaveProperty("enableScripting", false);
     expect(options).not.toHaveProperty("url");
   });
 });

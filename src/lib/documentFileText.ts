@@ -107,6 +107,10 @@ type PdfTextContentItem = { str?: string };
 export const extractPdfText = async (file: File): Promise<DocumentFileReadResult> => {
   try {
     const arrayBuffer = await file.arrayBuffer();
+    // This path uses only PDF.js's document/text API. It never creates the
+    // PDF viewer or PDFScriptingManager surfaces that execute document scripts.
+    // Keep loading data-only and rely on the patched PDF.js release for parser
+    // security at this untrusted-document boundary.
     const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
     const pdfDocument = await loadingTask.promise;
 

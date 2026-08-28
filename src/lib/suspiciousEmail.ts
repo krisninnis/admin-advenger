@@ -26,7 +26,7 @@ const urgentPressurePattern = new RegExp(
 // suspended" is the same pressure as "your account will be suspended" and must
 // be recognised as one signal, not ignored.
 const accountThreatPattern =
-  /\b(account (?:will be |is )?(?:locked|suspended|closed|disabled|deactivated)|permanent closure|avoid suspension|locked today|restricted access|(?:your |the )?(?:account )?access (?:will|may|could|shall) be (?:suspended|restricted|blocked|revoked|withdrawn|removed|disabled)|(?:your |the )?(?:account|service|access) (?:will|may|could) be (?:suspended|restricted|blocked|revoked|disabled|closed))\b/i;
+  /\b(account (?:will be |is )?(?:locked|suspended|closed|disabled|deactivated)|permanent closure|avoid suspension|locked today|restricted access|(?:your |the )?(?:account )?access (?:will|may|could|shall) be (?:suspended|restricted|blocked|revoked|withdrawn|removed|disabled)|(?:your |the )?(?:account|service|access|supply) (?:will|may|could) be (?:suspended|restricted|blocked|revoked|disabled|closed|disconnected|discontinued|terminated|cut off|switched off))\b/i;
 
 const sensitiveDetailRequestPattern =
   /\b(?:send|share|provide|enter|reply with|tell us|confirm|verify|update)\s+(?:us\s+)?(?:your\s+|the\s+)?(?:bank details|bank account|sort code|account number|login details|password|one[- ]?time code|security code|verification code|pin number|card details|payment card|credit card|debit card|cvv|cvc)\b/gi;
@@ -85,18 +85,25 @@ const hasUnnegatedMatch = (text: string, pattern: RegExp) => {
 // patterns miss (for example "send us the six-digit verification code", where
 // an adjective sits between the determiner and the noun) and it applies the
 // same negation rule, so protective wording stays a safe negative.
+// Quoted, cited, hypothetical, or example wording ("an email claiming 'send us
+// your card details' is a known scam") is source content, not an instruction
+// directed at the reader. Such spans are removed before the credential/action
+// signals run, so a message that quotes or warns about dangerous wording is not
+// itself treated as an operative request (product decision S7).
+const stripQuotedSpans = (text: string) =>
+  text.replace(/"[^"]*"|“[^”]*”|‘[^’]*’|'[^']*'|«[^»]*»/g, " ");
 const hasSensitiveDetailRequest = (text: string) =>
-  hasUnnegatedMatch(text, sensitiveDetailRequestPattern) ||
-  detectSensitiveInformationRequest(text).requested;
+  hasUnnegatedMatch(stripQuotedSpans(text), sensitiveDetailRequestPattern) ||
+  detectSensitiveInformationRequest(stripQuotedSpans(text)).requested;
 const hasBankDetailRequest = (text: string) =>
-  hasUnnegatedMatch(text, bankDetailRequestPattern) ||
-  detectSensitiveInformationRequest(text).kinds.includes("bank");
+  hasUnnegatedMatch(stripQuotedSpans(text), bankDetailRequestPattern) ||
+  detectSensitiveInformationRequest(stripQuotedSpans(text)).kinds.includes("bank");
 const hasLoginDetailRequest = (text: string) =>
-  hasUnnegatedMatch(text, loginDetailRequestPattern) ||
-  detectSensitiveInformationRequest(text).kinds.includes("login");
+  hasUnnegatedMatch(stripQuotedSpans(text), loginDetailRequestPattern) ||
+  detectSensitiveInformationRequest(stripQuotedSpans(text)).kinds.includes("login");
 const hasCardDetailRequest = (text: string) =>
-  hasUnnegatedMatch(text, cardDetailRequestPattern) ||
-  detectSensitiveInformationRequest(text).kinds.includes("card");
+  hasUnnegatedMatch(stripQuotedSpans(text), cardDetailRequestPattern) ||
+  detectSensitiveInformationRequest(stripQuotedSpans(text)).kinds.includes("card");
 const hasSuppliedActionLink = (text: string) =>
   hasUnnegatedMatch(text, verificationLinkPattern) || hasUnnegatedMatch(text, suppliedUrlPattern);
 const hasMoneyDemand = (text: string) => hasUnnegatedMatch(text, moneyDemandPattern);

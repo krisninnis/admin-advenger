@@ -2,9 +2,10 @@ import type { AdminItem, BroadbandPriceRiseAssessment } from "../types";
 
 const moneyAmountPattern = String.raw`(?:GBP\s*|\u00a3\s*|\?\s*)?(\d+(?:\.\d{1,2})?)`;
 
-const pricePattern = String.raw`(?:GBP\s*|\u00a3|Â£|Ã‚Â£|Ãƒâ€šÃ‚Â£)\s*(\d+(?:\.\d{1,2})?)`;
 const datePattern = String.raw`(\d{1,2}\s+[A-Z][a-z]+(?:\s+\d{4})?|\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{2,4})`;
-void pricePattern;
+// Only numbers explicitly marked as money count as prices. Dates, reference
+// numbers, and other bare digits are never invented into a price.
+const currencyPrice = String.raw`(?:GBP\s*|\u00a3\s*|Â£\s*)\s*(\d+(?:\.\d{1,2})?)`;
 const contractRegimeCutoff = Date.UTC(2025, 0, 17);
 
 const monthIndexes: Record<string, number> = {
@@ -40,8 +41,10 @@ const getAllMatches = (text: string, pattern: RegExp) =>
 const unique = (items: string[]) => [...new Set(items)];
 
 const extractPricePair = (text: string) => {
+  // Explicit old->new pair: "from £34 to £46 per month", "from GBP 34 to GBP 46".
+  // Both amounts are stated as prices, so this is a source-grounded pair.
   const pairMatch = text.match(
-    new RegExp(`from\\s+${moneyAmountPattern}\\s+(?:per month\\s+)?(?:to|up to)\\s+${moneyAmountPattern}`, "i"),
+    new RegExp(`from\\s+${currencyPrice}\\s+(?:per month\\s+)?(?:to|up to)\\s+${currencyPrice}`, "i"),
   );
 
   if (pairMatch) {
@@ -51,20 +54,42 @@ const extractPricePair = (text: string) => {
     };
   }
 
-  const prices = [...text.matchAll(new RegExp(moneyAmountPattern, "gi"))]
-    .map((match) => Number(match[1]))
-    .filter((amount) => Number.isFinite(amount));
+  // Explicit increase-by with a stated new total: "increase by £3.00 to £33.00".
+  // The old price is a correct derivation (new - increase) because both the
+  // increment and the new total are grounded by the source.
+  const byToMatch = text.match(
+    new RegExp(`by\\s+${currencyPrice}\\s+(?:to|up to)\\s+${currencyPrice}`, "i"),
+  );
 
-  if (prices.length >= 2) {
-    return {
-      oldPrice: prices[0],
-      newPrice: prices[1],
-    };
+  if (byToMatch) {
+    const increase = Number(byToMatch[1]);
+    const newPrice = Number(byToMatch[2]);
+    return newPrice > increase
+      ? { oldPrice: newPrice - increase, newPrice }
+      : { oldPrice: undefined, newPrice };
   }
 
+  // Either side alone, only when it is explicitly marked as money and placed in
+  // an unambiguous price phrase. A missing other side is never invented.
+  const oldMatch = text.match(
+    new RegExp(
+      `(?:current|old|previous)\\b[^.!?\\n]{0,25}?\\b(?:price|tariff|bill|rate)\\b[^.!?\\n]{0,12}?${currencyPrice}(?!\\s*(?:to|up to)\\s*${currencyPrice})`,
+      "i",
+    ),
+  );
+  const hadOld = oldMatch ? Number(oldMatch[1]) : undefined;
+
+  const newMatch = text.match(
+    new RegExp(
+      `(?:(?:will|would|shall)\\s+(?:rise|increase|go up|rise up)\\s+to|\\b(?:rises|increases|goes up|go up)\\s+to|new\\s+(?:monthly\\s+)?(?:price|tariff)\\s+(?:is|will\\s+be)\\s+|increase\\s+to)\\s*${currencyPrice}`,
+      "i",
+    ),
+  );
+  const hadNew = newMatch ? Number(newMatch[1]) : undefined;
+
   return {
-    oldPrice: undefined,
-    newPrice: undefined,
+    oldPrice: hadOld !== undefined && Number.isFinite(hadOld) ? hadOld : undefined,
+    newPrice: hadNew !== undefined && Number.isFinite(hadNew) ? hadNew : undefined,
   };
 };
 

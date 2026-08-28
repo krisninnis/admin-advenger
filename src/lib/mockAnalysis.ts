@@ -74,7 +74,7 @@ const categoryRules: CategoryRule[] = [
     // "cancelled" alone is intentionally NOT a refund trigger. A cancelled flight or
     // order only becomes a money-back case when paired with refund/reimbursement/
     // compensation/claim wording (see isTravelEvidenceCheckText in moneyParsers).
-    weakKeywords: ["delayed", "delay", "returned", "missing order", "not delivered", "compensation"],
+    weakKeywords: ["returned", "missing order", "not delivered", "compensation"],
     summary: "This item suggests there may be money, compensation, or a service credit to check.",
     whyItMatters:
       "Refund and compensation windows can close quickly, so it is worth chasing while the details are fresh.",
@@ -527,23 +527,58 @@ const createDeliveryUpdateFinding = (item: AdminItem): AdminFinding => ({
 
 const isAppointmentTask = (text: string) =>
   /\b(appointment|dentist|doctor|gp|optician|clinic)\b/.test(text) &&
-  /\b(cancelled|canceled|rebook|reschedule|book another|asked me to rebook|moved\s+from)\b/.test(text) &&
+  /\b(cancelled|canceled|rebook|reschedule|book another|asked me to rebook|moved)\b/.test(text) &&
   !/\b(deadline|due by|expires|respond before|reply before|before \d{1,2}|by \d{1,2})\b/.test(text);
 
+const appointmentSourceInstruction = (
+  text: string,
+  pattern: RegExp,
+): string | undefined =>
+  text
+    .split(/(?<=[.!?])\s+|\n+/)
+    .map((part) => part.trim())
+    .find((part) => pattern.test(part));
+
 const createAppointmentTaskFinding = (item: AdminItem): AdminFinding => {
-  const moved = /\bappointment\b[^.\n]*\bmoved\s+from\b/i.test(item.rawText);
+  const moved = /\bappointment\b/i.test(item.rawText) && /\bmoved\b/i.test(item.rawText);
+  const arrivalInstruction = appointmentSourceInstruction(
+    item.rawText,
+    /\bplease\s+arrive\b[^.\n]*\bearly\b/i,
+  );
+  const conditionalReply = appointmentSourceInstruction(
+    item.rawText,
+    /\bdo(?:\s+not|n['’]t)\s+need\s+to\s+(?:reply|respond)\b[^.\n]*\bunless\b|\b(?:reply|respond)\b[^.\n]*\bunless\b/i,
+  );
+  const noReply = appointmentSourceInstruction(
+    item.rawText,
+    /\b(?:no|do(?:es)?(?:\s+not|n['’]t))\s+need\s+to\s+(?:reply|respond)\b[^.\n]*(?:to\s+this\s+message)?/i,
+  );
+  const sourceInstructions = [arrivalInstruction, conditionalReply, noReply]
+    .filter((entry): entry is string => Boolean(entry))
+    .map((entry) => `The source also says: ${entry}`);
+
   return {
     id: `finding-${crypto.randomUUID()}`,
     itemId: item.id,
     category: "unknown",
     title: moved ? "Appointment date changed" : "Appointment to rebook",
-    summary: moved
-      ? "This message states that an appointment has moved to a replacement date."
-      : "This looks like an appointment or booking that needs rearranging.",
+    summary: [
+      moved
+        ? "This message states that an appointment has moved to a replacement date."
+        : "This looks like an appointment or booking that needs rearranging.",
+      ...sourceInstructions,
+    ].join(" "),
     whyItMatters:
       "Rebooking keeps the admin loop closed, but this is not a refund or money-back case.",
     suggestedAction: moved
-      ? "Check the previous and replacement appointment dates, then keep the confirmation."
+      ? [
+          "Check the previous and replacement appointment dates.",
+          arrivalInstruction ? `Keep this source instruction in view: ${arrivalInstruction}` : undefined,
+          noReply ? `Keep the no-reply fact in view: ${noReply}` : undefined,
+          conditionalReply ? `Follow the source's reply condition: ${conditionalReply}` : "Keep the confirmation.",
+        ]
+          .filter((entry): entry is string => Boolean(entry))
+          .join(" ")
       : "Rebook the appointment and save the confirmation.",
     urgency: "low",
     confidence: "medium",
@@ -1213,6 +1248,15 @@ export const analyseAdminItem = (
       ? createAccountOutcomeFinding(item)
       : undefined;
   const structuredGeneralAdminFallback = extractGeneralAdmin(item.rawText).fallback;
+  // A source-grounded document request is more specific than historical broad
+  // keyword categories such as "application" or "delay". Keep it below the
+  // dedicated security/specialist reads, but above generic keyword fallbacks.
+  const structuredDocumentRequestFinding =
+    !accountOutcomeFinding &&
+    structuredGeneralAdminFallback?.topic === "document_request" &&
+    structuredGeneralAdminFallback.requestedDocument
+      ? createStructuredGeneralAdminFallbackFinding(item, structuredGeneralAdminFallback)
+      : undefined;
   const securityAlertFinding =
     !highRiskEmailFinding && isSecurityAlertText(item.rawText)
       ? createSecurityAlertFinding(item)
@@ -1377,6 +1421,7 @@ export const analyseAdminItem = (
     !appointmentTaskFinding &&
     !broadbandPriceRiseFinding &&
     !trainDelayFinding &&
+    !structuredDocumentRequestFinding &&
     structuredGeneralAdminFallback?.status !== "no_action_needed" &&
     !(accountOutcomeFinding &&
       !accountOutcomeAssessment.unresolvedFinancialOutcome &&
@@ -1404,6 +1449,7 @@ export const analyseAdminItem = (
     !appointmentTaskFinding &&
     !broadbandPriceRiseFinding &&
     !trainDelayFinding &&
+    !structuredDocumentRequestFinding &&
     !accountOutcomeFinding &&
     !decisionEngineFinding &&
     communicationAssessment.signals.length > 0
@@ -1424,7 +1470,8 @@ export const analyseAdminItem = (
         securityAlertFinding ||
         deliveryCompletedFinding ||
         billReadyDirectDebitFinding ||
-        appointmentReminderFinding
+        appointmentReminderFinding ||
+        structuredDocumentRequestFinding
       ) {
         return false;
       }
@@ -1504,6 +1551,7 @@ export const analyseAdminItem = (
     appointmentTaskFinding,
     broadbandPriceRiseFinding,
     trainDelayFinding,
+    structuredDocumentRequestFinding,
     communicationFinding,
     decisionEngineFinding,
   ].filter((finding): finding is AdminFinding => Boolean(finding));

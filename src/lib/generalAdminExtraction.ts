@@ -485,6 +485,12 @@ const semanticForDate = (
     const relationship = /\bto\s*$/.test(before) ? "replacement" : "previous";
     return { role: "event_date", meaning: "appointment", relationship };
   }
+  if (/\bmoved\s+to\s*$/.test(before) && /\bappointment\b/i.test(text)) {
+    return { role: "event_date", meaning: "appointment", relationship: "replacement" };
+  }
+  if (/\bappointment\b/.test(clause) && /\boriginally\s+booked\s+for\s*$/.test(before)) {
+    return { role: "event_date", meaning: "appointment", relationship: "previous" };
+  }
   if (/\bcontract\b[^.\n]*\bruns?\s+from\b/.test(clause) || looksLikePeriodBoundary(text, index, raw)) {
     const relationship = /\b(?:to|until|through)\s*$/.test(before) ? "end" : "start";
     return { role: "period_boundary", meaning: "period", relationship };
@@ -718,7 +724,7 @@ const RECEIPT_DONE = /payment\s+received|thank\s+you\s+for\s+your\s+payment|paid
 const OUTSTANDING = /unpaid|amount\s+due|balance\s+due|please\s+pay|overdue|payment\s+required/i;
 const SECURITY = /sign[-\s]?in|log[-\s]?in\b|login|security\s+alert|unusual\s+activity|new\s+sign\s*in|verify\s+it\s+was\s+you|password\s+(?:was|reset|change)/i;
 const APPOINTMENT = /appointment|dental|dentist|\bgp\b|optician|clinic|hygienist|check[-\s]?up/i;
-const APPOINTMENT_CHANGED = /cancel(?:led|ed)?|rebook|reschedul/i;
+const APPOINTMENT_CHANGED = /cancel(?:led|ed)?|rebook|reschedul|moved/i;
 
 export const detectDocumentStatus = (
   text: string,
@@ -1323,7 +1329,7 @@ const firstMatchingStatement = (text: string, pattern: RegExp): string | undefin
     .find((part) => pattern.test(part));
 
 const requestedDocumentFrom = (text: string): string | undefined => {
-  const match = text.match(/\b(?:send|provide|upload|return|include|asks?\s+for|requests?)\b[^.\n]{0,80}?\b((?:current\s+)?fit\s+note|death\s+certificate|identity\s+document|tenancy\s+and\s+earnings\s+evidence|rent\s+evidence|household\s+income\s+evidence|right-to-work\s+evidence|final\s+statement|invoice\s+and\s+photographs|invoice|photographs?|meter\s+reading|document|evidence|form)\b/i);
+  const match = text.match(/\b(?:send|provide|upload|return|include|need(?:\s+a\s+copy\s+of)?|asks?\s+for|requests?)\b[^.\n]{0,80}?\b((?:(?:latest|recent|current)\s+)?bank\s+statement|(?:current\s+)?fit\s+note|death\s+certificate|identity\s+document|tenancy\s+and\s+earnings\s+evidence|rent\s+evidence|household\s+income\s+evidence|right-to-work\s+evidence|final\s+statement|invoice\s+and\s+photographs|invoice|photographs?|meter\s+reading|document|evidence|form)\b/i);
   return match?.[1];
 };
 
@@ -1419,7 +1425,7 @@ const dependencyFrom = (text: string): string | undefined =>
 const consequenceFrom = (text: string): string | undefined =>
   firstMatchingStatement(
     text,
-    /\b(?:may|might|could|will)\b[^.\n]{0,70}\b(?:suspend|suspended|collection|payable|continue|follow|reduce|close|end)|\bcharges?\s+continue|\baccount\s+remains?\s+active/i,
+    /\b(?:may|might|could|will)\b[^.\n]{0,70}\b(?:suspend|suspended|collection|payable|continue|follow|reduce|close|end|delay|delayed)|\bcharges?\s+continue|\baccount\s+remains?\s+active/i,
   );
 
 // Records the person is likely to need, taken only from nouns the source itself

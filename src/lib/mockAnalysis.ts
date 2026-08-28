@@ -527,7 +527,7 @@ const createDeliveryUpdateFinding = (item: AdminItem): AdminFinding => ({
 
 const isAppointmentTask = (text: string) =>
   /\b(appointment|dentist|doctor|gp|optician|clinic)\b/.test(text) &&
-  /\b(cancelled|canceled|rebook|reschedule|book another|asked me to rebook|moved\s+from)\b/.test(text) &&
+  /\b(cancelled|canceled|rebook|reschedule|book another|asked me to rebook|moved)\b/.test(text) &&
   !/\b(deadline|due by|expires|respond before|reply before|before \d{1,2}|by \d{1,2})\b/.test(text);
 
 const appointmentSourceInstruction = (
@@ -540,7 +540,7 @@ const appointmentSourceInstruction = (
     .find((part) => pattern.test(part));
 
 const createAppointmentTaskFinding = (item: AdminItem): AdminFinding => {
-  const moved = /\bappointment\b[^.\n]*\bmoved\s+from\b/i.test(item.rawText);
+  const moved = /\bappointment\b/i.test(item.rawText) && /\bmoved\b/i.test(item.rawText);
   const arrivalInstruction = appointmentSourceInstruction(
     item.rawText,
     /\bplease\s+arrive\b[^.\n]*\bearly\b/i,
@@ -549,7 +549,11 @@ const createAppointmentTaskFinding = (item: AdminItem): AdminFinding => {
     item.rawText,
     /\bdo(?:\s+not|n['’]t)\s+need\s+to\s+(?:reply|respond)\b[^.\n]*\bunless\b|\b(?:reply|respond)\b[^.\n]*\bunless\b/i,
   );
-  const sourceInstructions = [arrivalInstruction, conditionalReply]
+  const noReply = appointmentSourceInstruction(
+    item.rawText,
+    /\b(?:no|do(?:es)?(?:\s+not|n['’]t))\s+need\s+to\s+(?:reply|respond)\b[^.\n]*(?:to\s+this\s+message)?/i,
+  );
+  const sourceInstructions = [arrivalInstruction, conditionalReply, noReply]
     .filter((entry): entry is string => Boolean(entry))
     .map((entry) => `The source also says: ${entry}`);
 
@@ -570,6 +574,7 @@ const createAppointmentTaskFinding = (item: AdminItem): AdminFinding => {
       ? [
           "Check the previous and replacement appointment dates.",
           arrivalInstruction ? `Keep this source instruction in view: ${arrivalInstruction}` : undefined,
+          noReply ? `Keep the no-reply fact in view: ${noReply}` : undefined,
           conditionalReply ? `Follow the source's reply condition: ${conditionalReply}` : "Keep the confirmation.",
         ]
           .filter((entry): entry is string => Boolean(entry))

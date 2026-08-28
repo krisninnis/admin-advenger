@@ -485,6 +485,12 @@ const semanticForDate = (
     const relationship = /\bto\s*$/.test(before) ? "replacement" : "previous";
     return { role: "event_date", meaning: "appointment", relationship };
   }
+  if (/\bmoved\s+to\s*$/.test(before) && /\bappointment\b/i.test(text)) {
+    return { role: "event_date", meaning: "appointment", relationship: "replacement" };
+  }
+  if (/\bappointment\b/.test(clause) && /\boriginally\s+booked\s+for\s*$/.test(before)) {
+    return { role: "event_date", meaning: "appointment", relationship: "previous" };
+  }
   if (/\bcontract\b[^.\n]*\bruns?\s+from\b/.test(clause) || looksLikePeriodBoundary(text, index, raw)) {
     const relationship = /\b(?:to|until|through)\s*$/.test(before) ? "end" : "start";
     return { role: "period_boundary", meaning: "period", relationship };
@@ -718,7 +724,7 @@ const RECEIPT_DONE = /payment\s+received|thank\s+you\s+for\s+your\s+payment|paid
 const OUTSTANDING = /unpaid|amount\s+due|balance\s+due|please\s+pay|overdue|payment\s+required/i;
 const SECURITY = /sign[-\s]?in|log[-\s]?in\b|login|security\s+alert|unusual\s+activity|new\s+sign\s*in|verify\s+it\s+was\s+you|password\s+(?:was|reset|change)/i;
 const APPOINTMENT = /appointment|dental|dentist|\bgp\b|optician|clinic|hygienist|check[-\s]?up/i;
-const APPOINTMENT_CHANGED = /cancel(?:led|ed)?|rebook|reschedul/i;
+const APPOINTMENT_CHANGED = /cancel(?:led|ed)?|rebook|reschedul|moved/i;
 
 export const detectDocumentStatus = (
   text: string,

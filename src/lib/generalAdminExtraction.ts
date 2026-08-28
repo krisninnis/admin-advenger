@@ -723,6 +723,19 @@ const DELIVERY_PROBLEM = /not\s+(?:arrived|delivered|received)|missing|failed\s+
 const RECEIPT_DONE = /payment\s+received|thank\s+you\s+for\s+your\s+payment|paid\s+in\s+full|\breceipt\b|order\s+confirmation|proof\s+of\s+purchase/i;
 const OUTSTANDING = /unpaid|amount\s+due|balance\s+due|please\s+pay|overdue|payment\s+required/i;
 const SECURITY = /sign[-\s]?in|log[-\s]?in\b|login|security\s+alert|unusual\s+activity|new\s+sign\s*in|verify\s+it\s+was\s+you|password\s+(?:was|reset|change)/i;
+// Ordinary bill/payment-due language (a bill, an amount due, a "log in to pay"
+// instruction) is administrative information, not a security alert. Rooting the
+// loose "log in / login" token in an ordinary money context prevents a mundane
+// payment reminder from flipping into a security warning (S9).
+const PAYMENT_DUE_CONTEXT =
+  /\b(bill|invoice|statement|payment|amount due|balance|fee|pay|due on|due by|overdue|please log in(?: to| and)? pay)\b/i;
+const SECURITY_ALERT_STRONG =
+  /security\s+alert|unusual\s+activity|new\s+sign\s*in|verify\s+it\s+was\s+you|password\s+(?:was|reset|change)|sign[-\s]?in/i;
+const hasSecuritySignal = (text: string): boolean => {
+  const strong = SECURITY_ALERT_STRONG.test(text);
+  const looseLogin = /(?:log[-\s]?in\b|login)/i.test(text) && !PAYMENT_DUE_CONTEXT.test(text);
+  return strong || looseLogin;
+};
 const APPOINTMENT = /appointment|dental|dentist|\bgp\b|optician|clinic|hygienist|check[-\s]?up/i;
 const APPOINTMENT_CHANGED = /cancel(?:led|ed)?|rebook|reschedul|moved/i;
 
@@ -760,7 +773,7 @@ export const detectDocumentStatus = (
 // --- First-class read predicates -----------------------------------------
 
 export const isSecurityAlertText = (text: string): boolean =>
-  SECURITY.test(text) && !OUTSTANDING.test(text) && !REFUND_CUE.test(text) && !DELIVERY_CONTEXT.test(text);
+  hasSecuritySignal(text) && !OUTSTANDING.test(text) && !REFUND_CUE.test(text) && !DELIVERY_CONTEXT.test(text);
 
 const BILL_READY = /bill\s+is\s+ready|your\s+(?:latest\s+)?bill\s+is\s+ready|new\s+bill|statement\s+is\s+ready|bill\s+ready\s+to\s+view|your\s+bill\s+for/i;
 const PRICE_INCREASE = /price\s+(?:rise|increase)|going\s+up|tariff\s+increase|bill\s+increase|rate\s+change|will\s+increase/i;
@@ -1333,11 +1346,39 @@ const requestedDocumentFrom = (text: string): string | undefined => {
   return match?.[1];
 };
 
-const requestedActionFrom = (text: string): string | undefined =>
-  firstMatchingStatement(
+// A requested action is promoted only when it is safe to present as a step to
+// follow. Consequential money-moving instructions ("send the money now", "pay
+// via this link") and protective/negated warnings ("we will never ask for that",
+// "please do not pay") are source evidence, never AdminAvenger recommendations;
+// the caller falls back to its own cautious verify/prepare action instead.
+const startsProtectiveOrNegated = (statement: string): boolean => {
+  const head = statement.slice(0, 70).toLowerCase();
+  return (
+    /^(?:please\s+)?(?:we|you|this|that|it)?\s*(?:would|will|do|did|does)['’]?\s*(?:never|not|n['’]t)\b/.test(head) ||
+    /^(?:please\s+)?(?:never|do\s+(?:not|n['’]t)|don['’]t|not\s+to|ignore)\b/.test(head) ||
+    /^(?:please\s+)?we\s+(?:will|would|do|shall)\s+never\b/.test(head)
+  );
+};
+
+const isMoneyMovingInstruction = (statement: string): boolean =>
+  /^(?:please\s+)?(?:pay|transfer|remit|wire|make(?:\s+(?:a|an|the))?\s+payment|send(?:\s+(?:us|the|this|that|a|an))?\s+(?:money|payment|balance|amount|fee|debt|bank|voucher|gift(?:\s+card)?|crypto|bitcoin|£|GBP))\b/i.test(
+    statement,
+  ) ||
+  /\b(?:pay|transfer)\b[^.!?\n]{0,40}\b(?:link|gift\s+card|bank\s+transfer|bitcoin|crypto|wire|voucher)\b/i.test(
+    statement,
+  );
+
+const isUnsafeActionToPromote = (statement: string): boolean =>
+  startsProtectiveOrNegated(statement) || isMoneyMovingInstruction(statement);
+
+const requestedActionFrom = (text: string): string | undefined => {
+  const statement = firstMatchingStatement(
     text,
     /^(?:please\s+)?(?:send|provide|upload|return|include|reply|respond|contact|report|tell|ask|answer|check|review|complete|accept|keep|gather|pay|close)\b|\basks?\s+(?:you\s+)?(?:for|to|whether)\b|\byou\s+(?:are\s+)?invited\b/i,
   );
+
+  return statement && !isUnsafeActionToPromote(statement) ? statement : undefined;
+};
 
 // A promise to look at something is an open dependency: the sender has taken
 // the matter on and owes an outcome. "Payroll will review the calculation" and
@@ -1507,7 +1548,12 @@ export const buildStructuredGeneralAdminFallback = (
   // credential, the fallback must never lift that instruction out and hand it
   // back as something to do. Security precedence normally routes these messages
   // elsewhere; this is the last line of defence if it does not.
-  const sensitiveInformationRequested = hasSensitiveInformationRequest(text);
+  // Quoted/cited/hypothetical wording (product decision S7) is removed first so
+  // a message that quotes or warns about a scam is not mistaken for a live
+  // credential request ("an email claiming 'send your card details' is a scam").
+  const sensitiveInformationRequested = hasSensitiveInformationRequest(
+    text.replace(/"[^"]*"|“[^”]*”|‘[^’]*’|'[^']*'|«[^»]*»/g, " "),
+  );
   const requestedDocument = sensitiveInformationRequested ? undefined : requestedDocumentFrom(text);
   const requestedAction = sensitiveInformationRequested ? undefined : requestedActionFrom(text);
   const dependency = dependencyFrom(text);

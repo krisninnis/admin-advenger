@@ -1,3 +1,8 @@
+import {
+  ImageResourceSafetyError,
+  loadSafeImageForProcessing,
+} from "./imageResourceSafety";
+
 export type DocumentScannerPoint = {
   x: number;
   y: number;
@@ -18,6 +23,7 @@ export type DocumentScanRejectionCode =
   | "no_document_detected"
   | "too_much_background"
   | "document_shape_unclear"
+  | "unsafe_image_resources"
   | "scanner_unavailable";
 
 export type DocumentScanDetectionResult =
@@ -479,23 +485,6 @@ export const detectDocumentFromPixels = (
   };
 };
 
-const loadImageElement = (file: File): Promise<HTMLImageElement> =>
-  new Promise((resolve, reject) => {
-    const objectUrl = URL.createObjectURL(file);
-    const element = new Image();
-    const cleanUp = () => URL.revokeObjectURL(objectUrl);
-
-    element.onload = () => {
-      cleanUp();
-      resolve(element);
-    };
-    element.onerror = () => {
-      cleanUp();
-      reject(new Error("Could not load this photo in the browser."));
-    };
-    element.src = objectUrl;
-  });
-
 const canvasToBlob = (
   canvas: HTMLCanvasElement,
   type = "image/jpeg",
@@ -647,7 +636,7 @@ const renderCorrectedDocumentBlob = async (
 
 export const scanDocumentFile = async (file: File): Promise<DocumentScanFileResult> => {
   try {
-    const image = await loadImageElement(file);
+    const { element: image } = await loadSafeImageForProcessing(file);
     const sourceDimensions = { width: image.naturalWidth, height: image.naturalHeight };
     const analysisCanvas = getAnalysisCanvas(image);
     const context = analysisCanvas.getContext("2d", { willReadFrequently: true });
@@ -689,7 +678,17 @@ export const scanDocumentFile = async (file: File): Promise<DocumentScanFileResu
       quad,
       warnings: detection.warnings,
     };
-  } catch {
+  } catch (error) {
+    if (error instanceof ImageResourceSafetyError) {
+      return {
+        status: "rejected",
+        sourceFile: file,
+        code: "unsafe_image_resources",
+        message: error.message,
+        warnings: [],
+      };
+    }
+
     return {
       status: "rejected",
       sourceFile: file,

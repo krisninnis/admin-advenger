@@ -7,6 +7,12 @@ import {
   OCR_RUNTIME_ASSET_PATHS,
 } from "../ocrRuntimeAssets";
 import { readTextFromPhoto } from "../../services/localOcrService";
+import {
+  IMAGE_DIMENSIONS_UNREADABLE_MESSAGE,
+  IMAGE_TOO_LARGE_MESSAGE,
+  ImageResourceSafetyError,
+  MAX_IMAGE_DIMENSION_PX,
+} from "../imageResourceSafety";
 
 const recognizeMock = vi.fn();
 
@@ -540,6 +546,50 @@ describe("preprocessImageForOcr dimensions", () => {
         usedPreprocessedImage: false,
       });
       expect(JSON.stringify(result.debug)).not.toContain("Readable letter text");
+    });
+  });
+
+  it("rejects an excessive decoded width before canvas allocation", async () => {
+    await withFakeImageDom(
+      { width: MAX_IMAGE_DIMENSION_PX + 1, height: 1 },
+      async (fakeCanvas) => {
+        const source = new Blob(["compressed oversized photo"], { type: "image/jpeg" });
+
+        await expect(preprocessImageForOcr(source)).rejects.toEqual(
+          expect.objectContaining({
+            name: "ImageResourceSafetyError",
+            code: "excessive_width",
+            message: IMAGE_TOO_LARGE_MESSAGE,
+          }),
+        );
+        expect(fakeCanvas.drawImage).not.toHaveBeenCalled();
+      },
+    );
+  });
+
+  it("does not start Tesseract when the decoded pixel boundary is exceeded", async () => {
+    await withFakeImageDom({ width: 10_000, height: 5_001 }, async () => {
+      const source = new Blob(["compressed pixel-heavy photo"], { type: "image/jpeg" });
+
+      await expect(readTextFromImage(source)).rejects.toMatchObject({
+        name: "OcrReadError",
+        message: IMAGE_TOO_LARGE_MESSAGE,
+      });
+      expect(recognizeMock).not.toHaveBeenCalled();
+    });
+  });
+
+  it("fails safely on malformed decoded dimensions before OCR", async () => {
+    await withFakeImageDom({ width: 0, height: 2000 }, async () => {
+      const source = new Blob(["malformed image"], { type: "image/jpeg" });
+
+      await expect(preprocessImageForOcr(source)).rejects.toBeInstanceOf(
+        ImageResourceSafetyError,
+      );
+      await expect(readTextFromImage(source)).rejects.toThrow(
+        IMAGE_DIMENSIONS_UNREADABLE_MESSAGE,
+      );
+      expect(recognizeMock).not.toHaveBeenCalled();
     });
   });
 });

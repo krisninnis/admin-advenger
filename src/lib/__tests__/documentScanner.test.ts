@@ -1,10 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   DOCUMENT_SCAN_REJECTION_MESSAGE,
   DOCUMENT_NO_DOCUMENT_MESSAGE,
   detectDocumentFromPixels,
   getPerspectiveOutputSize,
   orderCornerPoints,
+  scanDocumentFile,
   validateDocumentQuad,
   type DocumentScannerPoint,
 } from "../documentScanner";
@@ -71,6 +72,44 @@ const isSyntheticTextStroke = (row: number, col: number): boolean => {
 };
 
 describe("document scanner detection", () => {
+  it("rejects unsafe decoded dimensions before allocating a canvas", async () => {
+    const createElement = vi.fn();
+
+    class FakeImage {
+      naturalWidth = 12_001;
+      naturalHeight = 1;
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+
+      set src(_value: string) {
+        this.onload?.();
+      }
+    }
+
+    vi.stubGlobal("Image", FakeImage);
+    vi.stubGlobal("URL", {
+      createObjectURL: vi.fn(() => "blob:unsafe-image"),
+      revokeObjectURL: vi.fn(),
+    });
+    vi.stubGlobal("document", { createElement });
+
+    try {
+      const result = await scanDocumentFile(
+        new File(["compressed oversized image"], "huge.jpg", {
+          type: "image/jpeg",
+        }),
+      );
+
+      expect(result).toMatchObject({
+        status: "rejected",
+        code: "unsafe_image_resources",
+      });
+      expect(createElement).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("detects a clear portrait document on a contrasting background", () => {
     const image = buildImage(120, 180, (row, col) =>
       row >= 18 && row <= 164 && col >= 28 && col <= 92

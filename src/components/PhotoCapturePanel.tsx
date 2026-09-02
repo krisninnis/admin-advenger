@@ -2,6 +2,11 @@ import { useEffect, useReducer, useRef, useState } from "react";
 import { photoCaptureAcceptAttribute } from "../lib/fileIntakeAccept";
 import { FILE_SIZE_LIMIT_HELPER, getFileTooLargeMessage, isFileWithinSizeLimit } from "../lib/fileSizeLimit";
 import {
+  IMAGE_DIMENSIONS_UNREADABLE_MESSAGE,
+  ImageResourceSafetyError,
+  inspectImageResourceSafety,
+} from "../lib/imageResourceSafety";
+import {
   CAMERA_PERMISSION_DENIED_MESSAGE,
   CAMERA_PREVIEW_ACTIONS_CLASSNAME,
   CAMERA_UNAVAILABLE_MESSAGE,
@@ -248,6 +253,20 @@ export function PhotoCapturePanel({
 
     if (!isFileWithinSizeLimit(file)) {
       setErrorMessage(getFileTooLargeMessage(file));
+      return;
+    }
+
+    try {
+      // Reject unsafe decoded dimensions before rendering a preview or
+      // starting the document scanner. The scanner and OCR entry point repeat
+      // the same central check as defence in depth.
+      await inspectImageResourceSafety(file);
+    } catch (error) {
+      setErrorMessage(
+        error instanceof ImageResourceSafetyError
+          ? error.message
+          : IMAGE_DIMENSIONS_UNREADABLE_MESSAGE,
+      );
       return;
     }
 

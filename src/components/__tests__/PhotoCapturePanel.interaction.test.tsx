@@ -34,9 +34,19 @@ import {
   PHOTO_UPLOAD_ANOTHER_LABEL,
   PHOTO_USE_SCAN_LABEL,
 } from "../../lib/photoCapture";
+import {
+  IMAGE_TOO_LARGE_MESSAGE,
+  ImageResourceSafetyError,
+} from "../../lib/imageResourceSafety";
 
-const { scanDocumentFileMock } = vi.hoisted(() => ({
+const { inspectImageResourceSafetyMock, scanDocumentFileMock } = vi.hoisted(() => ({
+  inspectImageResourceSafetyMock: vi.fn(),
   scanDocumentFileMock: vi.fn(),
+}));
+
+vi.mock("../../lib/imageResourceSafety", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../lib/imageResourceSafety")>()),
+  inspectImageResourceSafety: inspectImageResourceSafetyMock,
 }));
 
 vi.mock("../../lib/documentScanner", () => ({
@@ -49,6 +59,7 @@ const originalMediaDevices = navigator.mediaDevices;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  inspectImageResourceSafetyMock.mockResolvedValue({ width: 1600, height: 2200 });
 
   Object.defineProperty(URL, "createObjectURL", {
     configurable: true,
@@ -460,5 +471,28 @@ describe("PhotoCapturePanel rendered scan confirmation", () => {
 
     expect(onTryAgain).toHaveBeenCalledTimes(1);
     expect(onUsePhotos).not.toHaveBeenCalled();
+  });
+
+  it("rejects unsafe image dimensions before preview or document scanning", async () => {
+    const sourceFile = new File(["compressed oversized image"], "huge.jpg", {
+      type: "image/jpeg",
+    });
+    inspectImageResourceSafetyMock.mockRejectedValue(
+      new ImageResourceSafetyError("excessive_width", IMAGE_TOO_LARGE_MESSAGE),
+    );
+
+    render(
+      <PhotoCapturePanel
+        initialPhotoFile={sourceFile}
+        onUsePhotos={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      IMAGE_TOO_LARGE_MESSAGE,
+    );
+    expect(createObjectUrlMock).not.toHaveBeenCalled();
+    expect(scanDocumentFileMock).not.toHaveBeenCalled();
   });
 });

@@ -2,9 +2,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const extractRawTextMock = vi.fn();
 const getDocumentMock = vi.fn();
+const inspectDocxArchiveResourceSafetyMock = vi.fn();
 
 vi.mock("mammoth", () => ({
   extractRawText: (...args: unknown[]) => extractRawTextMock(...args),
+}));
+
+vi.mock("../docxArchiveResourceSafety", () => ({
+  inspectDocxArchiveResourceSafety: (...args: unknown[]) =>
+    inspectDocxArchiveResourceSafetyMock(...args),
 }));
 
 vi.mock("pdfjs-dist", () => ({
@@ -27,6 +33,8 @@ const makeFile = (name: string, contents = "pretend bytes", type = "") =>
 beforeEach(() => {
   extractRawTextMock.mockReset();
   getDocumentMock.mockReset();
+  inspectDocxArchiveResourceSafetyMock.mockReset();
+  inspectDocxArchiveResourceSafetyMock.mockResolvedValue(undefined);
 });
 
 // ---- DOCX ----
@@ -88,6 +96,21 @@ describe("extractDocxText", () => {
     expect(input).toHaveProperty("arrayBuffer");
     expect(input).not.toHaveProperty("url");
     expect(input).not.toHaveProperty("path");
+  });
+
+  it("rejects an unsafe DOCX archive before Mammoth extraction starts", async () => {
+    inspectDocxArchiveResourceSafetyMock.mockRejectedValue(
+      new Error("unsafe archive"),
+    );
+
+    const result = await extractDocxText(makeFile("unsafe.docx"));
+
+    expect(result).toEqual({
+      status: "failed",
+      message: DOCX_READ_FAILED_MESSAGE,
+    });
+    expect(inspectDocxArchiveResourceSafetyMock).toHaveBeenCalledTimes(1);
+    expect(extractRawTextMock).not.toHaveBeenCalled();
   });
 });
 

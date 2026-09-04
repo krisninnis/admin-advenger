@@ -36,7 +36,7 @@ function DetailList({ items, fallback }: { items: string[]; fallback: string }) 
 export function PreparedMessagePanel({ draft, onReset }: PreparedMessagePanelProps) {
   const [editableText, setEditableText] = useState(draft.fullText);
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
-  const resetTimerRef = useRef<ReturnType<typeof window.setTimeout> | undefined>(undefined);
+  const resetTimerRef = useRef<number | undefined>(undefined);
   const isSafetyChecklist = draft.messageType === "email_safety_checklist";
 
   useEffect(() => {

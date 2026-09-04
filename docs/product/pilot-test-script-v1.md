@@ -2,13 +2,13 @@
 
 ## Purpose
 
-Use this script for a small, trusted AdminAvenger pilot with 3-5 people.
+Use this script for a small, trusted AdminAvenger pilot with approximately 5 to 10 people.
 
 This is not a public launch. The goal is to learn whether testers understand the preparation-only model, whether the wording feels safe, and whether the current flows help people organise stressful life admin without implying advice, decisions, or automatic action.
 
 ## Who To Invite
 
-Invite 3-5 trusted testers only.
+Invite approximately 5 to 10 trusted testers only.
 
 Good fit:
 

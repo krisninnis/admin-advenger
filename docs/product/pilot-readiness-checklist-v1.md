@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Use this checklist before inviting 3-5 real pilot users to try AdminAvenger.
+Use this checklist before inviting approximately 5 to 10 real pilot users to try AdminAvenger.
 
 This is a safety and comprehension gate, not a feature expansion plan. The pilot should confirm whether people understand what AdminAvenger does, what it does not do, and whether the preparation-only boundaries feel clear.
 

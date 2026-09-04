@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Use this blank template after the 3-5 person AdminAvenger pilot has been run.
+Use this blank template after the approximately 5 to 10 person AdminAvenger pilot has been run.
 
 Do not complete this document before real pilot sessions have happened. Do not invent feedback, quotes, numbers, or conclusions. Leave unknown fields blank or mark them as "not yet collected".
 

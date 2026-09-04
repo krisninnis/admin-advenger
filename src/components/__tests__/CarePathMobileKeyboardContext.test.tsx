@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import indexCss from "../../index.css?raw";
+import indexCss from "../../index.css?inline";
 import appShellSource from "../AppShell.tsx?raw";
 import { AppShell } from "../AppShell";
 

@@ -8,6 +8,10 @@
 // OCR_ON_DEVICE_MESSAGE below), matching the same "human always decides" rule
 // as every other input path (paste, file upload, camera capture).
 import { LOCAL_OCR_RUNTIME_OPTIONS } from "./ocrRuntimeAssets";
+import {
+  ImageResourceSafetyError,
+  loadSafeImageForProcessing,
+} from "./imageResourceSafety";
 import { normalizeOcrText } from "./photoIntake";
 
 type TesseractModule = typeof import("tesseract.js");
@@ -332,96 +336,78 @@ export const applyGrayscaleContrast = (pixels: Uint8ClampedArray): void => {
 // It never downscales and never redraws a clear high-resolution photo through
 // canvas just for the sake of preprocessing. The returned debug object only
 // contains dimensions/sizes/MIME types, never extracted text.
-export const preprocessImageForOcr = (image: File | Blob): Promise<PreparedOcrImage> =>
-  new Promise((resolve, reject) => {
-    const objectUrl = URL.createObjectURL(image);
-    const element = new Image();
+export const preprocessImageForOcr = async (
+  image: File | Blob,
+): Promise<PreparedOcrImage> => {
+  const { element, dimensions } = await loadSafeImageForProcessing(image);
+  const plan = getOcrPreprocessPlan(dimensions.width, dimensions.height);
+  const baseDebug = {
+    sourceWidth: dimensions.width,
+    sourceHeight: dimensions.height,
+    sourceBytes: image.size,
+    sourceMimeType: image.type || "unknown",
+    preprocessScale: plan.scale,
+    preprocessReason: plan.reason,
+  } satisfies Pick<
+    OcrImageDebugInfo,
+    | "sourceWidth"
+    | "sourceHeight"
+    | "sourceBytes"
+    | "sourceMimeType"
+    | "preprocessScale"
+    | "preprocessReason"
+  >;
 
-    const cleanUp = () => URL.revokeObjectURL(objectUrl);
+  if (!plan.shouldPreprocess) {
+    return {
+      image,
+      debug: {
+        ...baseDebug,
+        ocrWidth: dimensions.width,
+        ocrHeight: dimensions.height,
+        ocrBytes: image.size,
+        ocrMimeType: image.type || "unknown",
+        usedPreprocessedImage: false,
+      },
+    };
+  }
 
-    element.onload = () => {
-      try {
-        const plan = getOcrPreprocessPlan(element.naturalWidth, element.naturalHeight);
-        const baseDebug = {
-          sourceWidth: element.naturalWidth,
-          sourceHeight: element.naturalHeight,
-          sourceBytes: image.size,
-          sourceMimeType: image.type || "unknown",
-          preprocessScale: plan.scale,
-          preprocessReason: plan.reason,
-        } satisfies Pick<
-          OcrImageDebugInfo,
-          | "sourceWidth"
-          | "sourceHeight"
-          | "sourceBytes"
-          | "sourceMimeType"
-          | "preprocessScale"
-          | "preprocessReason"
-        >;
+  const canvas = document.createElement("canvas");
+  canvas.width = plan.outputWidth;
+  canvas.height = plan.outputHeight;
+  const context = canvas.getContext("2d");
 
-        if (!plan.shouldPreprocess) {
-          cleanUp();
-          resolve({
-            image,
-            debug: {
-              ...baseDebug,
-              ocrWidth: element.naturalWidth,
-              ocrHeight: element.naturalHeight,
-              ocrBytes: image.size,
-              ocrMimeType: image.type || "unknown",
-              usedPreprocessedImage: false,
-            },
-          });
-          return;
-        }
+  if (!context) {
+    throw new Error("Could not prepare this photo for reading.");
+  }
 
-        const canvas = document.createElement("canvas");
-        canvas.width = plan.outputWidth;
-        canvas.height = plan.outputHeight;
-        const context = canvas.getContext("2d");
+  context.drawImage(element, 0, 0, canvas.width, canvas.height);
+  const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+  applyGrayscaleContrast(imageData.data);
+  context.putImageData(imageData, 0, 0);
 
-        if (!context) {
-          cleanUp();
-          reject(new Error("Could not prepare this photo for reading."));
-          return;
-        }
-
-        context.drawImage(element, 0, 0, canvas.width, canvas.height);
-        const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-        applyGrayscaleContrast(imageData.data);
-        context.putImageData(imageData, 0, 0);
-
-        canvas.toBlob((blob) => {
-          cleanUp();
-          if (!blob) {
-            reject(new Error("Could not prepare this photo for reading."));
-            return;
-          }
-          resolve({
-            image: blob,
-            debug: {
-              ...baseDebug,
-              ocrWidth: canvas.width,
-              ocrHeight: canvas.height,
-              ocrBytes: blob.size,
-              ocrMimeType: blob.type || "unknown",
-              usedPreprocessedImage: true,
-            },
-          });
-        }, "image/png");
-      } catch (error) {
-        cleanUp();
-        reject(error instanceof Error ? error : new Error("Could not prepare this photo for reading."));
+  const blob = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((candidate) => {
+      if (!candidate) {
+        reject(new Error("Could not prepare this photo for reading."));
+        return;
       }
-    };
-
-    element.onerror = () => {
-      cleanUp();
-      reject(new Error("Could not prepare this photo for reading."));
-    };
-
-    element.src = objectUrl;
+      resolve(candidate);
+    }, "image/png");
   });
+
+  return {
+    image: blob,
+    debug: {
+      ...baseDebug,
+      ocrWidth: canvas.width,
+      ocrHeight: canvas.height,
+      ocrBytes: blob.size,
+      ocrMimeType: blob.type || "unknown",
+      usedPreprocessedImage: true,
+    },
+  };
+};
 
 export type OcrTextPart = string | { label: string; text: string };
 
@@ -516,7 +502,10 @@ export const readTextFromImage = async (
     const prepared = await preprocessImageForOcr(image);
     sourceForOcr = prepared.image;
     debug = prepared.debug;
-  } catch {
+  } catch (error) {
+    if (error instanceof ImageResourceSafetyError) {
+      throw new OcrReadError(error.message);
+    }
     sourceForOcr = image;
   }
 

@@ -15,6 +15,7 @@
 // selectable text is found, that is reported as its own honest state
 // (PDF_NO_SELECTABLE_TEXT_MESSAGE) rather than pretending the PDF was read.
 import * as mammoth from "mammoth";
+import { inspectDocxArchiveResourceSafety } from "./docxArchiveResourceSafety";
 import * as pdfjsLib from "pdfjs-dist";
 // Vite-specific asset import (see vite/client ambient types in
 // tsconfig.app.json) - resolves to a URL for the worker script pdfjs-dist
@@ -70,6 +71,7 @@ export const PDF_NO_SELECTABLE_TEXT_MESSAGE =
 export const extractDocxText = async (file: File): Promise<DocumentFileReadResult> => {
   try {
     const arrayBuffer = await file.arrayBuffer();
+    await inspectDocxArchiveResourceSafety(arrayBuffer);
     const result = await mammoth.extractRawText({ arrayBuffer });
     const text = (result.value ?? "").trim();
     const warnings = (result.messages ?? [])

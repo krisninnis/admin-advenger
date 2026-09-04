@@ -1,18 +1,9 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from "@testing-library/react";
-// @ts-expect-error Vitest provides Node modules while the application tsconfig excludes Node globals.
-import { readFileSync } from "node:fs";
-// @ts-expect-error Vitest provides Node modules while the application tsconfig excludes Node globals.
-import { resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import indexCss from "../../index.css?inline";
 import appShellSource from "../AppShell.tsx?raw";
 import { AppShell } from "../AppShell";
-
-const runtimeGlobal = globalThis as unknown as { process: { cwd: () => string } };
-const indexCss = readFileSync(
-  resolve(runtimeGlobal.process.cwd(), "src/index.css"),
-  "utf8",
-);
 
 afterEach(cleanup);
 

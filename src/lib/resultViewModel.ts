@@ -25,6 +25,7 @@ import { extractGeneralAdmin } from "./generalAdminExtraction";
 import type { DateMeaning, DatePrecision, DateRelationship, DateRole, ExtractedTime, RelativePeriodRole } from "./generalAdminExtraction";
 import { SENSITIVE_INFORMATION_REQUEST_EVIDENCE_LABEL } from "./sensitiveInformationRequest";
 import { isSupportedBySource } from "./sourceSupport";
+import { buildDeadlineClarity, type DeadlineRelationship } from "./resultTopClarity";
 import type { StrategicNextStepPlan } from "./strategicNextStep";
 import type { WorkplaceSupportPack } from "./workplaceSupportPack";
 
@@ -161,12 +162,24 @@ export type ResultBestNextMoveView = {
   source: "best_next_move";
 };
 
+export type ResultDeadlineClarityView = {
+  value: string;
+  relationship: DeadlineRelationship;
+  label: string;
+  explanation: string;
+  purpose?: string;
+  sourceQuote?: string;
+  source: "main_result";
+};
+
 export type ResultViewModel = {
   resultKind: "standard" | "career_support";
   title: string;
   summary: string;
   directAnswer?: string;
   primaryStatusLabel?: string;
+  secondaryStatusLabel?: string;
+  deadlineClarity?: ResultDeadlineClarityView;
   summaryView: ResultSummaryView;
   primaryAction?: ResultPrimaryActionView;
   bestNextMove?: ResultBestNextMoveView;
@@ -203,6 +216,7 @@ export type BuildResultViewModelInput = {
   strategicNextStepPlan?: StrategicNextStepPlan;
   opportunity?: OpportunityCard;
   adminCase?: AdminCase;
+  now?: Date;
 };
 
 export type ResultViewModelSafetyReport = {
@@ -783,6 +797,29 @@ const buildPaymentReminderBestNextMove = (
   };
 };
 
+const deadlinePurposeFor = (
+  date: NonNullable<AdminCase["timingFacts"]>["dates"][number],
+  adminCase?: AdminCase,
+): string | undefined => {
+  const broadband = adminCase?.broadbandPriceRiseAssessment;
+
+  if (broadband?.responseDeadline === date.value) {
+    if (broadband.responseDeadlinePurpose === "contact_provider_if_details_incorrect") {
+      return broadband.providerName
+        ? `contacting ${broadband.providerName} if any details appeared incorrect`
+        : "contacting the provider if any details appeared incorrect";
+    }
+
+    return broadband.providerName
+      ? `contacting the provider named in the source, ${broadband.providerName}`
+      : "contacting the provider";
+  }
+
+  if (date.meaning === "reply_deadline") return "replying to the sender";
+  if (date.meaning === "payment_due") return "the payment the source describes as due";
+  return undefined;
+};
+
 const buildStructuredOpportunityBestNextMove = (
   opportunity?: OpportunityCard,
 ): ResultBestNextMoveView | undefined => {
@@ -1112,6 +1149,7 @@ export const buildResultViewModel = ({
   strategicNextStepPlan,
   opportunity,
   adminCase,
+  now = new Date(),
 }: BuildResultViewModelInput): ResultViewModel => {
   const isCareerSupportResult = Boolean(careerSupportPack);
   const isCareerMatchResult = careerSupportPack?.documentType === "cv_job_advert_match";
@@ -1186,8 +1224,31 @@ export const buildResultViewModel = ({
       adminCase?.summary,
     fallbackSummary,
   );
+  const timingDates = adminCase?.timingFacts?.dates ?? [];
+  const sourceDeadline = timingDates.find(
+    (date) => date.role === "stated_deadline" &&
+      (!date.provenance || date.provenance.reviewState === "confirmed"),
+  );
+  const deadlinePurpose = sourceDeadline
+    ? deadlinePurposeFor(sourceDeadline, adminCase)
+    : undefined;
+  const deadlineClarity = sourceDeadline
+    ? {
+        value: sourceDeadline.value,
+        ...buildDeadlineClarity({ value: sourceDeadline.value, purpose: deadlinePurpose, now }),
+        purpose: deadlinePurpose,
+        sourceQuote: sourceDeadline.sourceQuote,
+        source: "main_result" as const,
+      }
+    : undefined;
+  const deadlineCanBePrimary = Boolean(
+    deadlineClarity &&
+      !adminCase?.securityPrecedence &&
+      opportunity?.opportunityType !== "suspicious_email_risk",
+  );
   const primaryStatusLabel = safeText(
-    opportunity?.statusLabel ??
+    (deadlineCanBePrimary ? deadlineClarity?.label : undefined) ??
+      opportunity?.statusLabel ??
       (workplaceSupportPack ? "Workplace preparation only" : undefined) ??
       (communityHelperPack ? "Community support preparation only" : undefined) ??
       (careerSupportPack ? "Career preparation only - review before using" : undefined) ??
@@ -1195,6 +1256,9 @@ export const buildResultViewModel = ({
       adminCase?.status,
     "Review before acting",
   );
+  const secondaryStatusLabel = deadlineCanBePrimary && opportunity?.statusLabel
+    ? safeText(opportunity.statusLabel, "") || undefined
+    : undefined;
   const primaryAction = bestNextMove
     ? {
         label: bestNextMove.label,
@@ -1202,7 +1266,6 @@ export const buildResultViewModel = ({
         source: bestNextMove.source,
       }
     : undefined;
-  const timingDates = adminCase?.timingFacts?.dates ?? [];
   const timingReviewRequired = timingDates.some(
     (date) => date.provenance?.reviewState === "review_required" || date.provenance?.reviewState === "unavailable",
   );
@@ -1835,6 +1898,8 @@ export const buildResultViewModel = ({
     summary,
     directAnswer: decisionResult?.directAnswer,
     primaryStatusLabel,
+    secondaryStatusLabel,
+    deadlineClarity,
     summaryView,
     primaryAction,
     bestNextMove,
@@ -1865,6 +1930,8 @@ export const flattenResultViewModelText = (model: ResultViewModel) =>
     model.summary,
     model.directAnswer ?? "",
     model.primaryStatusLabel ?? "",
+    model.secondaryStatusLabel ?? "",
+    model.deadlineClarity?.explanation ?? "",
     model.primaryAction?.label ?? "",
     model.primaryAction?.description ?? "",
     model.bestNextMove?.label ?? "",

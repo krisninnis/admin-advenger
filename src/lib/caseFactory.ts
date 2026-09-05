@@ -689,12 +689,17 @@ const evidenceForFinding = (
   }
 
   if (finding.category === "bill_increase" && isBroadbandPriceRiseScenario(item)) {
+    const references = extractGeneralAdmin(text).references;
+
     return [
       createEvidence(
         caseId,
         "Provider",
         broadbandPriceRiseAssessment.providerName ?? "Not found yet",
         broadbandPriceRiseAssessment.providerName ? "detected" : "manual",
+      ),
+      ...references.map((reference) =>
+        createEvidence(caseId, "Account reference", reference.value),
       ),
       createEvidence(
         caseId,

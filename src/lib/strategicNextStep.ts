@@ -641,6 +641,43 @@ const unresolvedFactRequests = (known: KnownFacts): string[] => {
   return requests;
 };
 
+const getBroadbandPriceRisePlan = (adminCase?: AdminCase) => {
+  const assessment = adminCase?.broadbandPriceRiseAssessment;
+  if (!assessment) return undefined;
+
+  const accountReference = adminCase.evidence.find(
+    (entry) => isSourceFactEvidence(entry) && entry.label === "Account reference",
+  )?.value;
+  const sourceFacts = unique([
+    assessment.providerName ? `provider ${assessment.providerName}` : undefined,
+    assessment.serviceType && assessment.serviceType !== "unknown"
+      ? `service ${assessment.serviceType.replaceAll("_and_", " and ").replaceAll("_", " ")}`
+      : undefined,
+    accountReference ? `account reference ${accountReference}` : undefined,
+    assessment.oldMonthlyPrice && assessment.newMonthlyPrice
+      ? `monthly price change from ${assessment.oldMonthlyPrice} to ${assessment.newMonthlyPrice}`
+      : assessment.newMonthlyPrice
+        ? `new monthly price ${assessment.newMonthlyPrice}`
+        : assessment.oldMonthlyPrice
+          ? `previous monthly price ${assessment.oldMonthlyPrice}`
+          : undefined,
+    assessment.effectiveDate ? `effective date ${assessment.effectiveDate}` : undefined,
+    assessment.responseDeadline ? `source-stated contact date ${assessment.responseDeadline}` : undefined,
+  ]);
+
+  return {
+    userGoal: "Check the source-stated price change and decide whether you want to query any account details.",
+    safestMove: move(
+      "Check the price change and account details already found",
+      `Compare these source facts with the original notice: ${sourceFacts.join("; ")}. Then decide whether you want to query anything with the provider through an independently verified channel.`,
+      "This uses the details AdminAvenger already extracted without deciding your rights, inventing a consequence, or contacting the provider for you.",
+    ),
+    otherSafeMoves: getDefaultOtherSafeMoves(),
+    movesToAvoid: ROUTINE_MOVES_TO_AVOID,
+    whenToGetAdvice: genericAdviceTriggers,
+  };
+};
+
 export const buildStrategicNextStepPlan = ({
   decisionResult,
   benefitsActionPack,
@@ -655,9 +692,10 @@ export const buildStrategicNextStepPlan = ({
     adminCase,
   });
   const known = knownFactsOf(adminCase);
-  const typedPlan = getPlanForDocumentType(documentType, cautionLevel, {
-    everythingIdentified: known.reference && (known.date || known.period),
-  });
+  const typedPlan = getBroadbandPriceRisePlan(adminCase) ??
+    getPlanForDocumentType(documentType, cautionLevel, {
+      everythingIdentified: known.reference && (known.date || known.period),
+    });
   const title = "Best next move";
   const isHighStakes = documentType ? highStakesTypes.has(documentType) : false;
   const missingInformation = unique([

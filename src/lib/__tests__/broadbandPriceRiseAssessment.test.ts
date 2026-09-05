@@ -20,9 +20,11 @@ const noticeBody = [
 
 describe("assessBroadbandPriceRise provider extraction", () => {
   it("keeps a provider shown as the standalone document heading", () => {
-    expect(
-      assessBroadbandPriceRise(makeItem(`Northbridge Broadband\n${noticeBody}`)).providerName,
-    ).toBe("Northbridge Broadband");
+    expect(assessBroadbandPriceRise(makeItem(`Northbridge Broadband\n${noticeBody}`))).toMatchObject({
+      providerName: "Northbridge Broadband",
+      responseDeadline: "29 July 2026",
+      responseDeadlinePurpose: "contact_provider_if_details_incorrect",
+    });
   });
 
   it("keeps provider wording already supported by the extractor", () => {
@@ -35,6 +37,26 @@ describe("assessBroadbandPriceRise provider extraction", () => {
 
   it("does not mistake the notice heading or filename for a provider", () => {
     expect(assessBroadbandPriceRise(makeItem(noticeBody)).providerName).toBeUndefined();
+  });
+
+  it("does not invent an incorrect-details condition when the source only states a contact date", () => {
+    const assessment = assessBroadbandPriceRise(
+      makeItem("Your broadband price will change from £29 to £32. Contact us by 29 July 2026."),
+    );
+
+    expect(assessment.responseDeadline).toBe("29 July 2026");
+    expect(assessment.responseDeadlinePurpose).toBeUndefined();
+  });
+
+  it("does not attach a condition from a different date to the selected response deadline", () => {
+    const assessment = assessBroadbandPriceRise(
+      makeItem(
+        "Your broadband price will change from £29 to £32. Review this by 20 July 2026. Contact us by 29 July 2026 if any details appear incorrect.",
+      ),
+    );
+
+    expect(assessment.responseDeadline).toBe("20 July 2026");
+    expect(assessment.responseDeadlinePurpose).toBeUndefined();
   });
 });
 

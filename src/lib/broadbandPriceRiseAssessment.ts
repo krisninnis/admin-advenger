@@ -187,6 +187,22 @@ const extractResponseDeadline = (text: string) =>
     new RegExp(`(?:before|by|respond by|contact us before|contact us by)\\s+${datePattern}`, "i"),
   );
 
+const extractResponseDeadlinePurpose = (
+  text: string,
+  responseDeadline?: string,
+): BroadbandPriceRiseAssessment["responseDeadlinePurpose"] => {
+  if (!responseDeadline) return undefined;
+
+  const conditionalContact = text.match(new RegExp(
+    `contact us\\s+(?:before|by)\\s+${datePattern}\\s+if\\s+(?:any\\s+)?details\\s+(?:appear|are|look)\\s+incorrect\\b`,
+    "i",
+  ));
+
+  return normaliseSpaces(conditionalContact?.[1]) === responseDeadline
+    ? "contact_provider_if_details_incorrect"
+    : undefined;
+};
+
 const parseDetectedDate = (value?: string) => {
   if (!value) {
     return undefined;
@@ -374,6 +390,7 @@ export const assessBroadbandPriceRise = (item: AdminItem): BroadbandPriceRiseAss
   const serviceType = getServiceType(text);
   const effectiveDate = extractEffectiveDate(text);
   const responseDeadline = extractResponseDeadline(text);
+  const responseDeadlinePurpose = extractResponseDeadlinePurpose(text, responseDeadline);
   const {
     contractDate,
     contractDateType,
@@ -474,6 +491,7 @@ export const assessBroadbandPriceRise = (item: AdminItem): BroadbandPriceRiseAss
     annualIncrease: formattedAnnualIncrease,
     effectiveDate,
     responseDeadline,
+    responseDeadlinePurpose,
     contractDate,
     contractDateType,
     contractDateConfidence,

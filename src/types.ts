@@ -319,6 +319,7 @@ export type BroadbandPriceRiseAssessment = {
   annualIncrease?: string;
   effectiveDate?: string;
   responseDeadline?: string;
+  responseDeadlinePurpose?: "contact_provider_if_details_incorrect";
   contractDate?: string;
   contractDateType?: "start" | "renewal" | "unknown";
   contractDateConfidence?: "low" | "medium" | "high";

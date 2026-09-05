@@ -34,7 +34,9 @@ test("the production Northbridge DOCX shows source-grounded passed-date clarity 
   await expect(panel).toBeVisible({ timeout: 30_000 });
   await expect(page.getByTestId("result-status")).toHaveText("Source-stated date has passed: 29 July 2026");
   await expect(page.getByTestId("result-secondary-status")).toHaveText("Potential saving opportunity — not confirmed yet");
-  await expect(page.getByTestId("result-deadline-clarity")).toContainText("contacting the provider");
+  await expect(page.getByTestId("result-deadline-clarity")).toContainText(
+    "contacting Northbridge Broadband if any details appeared incorrect",
+  );
   await expect(page.getByTestId("result-best-next-move")).toContainText("Northbridge Broadband");
   await expect(page.getByTestId("result-best-next-move")).toContainText("NB-73104");
   await expect(panel).toContainText("£29");

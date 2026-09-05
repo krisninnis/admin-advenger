@@ -804,6 +804,12 @@ const deadlinePurposeFor = (
   const broadband = adminCase?.broadbandPriceRiseAssessment;
 
   if (broadband?.responseDeadline === date.value) {
+    if (broadband.responseDeadlinePurpose === "contact_provider_if_details_incorrect") {
+      return broadband.providerName
+        ? `contacting ${broadband.providerName} if any details appeared incorrect`
+        : "contacting the provider if any details appeared incorrect";
+    }
+
     return broadband.providerName
       ? `contacting the provider named in the source, ${broadband.providerName}`
       : "contacting the provider";

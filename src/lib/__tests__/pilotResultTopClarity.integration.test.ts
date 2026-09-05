@@ -91,7 +91,9 @@ describe("Pilot Result Top Clarity v1 production composition", () => {
     );
     expect(model.deadlineClarity).toMatchObject({ relationship, value: date });
     expect(model.primaryStatusLabel).toContain(label);
-    expect(model.deadlineClarity?.explanation).toContain("contacting the provider");
+    expect(model.deadlineClarity?.explanation).toContain(
+      "contacting Northbridge Broadband if any details appeared incorrect",
+    );
   });
 
   it("fails closed when a source-stated contact date has no year", () => {
@@ -146,6 +148,9 @@ describe("Pilot Result Top Clarity v1 production composition", () => {
     );
     expect(model.primaryStatusLabel).toBe("Source-stated date has passed: 29 July 2026");
     expect(model.secondaryStatusLabel).toBe("Potential saving opportunity — not confirmed yet");
+    expect(model.deadlineClarity?.explanation).toContain(
+      "The source says this date is for contacting Northbridge Broadband if any details appeared incorrect.",
+    );
     expect(model.bestNextMove?.label).not.toBe("Identify the sender, date, reference, and deadline");
     expect(model.bestNextMove?.description).toContain("Northbridge Broadband");
     expect(model.bestNextMove?.description).toContain("NB-73104");

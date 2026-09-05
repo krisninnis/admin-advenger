@@ -242,23 +242,36 @@ describe("HMRC public result - Defect 2: evidence counts are strict and clean", 
   });
 });
 
-describe("HMRC public result - Defect 3: a tax-year boundary must not complete the key-date step", () => {
-  it("does not surface the tax-year boundary as a key date", () => {
+describe("HMRC public result - Defect 3: tax-year context stays visible without becoming a deadline", () => {
+  it("surfaces both typed tax-year boundaries as contextual dates", () => {
     const { vm } = buildPublicJourney(FULL_TAX_CODE_NOTICE, "What is this?");
 
-    expect(vm.keyDates).toHaveLength(0);
-    expect(
-      vm.keyDates.some((date) => `${date.label} ${date.value}`.includes("6 April 2026 to 5 April 2027")),
-    ).toBe(false);
+    expect(vm.keyDates).toEqual([
+      expect.objectContaining({
+        label: "Period start",
+        value: "6 April 2026",
+        role: "period_boundary",
+        meaning: "period",
+        relationship: "start",
+      }),
+      expect.objectContaining({
+        label: "Period end",
+        value: "5 April 2027",
+        role: "period_boundary",
+        meaning: "period",
+        relationship: "end",
+      }),
+    ]);
+    expect(vm.keyDates.some((date) => /deadline|payment due|reply deadline/i.test(date.label))).toBe(false);
   });
 
-  it("leaves 'Key date checked' not complete for the fixture", () => {
+  it("marks the key-date step not needed when only tax-year context is present", () => {
     const { caseProgress } = buildPublicJourney(FULL_TAX_CODE_NOTICE, "What is this?");
     const keyDate = caseProgress.items.find((item) => item.id === "key-date");
 
     expect(keyDate).toBeDefined();
-    expect(keyDate!.status).not.toBe("complete");
-    expect(keyDate!.status).toBe("missing");
+    expect(keyDate!.status).toBe("not_needed");
+    expect(keyDate!.description).toContain("contextual or period dates");
   });
 
   it("does not complete the key-date step when only a tax-year boundary is present", () => {
@@ -266,11 +279,25 @@ describe("HMRC public result - Defect 3: a tax-year boundary must not complete t
       keyDates: [
         {
           id: "d1",
-          label: "Tax year",
-          value: "6 April 2026 to 5 April 2027",
+          label: "Period start",
+          value: "6 April 2026",
           caution: "",
           userMustCheck: true as const,
           source: "main_result" as const,
+          role: "period_boundary" as const,
+          meaning: "period" as const,
+          relationship: "start" as const,
+        },
+        {
+          id: "d2",
+          label: "Period end",
+          value: "5 April 2027",
+          caution: "",
+          userMustCheck: true as const,
+          source: "main_result" as const,
+          role: "period_boundary" as const,
+          meaning: "period" as const,
+          relationship: "end" as const,
         },
       ],
       moneyMentioned: [],
@@ -286,15 +313,23 @@ describe("HMRC public result - Defect 3: a tax-year boundary must not complete t
     const progress = buildCaseProgress({ resultViewModel: craftedVm });
     const keyDate = progress.items.find((item) => item.id === "key-date");
 
-    expect(keyDate!.status).not.toBe("complete");
+    expect(keyDate!.status).toBe("not_needed");
   });
 
-  it("still completes the key-date step for an explicit issue date", () => {
+  it("still surfaces an explicit issue date as context without calling it a deadline", () => {
     const { vm, caseProgress } = buildPublicJourney(NOTICE_WITH_ISSUE_DATE, "What is this?");
     const keyDate = caseProgress.items.find((item) => item.id === "key-date");
 
-    expect(vm.keyDates.some((date) => date.value.includes("12 May 2026"))).toBe(true);
-    expect(keyDate!.status).toBe("complete");
+    expect(vm.keyDates).toContainEqual(
+      expect.objectContaining({
+        label: "Document date",
+        value: "12 May 2026",
+        role: "document_date",
+        meaning: "document_issued",
+      }),
+    );
+    expect(vm.keyDates.some((date) => /deadline|payment due|reply deadline/i.test(date.label))).toBe(false);
+    expect(keyDate!.status).toBe("not_needed");
   });
 });
 
@@ -308,10 +343,12 @@ describe("HMRC public result - Defect 4: instructions are not rendered as dates"
     ).toBe(false);
   });
 
-  it("produces no notice-date or response-deadline cards in the view model", () => {
+  it("produces period-context cards but no notice-date or response-deadline cards", () => {
     const { vm } = buildPublicJourney(FULL_TAX_CODE_NOTICE, "What is this?");
 
-    expect(vm.keyDates).toHaveLength(0);
+    expect(vm.keyDates).toHaveLength(2);
+    expect(vm.keyDates.every((date) => date.role === "period_boundary")).toBe(true);
+    expect(vm.keyDates.some((date) => /notice date|response deadline/i.test(date.label))).toBe(false);
   });
 
   it("keeps the contact-HMRC guidance in the next step and not in the dates panel", () => {

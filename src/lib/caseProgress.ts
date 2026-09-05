@@ -4,7 +4,7 @@ import type { CommunityHelperPack, CommunityHelperSituationType } from "./commun
 import { isBenefitsDocumentType } from "./benefitsActionPack";
 import type { DecisionDocumentType, DecisionResult } from "./decisionEngine/types";
 import { isPeriodTimingRole } from "./resultViewModel";
-import type { ResultDateView, ResultViewModel } from "./resultViewModel";
+import type { ResultViewModel } from "./resultViewModel";
 import type { StrategicNextStepPlan } from "./strategicNextStep";
 import type { WorkplaceSupportDocumentType, WorkplaceSupportPack } from "./workplaceSupportPack";
 
@@ -168,15 +168,6 @@ const buildOriginalSourceItem = (label = "Original letter or message added"): Ca
     "system",
   );
 
-// A tax-year boundary (e.g. "6 April 2026 to 5 April 2027") is a source fact,
-// not an actionable key date, so it must not complete this step. Only a genuine
-// notice/issue date or a response/action deadline counts. Unrelated document
-// types never surface a tax-year boundary in keyDates, so their behaviour is
-// unchanged by this filter.
-const isTaxYearBoundaryDate = (date: ResultDateView): boolean =>
-  /\btax year\b/i.test(date.label) ||
-  /\b\d{1,2}\s+\w+\s+\d{4}\s+to\s+\d{1,2}\s+\w+\s+\d{4}\b/i.test(date.value);
-
 // A stated window such as "within 5 to 10 working days" is real, usable timing.
 // Requiring an exact date made a refund with a clear processing window report
 // "no actionable date has been gathered yet", which is simply untrue.
@@ -187,9 +178,7 @@ const buildKeyDateItem = (
   resultViewModel: ResultViewModel,
   label = "Key date checked",
 ): CaseProgressItem => {
-  const usableTiming = resultViewModel.keyDates.filter(
-    (date) => !isTaxYearBoundaryDate(date),
-  );
+  const usableTiming = resultViewModel.keyDates;
   const actionableRoles = new Set(["stated_deadline", "event_date", "suggested_followup"]);
   const actionableDates = usableTiming.filter((date) =>
     date.role ? actionableRoles.has(date.role) : !isPeriodTimingRole(date.role),

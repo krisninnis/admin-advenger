@@ -99,6 +99,13 @@ export type AdminFinding = {
   // every existing finding remains valid without change.
   documentStatus?: DocumentStatus;
   generalAdminFallback?: StructuredGeneralAdminFallback;
+  /** Exact source evidence retained when communication wording creates the finding. */
+  communicationEvidence?: readonly {
+    kind: "importance" | "urgency" | "reply_request" | "action_request";
+    sourceQuote: string;
+    start: number;
+    end: number;
+  }[];
   /**
    * Marks a finding that exists because the input looked security-shaped, so it
    * must outrank every ordinary finding when one message produces several.

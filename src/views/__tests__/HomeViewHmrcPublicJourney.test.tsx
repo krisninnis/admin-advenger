@@ -167,13 +167,13 @@ describe("HomeView HMRC public journey - rendered acceptance", () => {
     expect(text).toContain("C1263L");
     expect(text).toContain("C1254L");
 
-    // Tax year is correct and present.
-    expect(screen.getAllByText((content) => content.includes("6 April 2026 to 5 April 2027")).length).toBeGreaterThan(0);
-
-    // No invented notice date, and no instruction rendered as a date.
+    // Tax-year boundaries are visible context, not an invented deadline.
     const datesSection = screen.getByText("Dates to check").closest("section");
     expect(datesSection).not.toBeNull();
-    expect(within(datesSection!).getByText(/No clear date was found/i)).toBeTruthy();
+    expect(within(datesSection!).getByText(/Period start:\s*6 April 2026/)).toBeTruthy();
+    expect(within(datesSection!).getByText(/Period end:\s*5 April 2027/)).toBeTruthy();
+    expect(within(datesSection!).queryByText(/No clear date was found/i)).toBeNull();
+    expect(within(datesSection!).queryByText(/deadline|payment due|reply deadline/i)).toBeNull();
     expect(within(datesSection!).queryByText(/contact HMRC/i)).toBeNull();
     expect(within(datesSection!).queryByText(/response deadline or action required/i)).toBeNull();
 
@@ -186,11 +186,15 @@ describe("HomeView HMRC public journey - rendered acceptance", () => {
     // Employer and codes are not requested again.
     expect(text).not.toContain("Details of any employers");
 
-    // Key-date preparation step is not Complete.
+    // Period-only timing is context, so no action-date preparation is needed.
     const keyDateItem = screen.getByText("Key date checked").closest("li");
     expect(keyDateItem).not.toBeNull();
     expect(within(keyDateItem!).queryByText("Complete")).toBeNull();
-    expect(within(keyDateItem!).getByText("Not started")).toBeTruthy();
+    expect(within(keyDateItem!).getByText("Not needed")).toBeTruthy();
+
+    // The exact fixture contains no source-grounded urgency token.
+    expect(text).not.toContain("Urgent message to check");
+    expect(text).not.toContain("The sender uses urgent wording.");
 
     // No automatic draft for a what_is_this question.
     expect(screen.getByText(/No draft or checklist was included/i)).toBeTruthy();

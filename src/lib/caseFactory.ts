@@ -29,6 +29,7 @@ import {
   assessAccountOutcome,
   assessRefundState,
   extractGeneralAdmin,
+  getGroundedCommunicationSignals,
   type CommunicationSignalKind,
   type RefundStage,
 } from "./generalAdminExtraction";
@@ -203,7 +204,11 @@ const communicationEvidenceForFinding = (
 
   if (!eligible) return [];
 
-  return assessCommunicationSignals(item.rawText).signals.map((signal) =>
+  const signals = finding.communicationEvidence
+    ? finding.communicationEvidence
+    : getGroundedCommunicationSignals(item.rawText, assessCommunicationSignals(item.rawText));
+
+  return signals.map((signal) =>
     createEvidence(
       caseId,
       communicationEvidenceLabels[signal.kind],

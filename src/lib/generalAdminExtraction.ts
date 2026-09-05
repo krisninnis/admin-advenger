@@ -395,6 +395,59 @@ export const assessCommunicationSignals = (text: string): CommunicationAssessmen
   };
 };
 
+/**
+ * Keep only communication signals whose retained quote still matches the exact
+ * supplied source span. Consumers must fail closed if signal provenance is
+ * missing, stale, or malformed rather than inferring an urgency classification.
+ */
+export const getGroundedCommunicationSignals = (
+  text: string,
+  assessment?: CommunicationAssessment,
+): CommunicationSignal[] => {
+  const canonicalSignals = assessCommunicationSignals(text).signals;
+  const proposedSignals = assessment?.signals ?? canonicalSignals;
+
+  return proposedSignals.filter(
+    (signal) =>
+      signal.sourceQuote.length > 0 &&
+      signal.value === signal.sourceQuote &&
+      Number.isInteger(signal.start) &&
+      Number.isInteger(signal.end) &&
+      signal.start >= 0 &&
+      signal.end === signal.start + signal.sourceQuote.length &&
+      signal.end <= text.length &&
+      text.slice(signal.start, signal.end) === signal.sourceQuote &&
+      canonicalSignals.some(
+        (canonical) =>
+          canonical.kind === signal.kind &&
+          canonical.sourceQuote === signal.sourceQuote &&
+          canonical.start === signal.start &&
+          canonical.end === signal.end,
+      ),
+  );
+};
+
+const COMMUNICATION_FINDING_PRIORITY: readonly CommunicationSignalKind[] = [
+  "reply_request",
+  "action_request",
+  "importance",
+  "urgency",
+];
+
+export const selectGroundedCommunicationSignal = (
+  text: string,
+  assessment?: CommunicationAssessment,
+): CommunicationSignal | undefined => {
+  const groundedSignals = getGroundedCommunicationSignals(text, assessment);
+
+  for (const kind of COMMUNICATION_FINDING_PRIORITY) {
+    const signal = groundedSignals.find((candidate) => candidate.kind === kind);
+    if (signal) return signal;
+  }
+
+  return undefined;
+};
+
 export const findNegationSpans = (text: string): NegationSpan[] => {
   const spans: NegationSpan[] = findCommunicationNegations(text).map((negation) => ({
     start: negation.start,

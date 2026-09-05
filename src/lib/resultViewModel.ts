@@ -1206,11 +1206,9 @@ export const buildResultViewModel = ({
   const timingReviewRequired = timingDates.some(
     (date) => date.provenance?.reviewState === "review_required" || date.provenance?.reviewState === "unavailable",
   );
-  const trustedCaseTimingDates = isHmrcTaxCodeResult
-    ? []
-    : timingDates
-        .filter((date) => date.role !== "unknown" && (!date.provenance || date.provenance.reviewState === "confirmed"))
-        .map(fromCaseTimingDate);
+  const trustedCaseTimingDates = timingDates
+    .filter((date) => date.role !== "unknown" && (!date.provenance || date.provenance.reviewState === "confirmed"))
+    .map(fromCaseTimingDate);
   const existingKeyDates = dedupeDates([
     ...(benefitsActionPack?.possibleDatesToCheck.map(fromBenefitsDate) ?? []),
     ...getDateFacts(decisionResult?.sourceFacts ?? []).map(fromDecisionDate),
@@ -1225,20 +1223,12 @@ export const buildResultViewModel = ({
   // Typed case timing wins when a compatible legacy producer carries the same
   // value, so the semantic label and precision survive without a duplicate.
   // Independently meaningful typed facts remain in source order.
-  const caseTimingDates = (
-    // HMRC tax code notices govern their own timing: the module deliberately
-    // emits no deadlines, and a tax-year boundary must never appear as a key
-    // date or complete the timing step. The existing evidence path carries the
-    // same exception, so this follows it rather than inventing a second rule.
-    isHmrcTaxCodeResult
-      ? []
-      : [
-          ...trustedCaseTimingDates,
-          ...(adminCase?.timingFacts?.relativePeriods ?? [])
-            .filter((period) => period.role !== "unknown")
-            .map(fromCaseTimingPeriod),
-        ]
-  );
+  const caseTimingDates = [
+    ...trustedCaseTimingDates,
+    ...(adminCase?.timingFacts?.relativePeriods ?? [])
+      .filter((period) => period.role !== "unknown")
+      .map(fromCaseTimingPeriod),
+  ];
   const caseTimingIdentity = new Set(caseTimingDates.map((date) => normaliseResultText(date.value)));
   const keyDates = dedupeDates([
     ...caseTimingDates,

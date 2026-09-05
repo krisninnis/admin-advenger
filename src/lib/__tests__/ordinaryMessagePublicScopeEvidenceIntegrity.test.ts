@@ -244,10 +244,33 @@ describe("ordinary-message-public-scope-evidence-integrity-v1", () => {
     const result = inspect("standalone-urgent", "Urgent: check your account today.");
 
     expect(result.urgency).toBe("high");
+    expect(result.journey.finding?.communicationEvidence).toEqual([
+      {
+        kind: "urgency",
+        sourceQuote: "Urgent",
+        start: 0,
+        end: 6,
+      },
+    ]);
     expect(result.communicationEvidence).toEqual([
       expect.objectContaining({ label: "Urgency wording", value: "Urgent" }),
     ]);
     expectNoReplySemantics(result);
+  });
+
+  it("preserves source-grounded urgency alongside a genuine reply request", () => {
+    const result = inspect("urgent-reply", "Urgent: please reply by 20 August.");
+
+    expect(result.findingTitle).toBe("Important reply needed");
+    expect(result.urgency).toBe("high");
+    expect(result.journey.finding?.communicationEvidence).toEqual([
+      expect.objectContaining({ kind: "urgency", sourceQuote: "Urgent" }),
+      expect.objectContaining({ kind: "reply_request", sourceQuote: "reply" }),
+    ]);
+    expect(result.communicationEvidence).toEqual([
+      expect.objectContaining({ label: "Urgency wording", value: "Urgent" }),
+      expect.objectContaining({ label: "Reply request", value: "reply" }),
+    ]);
   });
 
   it("19. keeps an explicit non-reply action on a checklist path", () => {

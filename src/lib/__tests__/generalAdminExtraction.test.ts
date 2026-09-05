@@ -5,6 +5,7 @@ import {
   extractDates,
   extractGeneralAdmin,
   isAppointmentReminderText,
+  selectGroundedCommunicationSignal,
 } from "../generalAdminExtraction";
 
 const timingShape = (text: string) =>
@@ -139,6 +140,90 @@ describe("general admin appointment reminder detection", () => {
 
 describe("ordinary-message communication signal assessment", () => {
   const signals = (text: string) => assessCommunicationSignals(text).signals;
+
+  it("selects urgency only when its exact quote and offsets match the supplied source", () => {
+    const text = "Urgent: check your account today.";
+
+    expect(selectGroundedCommunicationSignal(text)).toEqual(
+      expect.objectContaining({
+        kind: "urgency",
+        sourceQuote: "Urgent",
+        start: 0,
+        end: 6,
+      }),
+    );
+  });
+
+  it("fails closed when a proposed urgency signal is not exactly present at its source offsets", () => {
+    expect(
+      selectGroundedCommunicationSignal("Routine account update.", {
+        signals: [
+          {
+            kind: "urgency",
+            value: "Urgent",
+            sourceQuote: "Urgent",
+            start: 0,
+            end: 6,
+            negated: false,
+          },
+        ],
+        negations: [],
+      }),
+    ).toBeUndefined();
+  });
+
+  it("fails closed when present source wording is assigned the wrong communication kind", () => {
+    expect(
+      selectGroundedCommunicationSignal("Routine account update.", {
+        signals: [
+          {
+            kind: "urgency",
+            value: "Routine",
+            sourceQuote: "Routine",
+            start: 0,
+            end: 7,
+            negated: false,
+          },
+        ],
+        negations: [],
+      }),
+    ).toBeUndefined();
+  });
+
+  it("finds no communication signal in the exact synthetic HMRC notice wording", () => {
+    const notice = `HMRC
+HM Revenue & Customs
+
+Tax Code Notice
+
+Page 1 of 2
+
+Tax year: 6 April 2026 to 5 April 2027
+
+This is to tell you your tax code.
+Your tax code has changed from C1263L to C1254L.
+
+Employer: Harbour View Opticians Ltd
+
+Previous tax code: C1263L
+New code: C1254L
+
+How we worked out your tax code:
+
+Personal Allowance             £12,570
+Flat-rate job expenses            £60
+Medical insurance                 £88
+Total tax-free amount          £12,542
+
+Page 2 of 2
+
+Your tax code for the tax year 2026 to 2027 is C1254L.
+This means you can earn £12,542 before you start paying tax.
+
+If you think this tax code is wrong, contact HMRC.`;
+
+    expect(selectGroundedCommunicationSignal(notice)).toBeUndefined();
+  });
 
   it("keeps importance, urgency, reply and action as distinct source-grounded signals", () => {
     expect(

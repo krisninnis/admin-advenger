@@ -44,7 +44,10 @@ import {
   isDeliveryCompletedText,
   isSecurityAlertText,
   getStructuredGeneralAdminFallbackTitle,
+  getGroundedCommunicationSignals,
+  selectGroundedCommunicationSignal,
   selectRefundTotal,
+  type CommunicationSignal,
   type RefundStage,
   type StructuredGeneralAdminFallback,
 } from "./generalAdminExtraction";
@@ -416,47 +419,72 @@ const createUnknownFinding = (item: AdminItem): AdminFinding => ({
 
 const createCommunicationFinding = (
   item: AdminItem,
-  assessment: ReturnType<typeof assessCommunicationSignals>,
+  signal: CommunicationSignal,
+  groundedSignals: readonly CommunicationSignal[],
 ): AdminFinding => {
-  const replyRequest = assessment.signals.find((signal) => signal.kind === "reply_request");
-  const actionRequest = assessment.signals.find((signal) => signal.kind === "action_request");
-  const importance = assessment.signals.find((signal) => signal.kind === "importance");
-  const urgency = assessment.signals.find((signal) => signal.kind === "urgency");
-
-  const title = replyRequest
-    ? "Important reply needed"
-    : actionRequest
-      ? "Action requested to check"
-      : importance
-        ? "Important message to check"
-        : "Urgent message to check";
-  const summary = replyRequest
-    ? "The source asks for a reply or response. Check the wording and any stated date before preparing one."
-    : actionRequest
-      ? "The source asks for a non-reply action. Check exactly what it requests before deciding what to do."
-      : importance
-        ? "The sender marks this message as important. That does not by itself mean a reply or other action is required."
-        : "The sender uses urgent wording. That does not by itself mean a reply or other action is required.";
-  const suggestedAction = replyRequest
-    ? "Prepare a clear response to the source request, then review it before deciding whether to use it."
-    : actionRequest
-      ? "Review the source request and prepare the stated action through a verified channel."
-      : importance
-        ? "Review what the sender marked as important and decide what, if anything, needs attention."
-        : "Review the source wording and any stated date before deciding what to do.";
+  const presentation: Record<CommunicationSignal["kind"], {
+    title: string;
+    summary: string;
+    suggestedAction: string;
+    category: AdminFinding["category"];
+    urgency: AdminFinding["urgency"];
+    status: AdminFinding["status"];
+  }> = {
+    reply_request: {
+      title: "Important reply needed",
+      summary: "The source asks for a reply or response. Check the wording and any stated date before preparing one.",
+      suggestedAction: "Prepare a clear response to the source request, then review it before deciding whether to use it.",
+      category: "important_reply",
+      urgency: "medium",
+      status: "to_do",
+    },
+    action_request: {
+      title: "Action requested to check",
+      summary: "The source asks for a non-reply action. Check exactly what it requests before deciding what to do.",
+      suggestedAction: "Review the source request and prepare the stated action through a verified channel.",
+      category: "unknown",
+      urgency: "medium",
+      status: "to_do",
+    },
+    importance: {
+      title: "Important message to check",
+      summary: "The sender marks this message as important. That does not by itself mean a reply or other action is required.",
+      suggestedAction: "Review what the sender marked as important and decide what, if anything, needs attention.",
+      category: "unknown",
+      urgency: "medium",
+      status: "new",
+    },
+    urgency: {
+      title: "Urgent message to check",
+      summary: "The sender uses urgent wording. That does not by itself mean a reply or other action is required.",
+      suggestedAction: "Review the source wording and any stated date before deciding what to do.",
+      category: "unknown",
+      urgency: "high",
+      status: "new",
+    },
+  };
+  const selected = presentation[signal.kind];
 
   return {
     id: `finding-${crypto.randomUUID()}`,
     itemId: item.id,
-    category: replyRequest ? "important_reply" : "unknown",
-    title,
-    summary,
+    category: selected.category,
+    title: selected.title,
+    summary: selected.summary,
     whyItMatters:
       "Importance, urgency, reply requests and action requests have different meanings. Keeping them separate avoids rushed or unsupported correspondence.",
-    suggestedAction,
-    urgency: urgency ? "high" : "medium",
+    suggestedAction: selected.suggestedAction,
+    urgency: groundedSignals.some((candidate) => candidate.kind === "urgency")
+      ? "high"
+      : selected.urgency,
+    communicationEvidence: groundedSignals.map((candidate) => ({
+      kind: candidate.kind,
+      sourceQuote: candidate.sourceQuote,
+      start: candidate.start,
+      end: candidate.end,
+    })),
     confidence: "medium",
-    status: replyRequest || actionRequest ? "to_do" : "new",
+    status: selected.status,
     createdAt: new Date().toISOString(),
   };
 };
@@ -1198,6 +1226,14 @@ export const analyseAdminItem = (
   const text = `${item.title} ${item.rawText} ${sourceTypeLabels[item.sourceType]}`.toLowerCase();
   const generalAdminText = `${item.title}\n${item.rawText}`;
   const communicationAssessment = assessCommunicationSignals(item.rawText);
+  const groundedCommunicationSignals = getGroundedCommunicationSignals(
+    item.rawText,
+    communicationAssessment,
+  );
+  const communicationSignal = selectGroundedCommunicationSignal(
+    item.rawText,
+    communicationAssessment,
+  );
   const accountOutcomeAssessment = assessAccountOutcome(generalAdminText);
   // Direct security signals must be assessed before topical public-scope
   // gating. A scam message can mention debt, employment, housing, or benefits
@@ -1452,8 +1488,8 @@ export const analyseAdminItem = (
     !structuredDocumentRequestFinding &&
     !accountOutcomeFinding &&
     !decisionEngineFinding &&
-    communicationAssessment.signals.length > 0
-      ? createCommunicationFinding(item, communicationAssessment)
+    communicationSignal
+      ? createCommunicationFinding(item, communicationSignal, groundedCommunicationSignals)
       : undefined;
 
   const findings = categoryRules

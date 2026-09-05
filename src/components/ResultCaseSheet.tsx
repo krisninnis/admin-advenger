@@ -439,12 +439,30 @@ export function ResultCaseSheet({
             ) : null}
             <p className="mt-3 text-base leading-7 text-slate-200">{model.summary}</p>
           </div>
-          {model.primaryStatusLabel ? (
-            <span data-testid="result-status" className="rounded-full border border-emerald-300/30 bg-slate-950/70 px-3 py-1 text-xs font-bold text-emerald-100">
-              {model.primaryStatusLabel}
-            </span>
+          {model.primaryStatusLabel || model.secondaryStatusLabel ? (
+            <div className="flex max-w-sm flex-col items-end gap-2">
+              {model.primaryStatusLabel ? (
+                <span data-testid="result-status" className="rounded-full border border-emerald-300/30 bg-slate-950/70 px-3 py-1 text-xs font-bold text-emerald-100">
+                  {model.primaryStatusLabel}
+                </span>
+              ) : null}
+              {model.secondaryStatusLabel ? (
+                <span data-testid="result-secondary-status" className="rounded-full border border-white/15 bg-slate-950/50 px-3 py-1 text-xs font-semibold text-slate-300">
+                  {model.secondaryStatusLabel}
+                </span>
+              ) : null}
+            </div>
           ) : null}
         </div>
+        {model.deadlineClarity ? (
+          <div
+            data-testid="result-deadline-clarity"
+            className="mt-4 rounded-lg border border-amber-200/30 bg-amber-200/10 px-4 py-3 text-sm leading-6 text-amber-50"
+          >
+            <p className="font-bold">{model.deadlineClarity.label}</p>
+            <p className="mt-1 text-amber-50/90">{model.deadlineClarity.explanation}</p>
+          </div>
+        ) : null}
         <p className="mt-4 rounded-lg border border-cyan-300/20 bg-cyan-300/10 px-4 py-3 text-sm leading-6 text-cyan-50">
           Preparation only. Nothing has been sent. Nothing has been submitted.
           AdminAvenger does not contact anyone for you. AdminAvenger helps

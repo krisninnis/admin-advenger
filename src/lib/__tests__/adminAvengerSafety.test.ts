@@ -382,7 +382,8 @@ describe("AdminAvenger deterministic money safety", () => {
     expect(finding.deadline).toBe("24 July 2026");
     expect(finding.suggestedAction).toContain("24 July 2026");
     expect(finding.suggestedAction).toContain("\u00a384.60");
-    expect(finding.suggestedAction).toContain("correct or already paid");
+    expect(finding.suggestedAction).toContain("whether the amount is correct");
+    expect(finding.suggestedAction).toContain("whether it has already been paid");
     expect(finding.category).not.toBe("refund");
     expect(opportunity.opportunityType).not.toBe("no_action_needed");
     expect(opportunity.opportunityType).not.toBe("money_back");

@@ -296,9 +296,11 @@ export const buildPaymentReminderSuggestedAction = (
   now: Date = new Date(),
 ) => {
   const referencePart = assessment.accountReference
-    ? `the account reference ${assessment.accountReference} and `
+    ? `whether the account reference belongs to you (${assessment.accountReference}), `
     : "";
-  const amountPart = assessment.amountDue ? `${assessment.amountDue} is` : "the amount is";
+  const amountPart = assessment.amountDue
+    ? `the amount is correct (${assessment.amountDue})`
+    : "the amount is correct";
   const responseRelationship = assessment.responseDeadline
     ? classifyDeadlineRelationship(assessment.responseDeadline, now)
     : undefined;
@@ -311,24 +313,24 @@ export const buildPaymentReminderSuggestedAction = (
       ? ` The source-stated payment due date (${assessment.paymentDueDate}) and later pay-or-contact date (${assessment.responseDeadline}) have both passed.`
       : ` The source-stated pay-or-contact date (${assessment.responseDeadline}) has passed.`;
 
-    return `Check ${referencePart}whether ${amountPart} correct, whether it has already been paid, and whether this has already been resolved.${paymentContext} Verify the current account status through an independently verified provider channel before deciding what to do. Keep proof of payment or contact.`;
+    return `Check ${referencePart}whether ${amountPart}, whether it has already been paid, and whether this has already been resolved.${paymentContext} Verify the current account status through an independently verified provider channel before deciding what to do. Keep proof of payment or contact.`;
   }
 
   if (responseRelationship === "today") {
-    return `Check ${referencePart}whether ${amountPart} correct or already paid. The source-stated pay-or-contact date is today (${assessment.responseDeadline}). Verify the source and current account status before deciding whether any action is needed. Keep proof of payment or contact.`;
+    return `Check ${referencePart}whether ${amountPart} or already paid. The source-stated pay-or-contact date is today (${assessment.responseDeadline}). Verify the source and current account status before deciding whether any action is needed. Keep proof of payment or contact.`;
   }
 
   if (responseRelationship === "upcoming") {
-    return `Check ${referencePart}whether ${amountPart} correct or already paid. If action is still needed, the source states a pay-or-contact date of ${assessment.responseDeadline}. Use a verified provider channel and keep proof of payment or contact.`;
+    return `Check ${referencePart}whether ${amountPart} or already paid. If action is still needed, the source states a pay-or-contact date of ${assessment.responseDeadline}. Use a verified provider channel and keep proof of payment or contact.`;
   }
 
   if (assessment.responseDeadline) {
-    return `Check ${referencePart}whether ${amountPart} correct or already paid. The source states a pay-or-contact date of ${assessment.responseDeadline}, but AdminAvenger cannot safely compare it with today's date. Check the original notice and current account status before deciding what to do. Keep proof of payment or contact.`;
+    return `Check ${referencePart}whether ${amountPart} or already paid. The source states a pay-or-contact date of ${assessment.responseDeadline}, but AdminAvenger cannot safely compare it with today's date. Check the original notice and current account status before deciding what to do. Keep proof of payment or contact.`;
   }
 
   if (paymentRelationship === "passed" && assessment.paymentDueDate) {
-    return `Check ${referencePart}whether ${amountPart} correct, whether it has already been paid, and whether this has already been resolved. The source-stated payment due date (${assessment.paymentDueDate}) has passed. Verify the current account status through an independently verified provider channel before deciding what to do. Keep proof of payment or contact.`;
+    return `Check ${referencePart}whether ${amountPart}, whether it has already been paid, and whether this has already been resolved. The source-stated payment due date (${assessment.paymentDueDate}) has passed. Verify the current account status through an independently verified provider channel before deciding what to do. Keep proof of payment or contact.`;
   }
 
-  return `Check ${referencePart}whether ${amountPart} correct or already paid. If needed, use a verified provider channel to pay, dispute, or query the balance. Keep proof of payment or contact.`;
+  return `Check ${referencePart}whether ${amountPart} or already paid. If needed, use a verified provider channel to pay, dispute, or query the balance. Keep proof of payment or contact.`;
 };

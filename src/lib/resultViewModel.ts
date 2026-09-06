@@ -783,14 +783,12 @@ const buildAccountOutcomeBestNextMove = (
 const buildPaymentReminderBestNextMove = (
   opportunity?: OpportunityCard,
 ): ResultBestNextMoveView => {
-  const deadlineText = opportunity?.deadline
-    ? ` Contact the provider before ${opportunity.deadline} if contact is needed.`
-    : "";
-
   return {
     label: "Check the account, amount, and payment status",
-    description:
-      `Check that the account reference belongs to you, whether the amount is correct, and whether it has already been paid. If it appears correct, pay through a verified channel; if it appears incorrect, query or dispute it through an independently verified provider channel.${deadlineText} Keep proof of payment or contact.`,
+    description: safeText(
+      opportunity?.nextBestAction,
+      "Check the account reference, amount, payment status, and current account position through an independently verified provider channel before deciding what to do. Keep proof of payment or contact.",
+    ),
     whyThisHelps:
       "This keeps the payment reminder factual without deciding that the amount is valid or legally owed.",
     source: "best_next_move",

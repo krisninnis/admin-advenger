@@ -504,6 +504,7 @@ const rangeConnector = /\b(?:to|until|through|and)\b|[-–—]/i;
 
 const DEADLINE_CUE =
   /(?:pay|paid|respond|reply|return|renew|cancel|contact us|reply|responses?)\s+(?:by|before|on or before)\s*$|due\s+by\s*$|deadline[^.]*$|by\s+$|\bbefore\s+$/i;
+const CONTACT_REPLY_CUE = /\b(?:contact\s+us|reply|respond|response)\b/i;
 const EVENT_CUE =
   /(?:appointment|scheduled|booking|collected on|collection date|collect(?:ed|ion)?[^.]*on|effective\s+(?:from|on|date)|takes\s+effect|starts?\s+on|due\s+to\s+arrive|arriv[a-z]*[^.]*(?:on|by)?|from|on)\s*$/i;
 const DOCUMENT_CUE = /(?:date|issued|statement date|dated|invoice date)\s*:?\s*$/i;
@@ -554,7 +555,8 @@ const semanticForDate = (
   if (/\b(?:balance|amount|total)\b[^.\n]{0,40}\bas\s+of\s*$/.test(before)) {
     return { role: "context_date", meaning: "statement_as_of" };
   }
-  if (/\b(?:pay|payment)\b[^.\n]{0,45}\b(?:due\s+(?:on|by)|by)\s*$/.test(before)) {
+  const paymentDeadlineMatch = /\b(?:pay|payment)\b([^.\n]{0,45})\b(?:due\s+(?:on|by)|by)\s*$/.exec(before);
+  if (paymentDeadlineMatch && !CONTACT_REPLY_CUE.test(paymentDeadlineMatch[1])) {
     return { role: "stated_deadline", meaning: "payment_due" };
   }
   if (/\b(?:reply|respond|response)\b[^.\n]{0,35}\b(?:by|before|on or before)\s*$/.test(before) && !isIndexNegated(index, negationSpans)) {

@@ -40,7 +40,7 @@ import {
   OCR_REVIEW_BEFORE_CHECKING_MESSAGE,
   OCR_RUNS_ON_DEVICE_MESSAGE,
   OCR_CHECK_TEXT_UNRELIABLE_WARNING,
-  OCR_KEY_DETAILS_CONFIDENCE_THRESHOLD,
+  OCR_REVIEW_REQUIRED_CONFIDENCE_THRESHOLD,
   OCR_KEY_DETAILS_NOT_RELIABLE_MESSAGE,
   OCR_KEY_DETAILS_REVIEW_OPTIONS_MESSAGE,
   OCR_UNRELIABLE_CONFIDENCE_THRESHOLD,
@@ -60,6 +60,7 @@ import {
   isLikelyGarbledText,
   isOcrKeyDetailsReliable,
   isOcrResultUnreliable,
+  isOcrReviewRequired,
   preprocessImageForOcr,
   shouldSuggestCloseUpPhoto,
   readTextFromImage,
@@ -316,14 +317,21 @@ describe("isOcrResultUnreliable", () => {
 });
 
 describe("isOcrKeyDetailsReliable", () => {
-  it("hides normal key details at moderate/poor confidence like 52%", () => {
+  it("hides normal key details at moderate/poor confidence like 61% (the reported Riverdale read)", () => {
+    expect(isOcrKeyDetailsReliable("This OCR text is long enough but still uncertain.", 61)).toBe(false);
     expect(isOcrKeyDetailsReliable("This OCR text is long enough but still uncertain.", 52)).toBe(false);
-    expect(OCR_KEY_DETAILS_CONFIDENCE_THRESHOLD).toBe(60);
+    expect(OCR_REVIEW_REQUIRED_CONFIDENCE_THRESHOLD).toBe(70);
   });
 
-  it("allows normal key details at 60% confidence or above", () => {
-    expect(isOcrKeyDetailsReliable("Your refund of Â£42.99 has been approved.", 60)).toBe(true);
+  it("allows normal key details only at or above the approved review boundary", () => {
+    expect(isOcrKeyDetailsReliable("Your refund of Â£42.99 has been approved.", 60)).toBe(false);
+    expect(isOcrKeyDetailsReliable("Your refund of Â£42.99 has been approved.", 69)).toBe(false);
+    expect(isOcrKeyDetailsReliable("Your refund of Â£42.99 has been approved.", 70)).toBe(true);
     expect(isOcrKeyDetailsReliable("Your refund of Â£42.99 has been approved.", 82)).toBe(true);
+  });
+
+  it("hides key details when the confidence signal is missing rather than treating it as strong", () => {
+    expect(isOcrKeyDetailsReliable("Your refund of Â£42.99 has been approved.", undefined)).toBe(false);
   });
 
   it("provides the exact moderate-confidence key-details copy", () => {
@@ -333,6 +341,34 @@ describe("isOcrKeyDetailsReliable", () => {
     expect(OCR_KEY_DETAILS_REVIEW_OPTIONS_MESSAGE).toBe(
       "Retake the photo, add a close-up, or review and correct the text before checking.",
     );
+  });
+});
+
+// ---- Review-required contract (OCR hardening v1, ADM-9) ----
+describe("isOcrReviewRequired", () => {
+  it("treats 61% OCR (the reported Riverdale read) as review required", () => {
+    expect(OCR_REVIEW_REQUIRED_CONFIDENCE_THRESHOLD).toBe(70);
+    expect(isOcrReviewRequired("This looks like enough text to review.", 61)).toBe(true);
+  });
+
+  it("treats 69% as review required and the 70% boundary as clear", () => {
+    expect(isOcrReviewRequired("This looks like enough text to review.", 69)).toBe(true);
+    expect(isOcrReviewRequired("This looks like enough text to review.", 70)).toBe(false);
+  });
+
+  it("treats a strong 88% read as clear", () => {
+    expect(isOcrReviewRequired("Your refund of Â£42.99 has been approved.", 88)).toBe(false);
+  });
+
+  it("fails closed when confidence is missing instead of treating it as high confidence", () => {
+    expect(
+      isOcrReviewRequired("Plenty of readable text was extracted from this photo.", undefined),
+    ).toBe(true);
+  });
+
+  it("requires review for garbled or too-short text even at high confidence", () => {
+    expect(isOcrReviewRequired("]{-_~^%#@!*()[[}}}~~^^%%##]]", 88)).toBe(true);
+    expect(isOcrReviewRequired("Hi", 88)).toBe(true);
   });
 });
 

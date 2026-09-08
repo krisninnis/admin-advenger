@@ -121,7 +121,7 @@ import {
   appendExtraPhotoText,
   formatOcrSectionWarning,
   isOcrKeyDetailsReliable,
-  isOcrResultUnreliable,
+  isOcrReviewRequired,
   readTextFromImage,
 } from "../lib/photoOcr";
 import {
@@ -149,6 +149,7 @@ import {
   createPhotoSourceDocument,
   createSourceDocumentId,
   createTextSourceDocument,
+  getPhotoOcrSourceReviewState,
   type SourceDocument,
 } from "../lib/sourceProvenance";
 import type { GuidedDraftToSave } from "../lib/guidedDraftSave";
@@ -666,8 +667,11 @@ export function HomeView({
       careOrientation.aboutBothPeopleWithNamedPerson);
   const compactOriginalInput = walesCarePathActive && !showOriginalInputSurface;
   const originalInputDisclosureId = "home-original-input-surface";
-  const isOcrReviewUnreliable =
-    ocrStatus === "success" && isOcrResultUnreliable(ocrOriginalText || ocrText, ocrConfidence);
+  // Routes any photo OCR result that hasn't cleared the approved review
+  // boundary (confidence below 70, garbled, too short, or no confidence
+  // signal) into the focused LowConfidenceOcrReviewPanel recovery flow.
+  const requiresOcrReview =
+    ocrStatus === "success" && isOcrReviewRequired(ocrOriginalText || ocrText, ocrConfidence);
   const canShowOcrKeyDetails =
     ocrStatus === "success" && isOcrKeyDetailsReliable(ocrOriginalText || ocrText, ocrConfidence);
   const shouldHideOcrKeyDetails = !canShowOcrKeyDetails && !hasEditedOcrText;
@@ -1494,9 +1498,7 @@ export function HomeView({
           text: result.text,
           confidence: result.confidence,
           warnings: result.warnings,
-          reviewState: isOcrResultUnreliable(result.text, result.confidence)
-            ? "review_required"
-            : "confirmed",
+          reviewState: getPhotoOcrSourceReviewState(result.text, result.confidence),
         });
       });
 
@@ -1608,9 +1610,15 @@ export function HomeView({
     let acceptedPhotoSources = reviewedPhotoSources;
 
     if (reviewedPhotoSources.length === 1) {
+      // Single-photo progression: checking the text is the existing explicit
+      // human-review action. The user has seen the extracted text (and any
+      // review panel), and the accepted source below is the exact reviewed
+      // text they chose to check - so the accepted provenance becomes
+      // confirmed rather than staying review_required from the raw OCR read.
       acceptedPhotoSources = reviewedPhotoSources.map((source) => ({
         ...source,
         extractedText: cleanedText,
+        reviewState: "confirmed" as const,
         segments: source.segments.map((segment) => ({ ...segment, text: cleanedText })),
       }));
     } else if (reviewedPhotoSources.length > 1 && originalWasEdited) {
@@ -2655,7 +2663,7 @@ export function HomeView({
                   </div>
                 </div>
               ) : null}
-              {selectedInput === "image" && ocrStatus === "success" && isOcrReviewUnreliable ? (
+              {selectedInput === "image" && ocrStatus === "success" && requiresOcrReview ? (
                 <LowConfidenceOcrReviewPanel
                   previewUrl={imagePreviewUrl}
                   extractedText={ocrText}
@@ -2667,7 +2675,7 @@ export function HomeView({
                   disabled={isChecking || isAiReading || isReadingPhoto}
                 />
               ) : null}
-              {selectedInput === "image" && ocrStatus === "success" && !isOcrReviewUnreliable ? (
+              {selectedInput === "image" && ocrStatus === "success" && !requiresOcrReview ? (
                 <div className="mt-4 rounded-lg border border-emerald-300/20 bg-emerald-300/[0.07] p-4">
                   <p role="status" aria-live="polite" aria-atomic="true" className="text-sm font-bold text-emerald-50">
                     {ocrSourceMode === "multi" ? OCR_COMBINED_PHOTOS_ON_DEVICE_MESSAGE : OCR_ON_DEVICE_MESSAGE}

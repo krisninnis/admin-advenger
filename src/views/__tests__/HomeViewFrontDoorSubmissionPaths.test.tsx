@@ -505,6 +505,51 @@ describe("the ordinary message override keeps what was accepted", () => {
 });
 
 describe("reviewed photo provenance", () => {
+  it("routes a 61% read into review and progresses the single photo to confirmed after explicit correction + check", async () => {
+    // The reported Riverdale direct-human case: ~61% OCR with plausible-looking
+    // critical-field errors. Before this slice, the same read could show normal
+    // "Key details found" and a "confirmed" source; it must now force the
+    // focused review panel with no ordinary check button.
+    readTextFromImageMock.mockImplementation(async () => ({
+      text: "Riverdale Energy account RE-60419 dated 18 August 2026.",
+      confidence: 61,
+      warnings: ["OCR main warning"],
+    }));
+
+    const rendered = renderHomeView();
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("button", { name: /Take or upload a photo/i }));
+    await user.click(screen.getByRole("button", { name: "Use test uploaded photo" }));
+
+    await screen.findByRole(
+      "button",
+      { name: "Review or edit the text we could read" },
+      { timeout: 5000 },
+    );
+    expect(screen.queryByRole("button", { name: "Check this text" })).toBeNull();
+
+    // The person deliberately reviews and corrects the extracted text, then
+    // checks it - the existing explicit human-review action.
+    await user.click(screen.getByRole("button", { name: "Review or edit the text we could read" }));
+    const editor = screen.getByLabelText("Text to correct");
+    const correctedText =
+      "Riverdale Energy account RE-60419 dated 18 August 2026, checked against the photo.";
+    await user.clear(editor);
+    await user.type(editor, correctedText);
+    await user.click(screen.getByRole("button", { name: "Check corrected text" }));
+
+    await waitFor(() => expect(rendered.onCheck).toHaveBeenCalled());
+    const [, , rawText, , sourceDocuments] = rendered.onCheck.mock.calls[0] ?? [];
+    expect(rawText).toBe(correctedText);
+    expect(sourceDocuments).toHaveLength(1);
+    expect(sourceDocuments?.[0]).toMatchObject({
+      confidence: 61,
+      reviewState: "confirmed",
+      extractedText: correctedText,
+    });
+  });
+
   it("carries uploaded-photo OCR confidence and warnings into analysis without a page number", async () => {
     const rendered = renderHomeView();
     const user = userEvent.setup();

@@ -19,15 +19,15 @@
 import { getAttachmentUnsupportedMessage, classifyFileForIntake } from "./fileIntakeAccept";
 import {
   combineOcrTexts,
-  isOcrResultUnreliable,
   type OcrTextPart,
 } from "./photoOcr";
 import { getFileTooLargeMessage, isFileWithinSizeLimit } from "./fileSizeLimit";
 import type { DocumentFileTextSegment } from "./documentFileText";
-import type {
-  SourceDocument,
-  SourceExtractionMethod,
-  SourceSegment,
+import {
+  getPhotoOcrSourceReviewState,
+  type SourceDocument,
+  type SourceExtractionMethod,
+  type SourceSegment,
 } from "./sourceProvenance";
 
 // "docx" and "pdf" are their own kinds (Document File Support v1) rather
@@ -281,7 +281,7 @@ export const buildSourceDocuments = (
     const reviewRequired =
       !unavailable &&
       file.kind === "image" &&
-      isOcrResultUnreliable(extractedText, file.confidence);
+      getPhotoOcrSourceReviewState(extractedText, file.confidence) === "review_required";
     const warnings = file.errorMessage
       ? [...file.warnings, file.errorMessage]
       : [...file.warnings];

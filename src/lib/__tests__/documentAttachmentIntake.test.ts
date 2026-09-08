@@ -368,6 +368,42 @@ describe("buildSourceDocuments", () => {
     expect(confident.segments[0]).not.toHaveProperty("pageNumber");
   });
 
+  it("applies the review-required boundary to attached photo OCR, not the old 45% threshold", () => {
+    const [moderate, boundary, missingConfidence] = buildSourceDocuments([
+      {
+        id: "photo-mid",
+        file: makeFile("notice.jpg", "image/jpeg"),
+        kind: "image",
+        status: "read",
+        extractedText: "A sufficiently long but moderately confident OCR result.",
+        confidence: 61,
+        warnings: [],
+      },
+      {
+        id: "photo-boundary",
+        file: makeFile("notice.jpg", "image/jpeg"),
+        kind: "image",
+        status: "read",
+        extractedText: "A clear ordinary OCR result from the document.",
+        confidence: 70,
+        warnings: [],
+      },
+      {
+        id: "photo-no-confidence",
+        file: makeFile("notice.jpg", "image/jpeg"),
+        kind: "image",
+        status: "read",
+        extractedText: "Readable text with no confidence value reported by the engine.",
+        confidence: undefined,
+        warnings: [],
+      },
+    ]);
+
+    expect(moderate.reviewState).toBe("review_required");
+    expect(boundary.reviewState).toBe("confirmed");
+    expect(missingConfidence.reviewState).toBe("review_required");
+  });
+
   it("keeps failed sources explicit and unavailable", () => {
     const [source] = buildSourceDocuments([
       {

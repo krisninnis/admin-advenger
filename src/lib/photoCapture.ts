@@ -6,6 +6,13 @@
 // src/components/PhotoCapturePanel.tsx for the UI that drives the state
 // machine defined at the bottom of this file.
 
+import {
+  getBrowserImageCaptureConstructor,
+  takePhotoBlobFromTrack,
+  type ImageCaptureConstructorLike,
+} from "./imageCapture";
+import { isSupportedPhotoMimeType } from "./photoIntake";
+
 export type CameraErrorKind = "permission_denied" | "camera_unavailable" | "unknown";
 
 export type CameraStartResult =
@@ -252,6 +259,66 @@ export const capturePhotoFromVideoElement = (
       CAPTURED_PHOTO_JPEG_QUALITY,
     );
   });
+
+// ---- Capability-gated still capture (Slice C) ----
+//
+// Attempts an ImageCapture still candidate where the browser and active
+// stream support it, falling back silently to the existing canvas/video-frame
+// capture. The user never sees which path was taken.
+//
+// All failures — ImageCapture unavailable, constructor throws, takePhoto
+// rejects, empty blob, browser limitation — are caught internally and resolve
+// into the canvas fallback. The error path in the calling component remains
+// unchanged.
+//
+// This is the single still-capture entry point for the production camera flow.
+
+const imageCaptureExtensionByMimeType: Readonly<Record<string, string>> = {
+  "image/jpeg": ".jpg",
+  "image/jpg": ".jpg",
+  "image/png": ".png",
+  "image/webp": ".webp",
+};
+
+const getImageCaptureFileName = (fileName: string, mimeType: string): string => {
+  const extension = imageCaptureExtensionByMimeType[mimeType];
+  const baseName = fileName.replace(/\.[^./\\]+$/, "");
+  return `${baseName}${extension}`;
+};
+
+const isAcceptedImageCaptureBlob = (blob: Blob): boolean => {
+  const mimeType = blob.type.trim().toLowerCase();
+  return blob.size > 0 && isSupportedPhotoMimeType(mimeType) && Boolean(imageCaptureExtensionByMimeType[mimeType]);
+};
+
+export const captureStillFrame = async (
+  track: MediaStreamTrack | undefined,
+  video: HTMLVideoElement,
+  fileName: string = CAPTURED_PHOTO_FILE_NAME,
+  imageCaptureConstructor: ImageCaptureConstructorLike | undefined =
+    getBrowserImageCaptureConstructor(),
+  isCaptureActive: () => boolean = () => true,
+): Promise<File> => {
+  if (track && typeof imageCaptureConstructor === "function") {
+    try {
+      const blob = await takePhotoBlobFromTrack(track, imageCaptureConstructor);
+
+      if (isCaptureActive() && isAcceptedImageCaptureBlob(blob)) {
+        const mimeType = blob.type.trim().toLowerCase();
+        return new File([blob], getImageCaptureFileName(fileName, mimeType), { type: mimeType });
+      }
+    } catch {
+      // Fall through to the canvas/video-frame capture — all errors are
+      // silent to normal users per the spec.
+    }
+  }
+
+  if (!isCaptureActive()) {
+    throw new Error("Camera capture is no longer active.");
+  }
+
+  return capturePhotoFromVideoElement(video, fileName);
+};
 
 // ---- Panel state machine (pure, testable, no DOM/React involved) ----
 //

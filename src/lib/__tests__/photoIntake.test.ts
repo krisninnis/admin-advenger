@@ -3,6 +3,7 @@ import {
   OCR_SMALL_IMAGE_WARNING,
   createPhotoIntakeMetadata,
   getImageQualityWarnings,
+  isSupportedPhotoMimeType,
   isSupportedPhotoFile,
   metadataContainsEmbeddedImage,
   normalizeOcrText,
@@ -31,6 +32,14 @@ describe("photo intake safety helpers", () => {
     expect(isSupportedPhotoFile(makeFile("bill.webp", "image/webp"))).toBe(true);
     expect(isSupportedPhotoFile(makeFile("photo.heic", ""))).toBe(true);
     expect(isSupportedPhotoFile(makeFile("document.pdf", "application/pdf"))).toBe(false);
+  });
+
+  it("validates supported photo MIME types independently of a filename", () => {
+    expect(isSupportedPhotoMimeType("image/jpeg")).toBe(true);
+    expect(isSupportedPhotoMimeType(" IMAGE/PNG ")).toBe(true);
+    expect(isSupportedPhotoMimeType("image/webp")).toBe(true);
+    expect(isSupportedPhotoMimeType("application/pdf")).toBe(false);
+    expect(isSupportedPhotoMimeType("")).toBe(false);
   });
 
   it("normalizes OCR text before it enters the paste analysis path", () => {

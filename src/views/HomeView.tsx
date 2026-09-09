@@ -133,6 +133,7 @@ import {
   getVisibleOcrKeyDetails,
   groupOcrKeyDetails,
 } from "../lib/ocrKeyDetails";
+import { compareOcrCriticalFields } from "../lib/ocrCriticalFieldComparison";
 import {
   extractAdminFactsWithOllama,
   OllamaExtractionError,
@@ -653,6 +654,22 @@ export function HomeView({
   const isReadingAttachments = attachedFiles.some((attached) => attached.status === "reading");
   const isLocalOllamaMode = aiSettings.mode === "local_ollama";
   const hasEditedOcrText = ocrText.trim() !== ocrOriginalText.trim();
+  const ocrCriticalFieldComparison = useMemo(
+    () =>
+      compareOcrCriticalFields(
+        reviewedPhotoSources.map((source) => ({
+          id: source.id,
+          source: source.displayName,
+          text: source.extractedText,
+          confidence: source.confidence,
+          provenance: {
+            sourceDocumentId: source.id,
+            ...(source.segments[0]?.id ? { sourceSegmentId: source.segments[0].id } : {}),
+          },
+        })),
+      ),
+    [reviewedPhotoSources],
+  );
   // WCP-005. A Wales care route is live exactly when the orientation page is
   // about a named person's care, which is the state the three preparation panels
   // and the trusted directory hang off. Every other route, including the one
@@ -671,9 +688,13 @@ export function HomeView({
   // boundary (confidence below 70, garbled, too short, or no confidence
   // signal) into the focused LowConfidenceOcrReviewPanel recovery flow.
   const requiresOcrReview =
-    ocrStatus === "success" && isOcrReviewRequired(ocrOriginalText || ocrText, ocrConfidence);
+    ocrStatus === "success" &&
+    (isOcrReviewRequired(ocrOriginalText || ocrText, ocrConfidence) ||
+      ocrCriticalFieldComparison.reviewRequired);
   const canShowOcrKeyDetails =
-    ocrStatus === "success" && isOcrKeyDetailsReliable(ocrOriginalText || ocrText, ocrConfidence);
+    ocrStatus === "success" &&
+    isOcrKeyDetailsReliable(ocrOriginalText || ocrText, ocrConfidence) &&
+    !ocrCriticalFieldComparison.reviewRequired;
   const shouldHideOcrKeyDetails = !canShowOcrKeyDetails && !hasEditedOcrText;
   // "Key details found" card (see src/lib/ocrKeyDetails.ts) - recomputed from
   // whatever is currently in the editable OCR textarea, so editing the text
@@ -1501,6 +1522,29 @@ export function HomeView({
           reviewState: getPhotoOcrSourceReviewState(result.text, result.confidence),
         });
       });
+      const comparedPhotoSources = isAppend
+        ? [...reviewedPhotoSources, ...newPhotoSources]
+        : newPhotoSources;
+      const criticalFieldComparison = compareOcrCriticalFields(
+        comparedPhotoSources.map((source) => ({
+          id: source.id,
+          source: source.displayName,
+          text: source.extractedText,
+          confidence: source.confidence,
+          provenance: {
+            sourceDocumentId: source.id,
+            ...(source.segments[0]?.id ? { sourceSegmentId: source.segments[0].id } : {}),
+          },
+        })),
+      );
+      const reconciledPhotoSources = comparedPhotoSources.map((source) => ({
+        ...source,
+        reviewState: getPhotoOcrSourceReviewState(
+          source.extractedText,
+          source.confidence,
+          criticalFieldComparison,
+        ),
+      }));
 
       setPhotoMetadata(results[0]?.metadata);
       setOcrConfidence(
@@ -1514,9 +1558,7 @@ export function HomeView({
       setOcrProgress(1);
       setOcrText(combinedText);
       setOcrOriginalText(combinedText);
-      setReviewedPhotoSources((current) =>
-        isAppend ? [...current, ...newPhotoSources] : newPhotoSources,
-      );
+      setReviewedPhotoSources(reconciledPhotoSources);
       setOcrStatus("success");
       setPhotoCaptureIntent("replace");
     } catch (error) {

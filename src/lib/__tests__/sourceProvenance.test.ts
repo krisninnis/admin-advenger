@@ -9,6 +9,7 @@ import {
   type SourceProvenance,
 } from "../sourceProvenance";
 import { isSupportedBySource } from "../sourceSupport";
+import { compareOcrCriticalFields } from "../ocrCriticalFieldComparison";
 
 const documents: SourceDocument[] = [
   {
@@ -97,6 +98,31 @@ describe("getPhotoOcrSourceReviewState", () => {
   it("keeps garbled or too-short OCR review-required even at high confidence", () => {
     expect(getPhotoOcrSourceReviewState("]{-_~^%#@!*()[[}}}~~^^%%##]]", 88)).toBe("review_required");
     expect(getPhotoOcrSourceReviewState("Hi", 88)).toBe("review_required");
+  });
+
+  it("keeps provenance review-required when critical OCR fields conflict", () => {
+    const comparison = compareOcrCriticalFields([
+      {
+        id: "original",
+        source: "original_photo",
+        text: "Account reference: NX-77120",
+        confidence: 96,
+      },
+      {
+        id: "prepared",
+        source: "prepared_scan",
+        text: "Account reference: NX-77128",
+        confidence: 96,
+      },
+    ]);
+
+    expect(
+      getPhotoOcrSourceReviewState(
+        "Account reference: NX-77120",
+        96,
+        comparison,
+      ),
+    ).toBe("review_required");
   });
 });
 

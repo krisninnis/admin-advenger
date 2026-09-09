@@ -599,11 +599,59 @@ describe("reviewed photo provenance", () => {
       "photo",
     ]);
     expect(sourceDocuments?.map(({ order }) => order)).toEqual([1, 2]);
-    expect(sourceDocuments?.[0]).toMatchObject({ confidence: 88, reviewState: "confirmed" });
+    expect(sourceDocuments?.[0]).toMatchObject({
+      confidence: 88,
+      reviewState: "review_required",
+    });
     expect(sourceDocuments?.[1]).toMatchObject({
       confidence: 38,
       reviewState: "review_required",
       warnings: expect.arrayContaining(["Close-up warning", "OCR close-up warning"]),
+    });
+  });
+
+  it("fails closed on a high-confidence critical-field conflict and progresses only through explicit correction", async () => {
+    readTextFromImageMock.mockImplementation(async (file: File) => ({
+      text: file.name === "close-up.jpg"
+        ? "Northstar Water\nAccount reference: NW-10013\nMonthly payment: £41.25\nDate: 14 October 2026"
+        : "Northstar Water\nAccount reference: NW-10018\nMonthly payment: £41.25\nDate: 14 Oct 2026",
+      confidence: 92,
+      warnings: [],
+    }));
+
+    const rendered = renderHomeView();
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("button", { name: /Take or upload a photo/i }));
+    await user.click(screen.getByRole("button", { name: "Use test camera photo" }));
+    await screen.findByRole("button", { name: "Check this text" }, { timeout: 5000 });
+    await user.click(screen.getByRole("button", { name: "Add close-up photo" }));
+    await user.click(screen.getByRole("button", { name: "Use test close-up photo" }));
+
+    const reviewButton = await screen.findByRole(
+      "button",
+      { name: "Review or edit the text we could read" },
+      { timeout: 5000 },
+    );
+    expect(screen.queryByText("Key details found")).toBeNull();
+
+    await user.click(reviewButton);
+    const editor = screen.getByLabelText("Text to correct");
+    await user.type(editor, "\nChecked against both photos by the person.");
+    await user.click(screen.getByRole("button", { name: "Check corrected text" }));
+
+    await waitFor(() => expect(rendered.onCheck).toHaveBeenCalled());
+    const [, , rawText, , sourceDocuments] = rendered.onCheck.mock.calls[0] ?? [];
+    expect(rawText).toContain("Checked against both photos by the person.");
+    expect(sourceDocuments).toHaveLength(3);
+    expect(sourceDocuments?.slice(0, 2).map(({ reviewState }) => reviewState)).toEqual([
+      "review_required",
+      "review_required",
+    ]);
+    expect(sourceDocuments?.[2]).toMatchObject({
+      displayName: "Reviewed photo text",
+      extractionMethod: "user_text",
+      reviewState: "confirmed",
     });
   });
 });

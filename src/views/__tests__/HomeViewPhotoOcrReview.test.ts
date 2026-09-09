@@ -64,7 +64,18 @@ describe("HomeView photo OCR review", () => {
     );
 
     expect(routingBlock).toContain("isOcrReviewRequired(ocrOriginalText || ocrText, ocrConfidence)");
+    expect(routingBlock).toContain("ocrCriticalFieldComparison.reviewRequired");
     expect(routingBlock).not.toContain("isOcrResultUnreliable");
+  });
+
+  it("keeps normal key details hidden while critical-field comparison requires review", () => {
+    const visibilityBlock = sliceBetween(
+      homeViewSource,
+      "const canShowOcrKeyDetails =",
+      "const shouldHideOcrKeyDetails",
+    );
+
+    expect(visibilityBlock).toContain("!ocrCriticalFieldComparison.reviewRequired");
   });
 
   it("derives photo source provenance through the pure review-state decision", () => {

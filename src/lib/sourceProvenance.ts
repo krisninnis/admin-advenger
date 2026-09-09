@@ -1,5 +1,6 @@
 import { countSupportedSourceOccurrences } from "./sourceSupport";
 import { isOcrReviewRequired } from "./photoOcr";
+import type { OcrCriticalFieldComparisonResult } from "./ocrCriticalFieldComparison";
 
 export type SourceReviewState = "confirmed" | "review_required" | "unavailable";
 
@@ -189,7 +190,11 @@ const reviewStates = new Set<SourceReviewState>([
 export const getPhotoOcrSourceReviewState = (
   text: string,
   confidence?: number,
-): SourceReviewState => (isOcrReviewRequired(text, confidence) ? "review_required" : "confirmed");
+  criticalFieldComparison?: Pick<OcrCriticalFieldComparisonResult, "reviewRequired">,
+): SourceReviewState =>
+  isOcrReviewRequired(text, confidence) || criticalFieldComparison?.reviewRequired
+    ? "review_required"
+    : "confirmed";
 
 const segmentKinds = new Set<SourceSegment["kind"]>(["page", "photo", "document"]);
 

@@ -29,7 +29,7 @@ import {
   PHOTO_USE_ORIGINAL_LABEL,
   PHOTO_USE_ORIGINAL_WARNING,
   PHOTO_USE_SCAN_LABEL,
-  captureStillFrame,
+  capturePhotoFromVideoElement,
   getCameraGuidanceFitMessage,
   getCapturedPhotoFileName,
   getPhotoCaptureSectionLabel,
@@ -360,12 +360,9 @@ export function PhotoCapturePanel({
     const isCaptureActive = () => captureAttemptIdRef.current === captureAttemptId;
 
     try {
-      const file = await captureStillFrame(
-        streamRef.current?.getVideoTracks?.()[0],
+      const file = await capturePhotoFromVideoElement(
         videoElement,
         getCapturedPhotoFileName(currentSection),
-        undefined,
-        isCaptureActive,
       );
 
       if (!isCaptureActive()) {

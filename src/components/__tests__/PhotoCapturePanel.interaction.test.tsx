@@ -196,12 +196,38 @@ const installCanvasCapture = () => {
   return { drawImage };
 };
 
+const installPendingCanvasCapture = () => {
+  const drawImage = vi.fn();
+  let resolveCapture: () => void = () => undefined;
+
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+    drawImage,
+  } as unknown as CanvasRenderingContext2D);
+  vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation(
+    (callback: BlobCallback, type?: string) => {
+      resolveCapture = () => callback(new Blob(["captured photo"], { type: type ?? "image/jpeg" }));
+    },
+  );
+
+  return {
+    drawImage,
+    resolveCapture: () => resolveCapture(),
+  };
+};
+
 const chooseTakePhoto = async () => {
   const choiceLabel = screen.getByText(PHOTO_TAKE_NEW_PHOTO_LABEL);
   const choiceButton = choiceLabel.closest("button");
 
   expect(choiceButton).toBeTruthy();
   await userEvent.click(choiceButton as HTMLButtonElement);
+};
+
+const setVideoIntrinsicDimensions = (width: number, height: number) => {
+  const video = document.querySelector("video");
+  expect(video).toBeTruthy();
+  Object.defineProperty(video, "videoWidth", { configurable: true, value: width });
+  Object.defineProperty(video, "videoHeight", { configurable: true, value: height });
 };
 
 const createVideoTrackCameraFixture = () => {
@@ -530,8 +556,8 @@ describe("PhotoCapturePanel rendered scan confirmation", () => {
   });
 });
 
-// ---- Capability-gated still capture through the component (Slice C) ----
-describe("PhotoCapturePanel capability-gated still capture", () => {
+// ---- Fail-closed production capture from the visible video frame ----
+describe("PhotoCapturePanel production video-frame capture", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
@@ -579,9 +605,35 @@ describe("PhotoCapturePanel capability-gated still capture", () => {
     return { takePhoto };
   };
 
-  it("uses ImageCapture.takePhoto() when available and feeds the still through the existing review flow", async () => {
+  it("uses the visible intrinsic video frame even when ImageCapture is available", async () => {
     const target = { resolve: (_blob: Blob) => undefined, reject: (_e: Error) => undefined };
     const { takePhoto } = installImageCapture(target);
+    const { drawImage } = installCanvasCapture();
+    createVideoTrackCameraFixture();
+    createReadyScanFixture();
+
+    render(
+      <PhotoCapturePanel
+        onUsePhotos={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    await chooseTakePhoto();
+    setVideoIntrinsicDimensions(1080, 1920);
+    await userEvent.click(await screen.findByRole("button", { name: PHOTO_TAKE_PHOTO_LABEL }));
+
+    expect(takePhoto).not.toHaveBeenCalled();
+    expect(drawImage).toHaveBeenCalledTimes(1);
+    expect(drawImage).toHaveBeenCalledWith(expect.any(HTMLVideoElement), 0, 0, 1080, 1920);
+    await screen.findByText(PHOTO_SCAN_REVIEW_QUESTION);
+    expect(scanDocumentFileMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("feeds the visible canvas frame through the existing review flow when ImageCapture is available", async () => {
+    const target = { resolve: (_blob: Blob) => undefined, reject: (_e: Error) => undefined };
+    const { takePhoto } = installImageCapture(target);
+    installCanvasCapture();
     const { stopTrack } = createVideoTrackCameraFixture();
     createReadyScanFixture();
     const onUsePhotos = vi.fn();
@@ -594,13 +646,10 @@ describe("PhotoCapturePanel capability-gated still capture", () => {
     );
 
     await chooseTakePhoto();
+    setVideoIntrinsicDimensions(1600, 2200);
     await userEvent.click(await screen.findByRole("button", { name: PHOTO_TAKE_PHOTO_LABEL }));
 
-    expect(takePhoto).toHaveBeenCalledTimes(1);
-
-    await act(async () => {
-      target.resolve(new Blob(["still photo"], { type: "image/jpeg" }));
-    });
+    expect(takePhoto).not.toHaveBeenCalled();
 
     await screen.findByText(PHOTO_SCAN_REVIEW_QUESTION);
     expect(scanDocumentFileMock).toHaveBeenCalledTimes(1);
@@ -609,14 +658,14 @@ describe("PhotoCapturePanel capability-gated still capture", () => {
     expect(inspectImageResourceSafetyMock).toHaveBeenCalledWith(capturedFile);
     expect(capturedFile.name).toBe("camera-photo.jpg");
     expect(capturedFile.type).toBe("image/jpeg");
-    expect(await capturedFile.text()).toBe("still photo");
+    expect(await capturedFile.text()).toBe("captured photo");
     await userEvent.click(screen.getByRole("button", { name: PHOTO_USE_SCAN_LABEL }));
 
     expect(onUsePhotos).toHaveBeenCalledTimes(1);
     expect(stopTrack).toHaveBeenCalledTimes(1);
   });
 
-  it("falls back to the canvas capture when ImageCapture construction throws, with no user-visible error", async () => {
+  it("does not construct ImageCapture even when its constructor would throw", async () => {
     installThrowingImageCapture(new Error("not supported"));
     const { drawImage } = installCanvasCapture();
     const { stopTrack } = createVideoTrackCameraFixture();
@@ -647,42 +696,68 @@ describe("PhotoCapturePanel capability-gated still capture", () => {
     expect(stopTrack).toHaveBeenCalledTimes(1);
   });
 
-  it.each(["image/heic", "image/heif"])(
-    "uses the canvas result for an unsupported %s ImageCapture candidate",
-    async (mimeType) => {
-      const target = { resolve: (_blob: Blob) => undefined, reject: (_e: Error) => undefined };
-      const { takePhoto } = installImageCapture(target);
-      const { drawImage } = installCanvasCapture();
-      const { stopTrack } = createVideoTrackCameraFixture();
-      createReadyScanFixture();
+  it("never requests a potentially wider ImageCapture still and sends one canvas frame to the scanner", async () => {
+    const target = { resolve: (_blob: Blob) => undefined, reject: (_e: Error) => undefined };
+    const { takePhoto } = installImageCapture(target);
+    const { drawImage } = installCanvasCapture();
+    const { stopTrack } = createVideoTrackCameraFixture();
+    createReadyScanFixture();
 
-      render(
-        <PhotoCapturePanel
-          onUsePhotos={vi.fn()}
-          onClose={vi.fn()}
-        />,
-      );
+    inspectImageResourceSafetyMock
+      .mockResolvedValueOnce({ width: 4000, height: 2250 })
+      .mockResolvedValueOnce({ width: 1080, height: 1920 });
 
-      await chooseTakePhoto();
-      await userEvent.click(await screen.findByRole("button", { name: PHOTO_TAKE_PHOTO_LABEL }));
+    render(
+      <PhotoCapturePanel
+        onUsePhotos={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
 
-      await act(async () => {
-        target.resolve(new Blob(["unsupported still"], { type: mimeType }));
-      });
+    await chooseTakePhoto();
+    setVideoIntrinsicDimensions(1080, 1920);
+    const shutter = await screen.findByRole("button", { name: PHOTO_TAKE_PHOTO_LABEL });
+    fireEvent.click(shutter);
+    fireEvent.click(shutter);
 
-      await screen.findByText(PHOTO_SCAN_REVIEW_QUESTION);
-      expect(takePhoto).toHaveBeenCalledTimes(1);
-      expect(drawImage).toHaveBeenCalledTimes(1);
-      expect(scanDocumentFileMock).toHaveBeenCalledTimes(1);
-      const capturedFile = scanDocumentFileMock.mock.calls[0][0] as File;
-      expect(capturedFile.name).toBe("camera-photo.jpg");
-      expect(capturedFile.type).toBe("image/jpeg");
-      expect(await capturedFile.text()).toBe("captured photo");
-      expect(stopTrack).toHaveBeenCalledTimes(1);
-    },
-  );
+    await screen.findByText(PHOTO_SCAN_REVIEW_QUESTION);
+    expect(takePhoto).not.toHaveBeenCalled();
+    expect(drawImage).toHaveBeenCalledTimes(1);
+    expect(scanDocumentFileMock).toHaveBeenCalledTimes(1);
+    const capturedFile = scanDocumentFileMock.mock.calls[0][0] as File;
+    expect(await capturedFile.text()).toBe("captured photo");
+    expect(stopTrack).toHaveBeenCalledTimes(1);
+  });
 
-  it("falls back to the canvas capture when ImageCapture takePhoto() rejects", async () => {
+  it("uses JPEG canvas output without requesting any ImageCapture candidate format", async () => {
+    const target = { resolve: (_blob: Blob) => undefined, reject: (_e: Error) => undefined };
+    const { takePhoto } = installImageCapture(target);
+    const { drawImage } = installCanvasCapture();
+    const { stopTrack } = createVideoTrackCameraFixture();
+    createReadyScanFixture();
+
+    render(
+      <PhotoCapturePanel
+        onUsePhotos={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    await chooseTakePhoto();
+    await userEvent.click(await screen.findByRole("button", { name: PHOTO_TAKE_PHOTO_LABEL }));
+
+    await screen.findByText(PHOTO_SCAN_REVIEW_QUESTION);
+    expect(takePhoto).not.toHaveBeenCalled();
+    expect(drawImage).toHaveBeenCalledTimes(1);
+    expect(scanDocumentFileMock).toHaveBeenCalledTimes(1);
+    const capturedFile = scanDocumentFileMock.mock.calls[0][0] as File;
+    expect(capturedFile.name).toBe("camera-photo.jpg");
+    expect(capturedFile.type).toBe("image/jpeg");
+    expect(await capturedFile.text()).toBe("captured photo");
+    expect(stopTrack).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses canvas without invoking a rejecting ImageCapture implementation", async () => {
     const { takePhoto } = installRejectingImageCapture();
     const { drawImage } = installCanvasCapture();
     const { stopTrack } = createVideoTrackCameraFixture();
@@ -701,7 +776,7 @@ describe("PhotoCapturePanel capability-gated still capture", () => {
 
     expect(screen.queryByRole("alert")).toBeNull();
     await screen.findByText(PHOTO_SCAN_REVIEW_QUESTION);
-    expect(takePhoto).toHaveBeenCalledTimes(1);
+    expect(takePhoto).not.toHaveBeenCalled();
     expect(drawImage).toHaveBeenCalledTimes(1);
     expect(scanDocumentFileMock).toHaveBeenCalledTimes(1);
     await userEvent.click(screen.getByRole("button", { name: PHOTO_USE_SCAN_LABEL }));
@@ -710,7 +785,7 @@ describe("PhotoCapturePanel capability-gated still capture", () => {
     expect(stopTrack).toHaveBeenCalledTimes(1);
   });
 
-  it("guards a rapid double shutter press and performs at most one fallback capture", async () => {
+  it("guards a rapid double shutter press and performs at most one canvas capture", async () => {
     const target = { resolve: (_blob: Blob) => undefined, reject: (_e: Error) => undefined };
     const { takePhoto } = installImageCapture(target);
     const { drawImage } = installCanvasCapture();
@@ -730,11 +805,11 @@ describe("PhotoCapturePanel capability-gated still capture", () => {
     fireEvent.click(shutter);
     fireEvent.click(shutter);
 
-    expect(takePhoto).toHaveBeenCalledTimes(1);
+    expect(takePhoto).not.toHaveBeenCalled();
     expect((shutter as HTMLButtonElement).disabled).toBe(true);
 
     await act(async () => {
-      target.reject(new Error("camera busy"));
+      await Promise.resolve();
     });
 
     await screen.findByText(PHOTO_SCAN_REVIEW_QUESTION);
@@ -746,9 +821,10 @@ describe("PhotoCapturePanel capability-gated still capture", () => {
     expect(stopTrack).toHaveBeenCalledTimes(1);
   });
 
-  it("ignores a late still result after cancel and stops the camera track", async () => {
+  it("ignores a late canvas result after cancel and stops the camera track", async () => {
     const target = { resolve: (_blob: Blob) => undefined, reject: (_e: Error) => undefined };
     const { takePhoto } = installImageCapture(target);
+    const { resolveCapture } = installPendingCanvasCapture();
     const { stopTrack } = createVideoTrackCameraFixture();
     createReadyScanFixture();
     const onUsePhotos = vi.fn();
@@ -762,13 +838,13 @@ describe("PhotoCapturePanel capability-gated still capture", () => {
 
     await chooseTakePhoto();
     await userEvent.click(await screen.findByRole("button", { name: PHOTO_TAKE_PHOTO_LABEL }));
-    expect(takePhoto).toHaveBeenCalledTimes(1);
+    expect(takePhoto).not.toHaveBeenCalled();
 
     await userEvent.click(screen.getByRole("button", { name: PHOTO_CANCEL_LABEL }));
     expect(stopTrack).toHaveBeenCalledTimes(1);
 
     await act(async () => {
-      target.resolve(new Blob(["late still"], { type: "image/jpeg" }));
+      resolveCapture();
       await Promise.resolve();
     });
 
@@ -777,9 +853,10 @@ describe("PhotoCapturePanel capability-gated still capture", () => {
     expect(onUsePhotos).not.toHaveBeenCalled();
   });
 
-  it("ignores a late still result after unmount and stops the camera track", async () => {
+  it("ignores a late canvas result after unmount and stops the camera track", async () => {
     const target = { resolve: (_blob: Blob) => undefined, reject: (_e: Error) => undefined };
     const { takePhoto } = installImageCapture(target);
+    const { resolveCapture } = installPendingCanvasCapture();
     const { stopTrack } = createVideoTrackCameraFixture();
     createReadyScanFixture();
     const onUsePhotos = vi.fn();
@@ -793,13 +870,13 @@ describe("PhotoCapturePanel capability-gated still capture", () => {
 
     await chooseTakePhoto();
     await userEvent.click(await screen.findByRole("button", { name: PHOTO_TAKE_PHOTO_LABEL }));
-    expect(takePhoto).toHaveBeenCalledTimes(1);
+    expect(takePhoto).not.toHaveBeenCalled();
 
     unmount();
     expect(stopTrack).toHaveBeenCalledTimes(1);
 
     await act(async () => {
-      target.resolve(new Blob(["late still"], { type: "image/jpeg" }));
+      resolveCapture();
       await Promise.resolve();
     });
 
@@ -809,8 +886,7 @@ describe("PhotoCapturePanel capability-gated still capture", () => {
 
   it("ignores a safety inspection that resolves after cancel", async () => {
     const { resolveInspection } = createPendingSafetyInspection();
-    const target = { resolve: (_blob: Blob) => undefined, reject: (_e: Error) => undefined };
-    installImageCapture(target);
+    installCanvasCapture();
     const { stopTrack } = createVideoTrackCameraFixture();
     createReadyScanFixture();
 
@@ -823,9 +899,6 @@ describe("PhotoCapturePanel capability-gated still capture", () => {
 
     await chooseTakePhoto();
     await userEvent.click(await screen.findByRole("button", { name: PHOTO_TAKE_PHOTO_LABEL }));
-    await act(async () => {
-      target.resolve(new Blob(["still photo"], { type: "image/jpeg" }));
-    });
     await waitFor(() => expect(inspectImageResourceSafetyMock).toHaveBeenCalledTimes(1));
     expect(stopTrack).toHaveBeenCalledTimes(1);
 
@@ -844,8 +917,7 @@ describe("PhotoCapturePanel capability-gated still capture", () => {
 
   it("ignores a safety inspection that resolves after unmount", async () => {
     const { resolveInspection } = createPendingSafetyInspection();
-    const target = { resolve: (_blob: Blob) => undefined, reject: (_e: Error) => undefined };
-    installImageCapture(target);
+    installCanvasCapture();
     const { stopTrack } = createVideoTrackCameraFixture();
     createReadyScanFixture();
 
@@ -858,9 +930,6 @@ describe("PhotoCapturePanel capability-gated still capture", () => {
 
     await chooseTakePhoto();
     await userEvent.click(await screen.findByRole("button", { name: PHOTO_TAKE_PHOTO_LABEL }));
-    await act(async () => {
-      target.resolve(new Blob(["still photo"], { type: "image/jpeg" }));
-    });
     await waitFor(() => expect(inspectImageResourceSafetyMock).toHaveBeenCalledTimes(1));
     expect(stopTrack).toHaveBeenCalledTimes(1);
 
@@ -877,8 +946,7 @@ describe("PhotoCapturePanel capability-gated still capture", () => {
 
   it("ignores a safety inspection error that arrives after cancel", async () => {
     const { rejectInspection } = createPendingSafetyInspection();
-    const target = { resolve: (_blob: Blob) => undefined, reject: (_e: Error) => undefined };
-    installImageCapture(target);
+    installCanvasCapture();
     const { stopTrack } = createVideoTrackCameraFixture();
     createReadyScanFixture();
 
@@ -891,9 +959,6 @@ describe("PhotoCapturePanel capability-gated still capture", () => {
 
     await chooseTakePhoto();
     await userEvent.click(await screen.findByRole("button", { name: PHOTO_TAKE_PHOTO_LABEL }));
-    await act(async () => {
-      target.resolve(new Blob(["still photo"], { type: "image/jpeg" }));
-    });
     await waitFor(() => expect(inspectImageResourceSafetyMock).toHaveBeenCalledTimes(1));
     expect(stopTrack).toHaveBeenCalledTimes(1);
 

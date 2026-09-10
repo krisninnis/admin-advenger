@@ -11,6 +11,8 @@ import {
   takePhotoBlobFromTrack,
   type ImageCaptureConstructorLike,
 } from "./imageCapture";
+import { isFileWithinSizeLimit } from "./fileSizeLimit";
+import { inspectImageResourceSafety } from "./imageResourceSafety";
 import { isSupportedPhotoMimeType } from "./photoIntake";
 
 export type CameraErrorKind = "permission_denied" | "camera_unavailable" | "unknown";
@@ -271,7 +273,10 @@ export const capturePhotoFromVideoElement = (
 // into the canvas fallback. The error path in the calling component remains
 // unchanged.
 //
-// This is the single still-capture entry point for the production camera flow.
+// Retained for calibration/comparative measurement and a possible future
+// evidence-backed re-enable. The controlled production pilot deliberately
+// captures the visible intrinsic video frame through
+// capturePhotoFromVideoElement instead.
 
 const imageCaptureExtensionByMimeType: Readonly<Record<string, string>> = {
   "image/jpeg": ".jpg",
@@ -288,7 +293,103 @@ const getImageCaptureFileName = (fileName: string, mimeType: string): string => 
 
 const isAcceptedImageCaptureBlob = (blob: Blob): boolean => {
   const mimeType = blob.type.trim().toLowerCase();
-  return blob.size > 0 && isSupportedPhotoMimeType(mimeType) && Boolean(imageCaptureExtensionByMimeType[mimeType]);
+  return (
+    blob.size > 0 &&
+    isFileWithinSizeLimit(blob) &&
+    isSupportedPhotoMimeType(mimeType) &&
+    Boolean(imageCaptureExtensionByMimeType[mimeType])
+  );
+};
+
+export const STILL_FRAMING_ASPECT_RATIO_TOLERANCE = 0.05;
+
+type FramingDimensions = {
+  width: number;
+  height: number;
+};
+
+export type StillFramingCompatibilityInput = {
+  preview: FramingDimensions;
+  still: FramingDimensions;
+  trackSettings?: Pick<MediaTrackSettings, "width" | "height" | "aspectRatio">;
+};
+
+export type StillFramingCompatibility =
+  | { status: "compatible" }
+  | {
+      status: "incompatible";
+      reason: "unavailable_dimensions" | "aspect_ratio_mismatch" | "ambiguous_track_framing";
+    };
+
+const hasUsableFramingDimensions = (
+  dimensions: FramingDimensions,
+): boolean =>
+  Number.isFinite(dimensions.width) &&
+  Number.isFinite(dimensions.height) &&
+  dimensions.width > 0 &&
+  dimensions.height > 0;
+
+const areAspectRatiosCompatible = (first: number, second: number): boolean =>
+  Number.isFinite(first) &&
+  Number.isFinite(second) &&
+  first > 0 &&
+  second > 0 &&
+  Math.abs(first - second) / first <= STILL_FRAMING_ASPECT_RATIO_TOLERANCE;
+
+// The object-contain preview exposes the full intrinsic video frame, so its
+// direct width/height ratio is the framing contract. We deliberately do not
+// compare reciprocal ratios: without trustworthy orientation metadata, doing
+// so would guess that a landscape still is a rotated portrait preview and can
+// accept the materially wider Android result this guard exists to reject.
+export const assessStillFramingCompatibility = ({
+  preview,
+  still,
+  trackSettings,
+}: StillFramingCompatibilityInput): StillFramingCompatibility => {
+  if (!hasUsableFramingDimensions(preview) || !hasUsableFramingDimensions(still)) {
+    return { status: "incompatible", reason: "unavailable_dimensions" };
+  }
+
+  const previewAspectRatio = preview.width / preview.height;
+  const stillAspectRatio = still.width / still.height;
+
+  if (!areAspectRatiosCompatible(previewAspectRatio, stillAspectRatio)) {
+    return { status: "incompatible", reason: "aspect_ratio_mismatch" };
+  }
+
+  const trackAspectRatios: number[] = [];
+  if (
+    trackSettings &&
+    typeof trackSettings.width === "number" &&
+    typeof trackSettings.height === "number" &&
+    hasUsableFramingDimensions({ width: trackSettings.width, height: trackSettings.height })
+  ) {
+    trackAspectRatios.push(trackSettings.width / trackSettings.height);
+  }
+  if (
+    trackSettings &&
+    typeof trackSettings.aspectRatio === "number" &&
+    Number.isFinite(trackSettings.aspectRatio) &&
+    trackSettings.aspectRatio > 0
+  ) {
+    trackAspectRatios.push(trackSettings.aspectRatio);
+  }
+
+  if (trackAspectRatios.some((aspectRatio) => !areAspectRatiosCompatible(previewAspectRatio, aspectRatio))) {
+    return { status: "incompatible", reason: "ambiguous_track_framing" };
+  }
+
+  return { status: "compatible" };
+};
+
+const getTrackFramingSettings = (
+  track: MediaStreamTrack,
+): Pick<MediaTrackSettings, "width" | "height" | "aspectRatio"> | undefined => {
+  try {
+    return track.getSettings?.();
+  } catch {
+    return undefined;
+  }
 };
 
 export const captureStillFrame = async (
@@ -298,6 +399,7 @@ export const captureStillFrame = async (
   imageCaptureConstructor: ImageCaptureConstructorLike | undefined =
     getBrowserImageCaptureConstructor(),
   isCaptureActive: () => boolean = () => true,
+  inspectStillDimensions: typeof inspectImageResourceSafety = inspectImageResourceSafety,
 ): Promise<File> => {
   if (track && typeof imageCaptureConstructor === "function") {
     try {
@@ -305,7 +407,19 @@ export const captureStillFrame = async (
 
       if (isCaptureActive() && isAcceptedImageCaptureBlob(blob)) {
         const mimeType = blob.type.trim().toLowerCase();
-        return new File([blob], getImageCaptureFileName(fileName, mimeType), { type: mimeType });
+        const candidate = new File([blob], getImageCaptureFileName(fileName, mimeType), { type: mimeType });
+        const stillDimensions = await inspectStillDimensions(candidate);
+
+        if (
+          isCaptureActive() &&
+          assessStillFramingCompatibility({
+            preview: { width: video.videoWidth, height: video.videoHeight },
+            still: stillDimensions,
+            trackSettings: getTrackFramingSettings(track),
+          }).status === "compatible"
+        ) {
+          return candidate;
+        }
       }
     } catch {
       // Fall through to the canvas/video-frame capture — all errors are

@@ -20,11 +20,14 @@ const supportedImageTypes = new Set([
 
 const supportedImageExtensions = [".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif"];
 
+export const isSupportedPhotoMimeType = (mimeType: string): boolean =>
+  supportedImageTypes.has(mimeType.trim().toLowerCase());
+
 export const isSupportedPhotoFile = (file: File) => {
   const fileName = file.name.toLowerCase();
 
   return (
-    supportedImageTypes.has(file.type.toLowerCase()) ||
+    isSupportedPhotoMimeType(file.type) ||
     supportedImageExtensions.some((extension) => fileName.endsWith(extension))
   );
 };

@@ -40,7 +40,10 @@ import {
   PHOTO_USE_ORIGINAL_LABEL,
   PHOTO_USE_ORIGINAL_WARNING,
   PHOTO_USE_SCAN_LABEL,
+  STILL_FRAMING_ASPECT_RATIO_TOLERANCE,
+  assessStillFramingCompatibility,
   capturePhotoFromVideoElement,
+  captureStillFrame,
   classifyCameraError,
   createCapturedPhotoFile,
   getCameraErrorMessage,
@@ -318,6 +321,21 @@ describe("simplified photo scan review workflow", () => {
     expect(homeViewSource).toContain("setPendingPhotoFile(file)");
     expect(homeViewSource).toContain("setShowPhotoCapturePanel(true)");
   });
+
+  it("production camera capture uses the visible intrinsic video frame and never ImageCapture", () => {
+    const takePhotoBlock = sliceBetween(
+      photoCapturePanelSource,
+      "const handleTakePhotoClick = async",
+      "});",
+    );
+
+    expect(photoCapturePanelSource).toContain("capturePhotoFromVideoElement");
+    expect(photoCapturePanelSource).not.toContain("captureStillFrame");
+    expect(photoCapturePanelSource).not.toContain("new ImageCapture");
+    expect(photoCapturePanelSource).not.toContain("takePhoto()");
+    expect(takePhotoBlock).toContain("capturePhotoFromVideoElement(");
+    expect(takePhotoBlock).toContain('await preparePhotoForReview(file, "camera")');
+  });
 });
 
 // ---- Camera permission / availability classification ----
@@ -468,7 +486,7 @@ describe("camera stream cleanup", () => {
     );
     const unmountBlock = sliceBetween(
       photoCapturePanelSource,
-      "return () => {\n      scanRequestIdRef.current += 1;",
+      "return () => {\n      captureAttemptIdRef.current += 1;",
       "  }, []);",
     );
 
@@ -714,6 +732,348 @@ describe("capturePhotoFromVideoElement uses the video's intrinsic resolution", (
 
       expect(fakeCanvas.width).toBe(1920);
       expect(fakeCanvas.height).toBe(1080);
+    });
+  });
+});
+
+describe("ImageCapture still framing compatibility", () => {
+  it("accepts a still whose decoded framing matches the intrinsic preview within tolerance", () => {
+    expect(
+      assessStillFramingCompatibility({
+        preview: { width: 1080, height: 1920 },
+        still: { width: 2160, height: 3820 },
+      }),
+    ).toEqual({ status: "compatible" });
+    expect(STILL_FRAMING_ASPECT_RATIO_TOLERANCE).toBe(0.05);
+  });
+
+  it("rejects the reproduced Android wider still without guessing an orientation rotation", () => {
+    expect(
+      assessStillFramingCompatibility({
+        preview: { width: 1080, height: 1920 },
+        still: { width: 4000, height: 2250 },
+      }),
+    ).toEqual({ status: "incompatible", reason: "aspect_ratio_mismatch" });
+  });
+
+  it("rejects a materially taller or narrower still", () => {
+    expect(
+      assessStillFramingCompatibility({
+        preview: { width: 1080, height: 1920 },
+        still: { width: 1600, height: 4000 },
+      }),
+    ).toEqual({ status: "incompatible", reason: "aspect_ratio_mismatch" });
+  });
+
+  it("fails closed when intrinsic preview dimensions are unavailable", () => {
+    expect(
+      assessStillFramingCompatibility({
+        preview: { width: 0, height: 0 },
+        still: { width: 2160, height: 3840 },
+      }),
+    ).toEqual({ status: "incompatible", reason: "unavailable_dimensions" });
+  });
+
+  it("fails closed when optional track settings contradict the intrinsic preview", () => {
+    expect(
+      assessStillFramingCompatibility({
+        preview: { width: 1080, height: 1920 },
+        still: { width: 2160, height: 3840 },
+        trackSettings: { width: 1920, height: 1080, aspectRatio: 16 / 9 },
+      }),
+    ).toEqual({ status: "incompatible", reason: "ambiguous_track_framing" });
+  });
+});
+
+// ---- Capability-gated still capture (Slice C) ----
+// captureStillFrame tries an ImageCapture still candidate when the browser
+// and stream support it, and silently falls back to the existing canvas/video
+// frame otherwise. These tests use an injected constructor and fake DOM so no
+// physical camera is required.
+describe("captureStillFrame ImageCapture capability and fallback", () => {
+  const fakeVideo = { videoWidth: 1920, videoHeight: 1080 } as unknown as HTMLVideoElement;
+  const fakeTrack = {
+    stop: vi.fn(),
+    getSettings: () => ({ width: 1920, height: 1080, aspectRatio: 16 / 9 }),
+  } as unknown as MediaStreamTrack;
+  const inspectCompatibleStill = vi.fn().mockResolvedValue({ width: 4000, height: 2250 });
+
+  const createFakeImageCapture = (takePhoto: ReturnType<typeof vi.fn>) => {
+    class FakeImageCapture {
+      readonly takePhoto = takePhoto;
+      constructor(_track: MediaStreamTrack) {
+        // Track is passed through by captureStillFrame; behaviour is driven
+        // by the injected takePhoto mock above.
+      }
+    }
+    return FakeImageCapture as unknown as new (
+      track: MediaStreamTrack,
+    ) => { takePhoto: () => Promise<Blob> };
+  };
+
+  const withFakeDocument = async (
+    run: (canvasCapture: { drawImage: ReturnType<typeof vi.fn> }) => Promise<void>,
+  ) => {
+    const drawImage = vi.fn();
+    const fakeCanvas = {
+      width: 0,
+      height: 0,
+      getContext: () => ({ drawImage }),
+      toBlob: (callback: (blob: Blob | null) => void, type: string) => {
+        callback(new Blob(["canvas fallback bytes"], { type }));
+      },
+    };
+
+    vi.stubGlobal("document", { createElement: () => fakeCanvas });
+
+    try {
+      await run({ drawImage });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  };
+
+  it("uses ImageCapture.takePhoto() and converts the blob to the requested file when supported", async () => {
+    await withFakeDocument(async () => {
+      const takePhoto = vi.fn().mockResolvedValue(new Blob(["still bytes"], { type: "image/jpeg" }));
+      const FakeImageCapture = createFakeImageCapture(takePhoto);
+
+      const file = await captureStillFrame(
+        fakeTrack,
+        fakeVideo,
+        CAPTURED_PHOTO_FILE_NAME,
+        FakeImageCapture,
+        () => true,
+        inspectCompatibleStill,
+      );
+
+      expect(takePhoto).toHaveBeenCalledTimes(1);
+      expect(file.name).toBe(CAPTURED_PHOTO_FILE_NAME);
+      expect(file.type).toBe("image/jpeg");
+      expect(await file.text()).toBe("still bytes");
+    });
+  });
+
+  it("uses a .png filename for an accepted PNG still", async () => {
+    await withFakeDocument(async () => {
+      const takePhoto = vi.fn().mockResolvedValue(new Blob(["png bytes"], { type: "image/png" }));
+      const FakeImageCapture = createFakeImageCapture(takePhoto);
+
+      const file = await captureStillFrame(
+        fakeTrack,
+        fakeVideo,
+        "extra-photo.jpg",
+        FakeImageCapture,
+        () => true,
+        inspectCompatibleStill,
+      );
+
+      expect(file.name).toBe("extra-photo.png");
+      expect(file.type).toBe("image/png");
+    });
+  });
+
+  it("uses a .webp filename for an accepted WebP still", async () => {
+    await withFakeDocument(async () => {
+      const takePhoto = vi.fn().mockResolvedValue(new Blob(["webp bytes"], { type: "image/webp" }));
+      const FakeImageCapture = createFakeImageCapture(takePhoto);
+
+      const file = await captureStillFrame(
+        fakeTrack,
+        fakeVideo,
+        "extra-photo.jpg",
+        FakeImageCapture,
+        () => true,
+        inspectCompatibleStill,
+      );
+
+      expect(file.name).toBe("extra-photo.webp");
+      expect(file.type).toBe("image/webp");
+    });
+  });
+
+  it("falls back to canvas capture when ImageCapture is unavailable", async () => {
+    await withFakeDocument(async ({ drawImage }) => {
+      vi.stubGlobal("ImageCapture", undefined);
+
+      const file = await captureStillFrame(fakeTrack, fakeVideo, CAPTURED_PHOTO_FILE_NAME);
+
+      expect(drawImage).toHaveBeenCalled();
+      expect(file.name).toBe(CAPTURED_PHOTO_FILE_NAME);
+    });
+  });
+
+  it("falls back to canvas capture when there is no video track", async () => {
+    await withFakeDocument(async ({ drawImage }) => {
+      const takePhoto = vi.fn();
+      const FakeImageCapture = createFakeImageCapture(takePhoto);
+
+      const file = await captureStillFrame(undefined, fakeVideo, CAPTURED_PHOTO_FILE_NAME, FakeImageCapture);
+
+      expect(takePhoto).not.toHaveBeenCalled();
+      expect(drawImage).toHaveBeenCalled();
+      expect(file.name).toBe(CAPTURED_PHOTO_FILE_NAME);
+    });
+  });
+
+  it("falls back to canvas capture when the ImageCapture constructor throws", async () => {
+    await withFakeDocument(async ({ drawImage }) => {
+      const FakeImageCapture = vi.fn(function (this: { takePhoto: () => Promise<Blob> }) {
+        throw new Error("browser limitation");
+      });
+
+      const file = await captureStillFrame(
+        fakeTrack,
+        fakeVideo,
+        CAPTURED_PHOTO_FILE_NAME,
+        FakeImageCapture as unknown as new (track: MediaStreamTrack) => { takePhoto: () => Promise<Blob> },
+      );
+
+      expect(drawImage).toHaveBeenCalledTimes(1);
+      expect(file.name).toBe(CAPTURED_PHOTO_FILE_NAME);
+    });
+  });
+
+  it("falls back to canvas capture when takePhoto() rejects", async () => {
+    await withFakeDocument(async ({ drawImage }) => {
+      const takePhoto = vi.fn().mockRejectedValue(new Error("camera busy"));
+      const FakeImageCapture = createFakeImageCapture(takePhoto);
+
+      const file = await captureStillFrame(fakeTrack, fakeVideo, CAPTURED_PHOTO_FILE_NAME, FakeImageCapture);
+
+      expect(takePhoto).toHaveBeenCalledTimes(1);
+      expect(drawImage).toHaveBeenCalledTimes(1);
+      expect(file.name).toBe(CAPTURED_PHOTO_FILE_NAME);
+    });
+  });
+
+  it("falls back exactly once when a valid JPEG still is materially wider than the preview", async () => {
+    await withFakeDocument(async ({ drawImage }) => {
+      const portraitVideo = { videoWidth: 1080, videoHeight: 1920 } as unknown as HTMLVideoElement;
+      const portraitTrack = {
+        getSettings: () => ({ width: 1080, height: 1920, aspectRatio: 9 / 16 }),
+      } as unknown as MediaStreamTrack;
+      const takePhoto = vi.fn().mockResolvedValue(new Blob(["wide still"], { type: "image/jpeg" }));
+      const inspectStill = vi.fn().mockResolvedValue({ width: 4000, height: 2250 });
+      const FakeImageCapture = createFakeImageCapture(takePhoto);
+
+      const file = await captureStillFrame(
+        portraitTrack,
+        portraitVideo,
+        CAPTURED_PHOTO_FILE_NAME,
+        FakeImageCapture,
+        () => true,
+        inspectStill,
+      );
+
+      expect(takePhoto).toHaveBeenCalledTimes(1);
+      expect(inspectStill).toHaveBeenCalledTimes(1);
+      expect(drawImage).toHaveBeenCalledTimes(1);
+      expect(await file.text()).toBe("canvas fallback bytes");
+    });
+  });
+
+  it("falls back exactly once when the still dimensions cannot be decoded safely", async () => {
+    await withFakeDocument(async ({ drawImage }) => {
+      const takePhoto = vi.fn().mockResolvedValue(new Blob(["undecodable still"], { type: "image/jpeg" }));
+      const inspectStill = vi.fn().mockRejectedValue(new Error("decode failed"));
+      const FakeImageCapture = createFakeImageCapture(takePhoto);
+
+      const file = await captureStillFrame(
+        fakeTrack,
+        fakeVideo,
+        CAPTURED_PHOTO_FILE_NAME,
+        FakeImageCapture,
+        () => true,
+        inspectStill,
+      );
+
+      expect(takePhoto).toHaveBeenCalledTimes(1);
+      expect(inspectStill).toHaveBeenCalledTimes(1);
+      expect(drawImage).toHaveBeenCalledTimes(1);
+      expect(await file.text()).toBe("canvas fallback bytes");
+    });
+  });
+
+  it("falls back before decoding an ImageCapture still above the existing file-size limit", async () => {
+    await withFakeDocument(async ({ drawImage }) => {
+      const oversizedStill = new Blob(["oversized still"], { type: "image/jpeg" });
+      Object.defineProperty(oversizedStill, "size", { value: 20 * 1024 * 1024 + 1 });
+      const takePhoto = vi.fn().mockResolvedValue(oversizedStill);
+      const inspectStill = vi.fn();
+      const FakeImageCapture = createFakeImageCapture(takePhoto);
+
+      const file = await captureStillFrame(
+        fakeTrack,
+        fakeVideo,
+        CAPTURED_PHOTO_FILE_NAME,
+        FakeImageCapture,
+        () => true,
+        inspectStill,
+      );
+
+      expect(inspectStill).not.toHaveBeenCalled();
+      expect(drawImage).toHaveBeenCalledTimes(1);
+      expect(await file.text()).toBe("canvas fallback bytes");
+    });
+  });
+
+  it("falls back to canvas capture when takePhoto() returns an empty blob", async () => {
+    await withFakeDocument(async ({ drawImage }) => {
+      const takePhoto = vi.fn().mockResolvedValue(new Blob([], { type: "image/jpeg" }));
+      const FakeImageCapture = createFakeImageCapture(takePhoto);
+
+      const file = await captureStillFrame(fakeTrack, fakeVideo, CAPTURED_PHOTO_FILE_NAME, FakeImageCapture);
+
+      expect(takePhoto).toHaveBeenCalledTimes(1);
+      expect(drawImage).toHaveBeenCalledTimes(1);
+      expect(file.type).toBe(CAPTURED_PHOTO_MIME_TYPE);
+    });
+  });
+
+  it("falls back to canvas capture when takePhoto() returns an unsupported MIME", async () => {
+    await withFakeDocument(async ({ drawImage }) => {
+      const takePhoto = vi.fn().mockResolvedValue(new Blob(["not an image"], { type: "application/pdf" }));
+      const FakeImageCapture = createFakeImageCapture(takePhoto);
+
+      const file = await captureStillFrame(fakeTrack, fakeVideo, CAPTURED_PHOTO_FILE_NAME, FakeImageCapture);
+
+      expect(takePhoto).toHaveBeenCalledTimes(1);
+      expect(drawImage).toHaveBeenCalledTimes(1);
+      expect(file.type).toBe(CAPTURED_PHOTO_MIME_TYPE);
+      expect(file.name).toBe(CAPTURED_PHOTO_FILE_NAME);
+    });
+  });
+
+  it.each(["image/heic", "image/heif"])(
+    "falls back to canvas capture when takePhoto() returns %s",
+    async (mimeType) => {
+      await withFakeDocument(async ({ drawImage }) => {
+        const takePhoto = vi.fn().mockResolvedValue(new Blob(["unsupported still"], { type: mimeType }));
+        const FakeImageCapture = createFakeImageCapture(takePhoto);
+
+        const file = await captureStillFrame(fakeTrack, fakeVideo, CAPTURED_PHOTO_FILE_NAME, FakeImageCapture);
+
+        expect(takePhoto).toHaveBeenCalledTimes(1);
+        expect(drawImage).toHaveBeenCalledTimes(1);
+        expect(file.type).toBe(CAPTURED_PHOTO_MIME_TYPE);
+        expect(file.name).toBe(CAPTURED_PHOTO_FILE_NAME);
+        expect(await file.text()).toBe("canvas fallback bytes");
+      });
+    },
+  );
+
+  it("falls back to canvas capture when takePhoto() returns no MIME", async () => {
+    await withFakeDocument(async ({ drawImage }) => {
+      const takePhoto = vi.fn().mockResolvedValue(new Blob(["unknown bytes"]));
+      const FakeImageCapture = createFakeImageCapture(takePhoto);
+
+      const file = await captureStillFrame(fakeTrack, fakeVideo, CAPTURED_PHOTO_FILE_NAME, FakeImageCapture);
+
+      expect(takePhoto).toHaveBeenCalledTimes(1);
+      expect(drawImage).toHaveBeenCalledTimes(1);
+      expect(file.type).toBe(CAPTURED_PHOTO_MIME_TYPE);
+      expect(file.name).toBe(CAPTURED_PHOTO_FILE_NAME);
     });
   });
 });

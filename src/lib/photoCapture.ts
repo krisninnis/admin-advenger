@@ -6,6 +6,15 @@
 // src/components/PhotoCapturePanel.tsx for the UI that drives the state
 // machine defined at the bottom of this file.
 
+import {
+  getBrowserImageCaptureConstructor,
+  takePhotoBlobFromTrack,
+  type ImageCaptureConstructorLike,
+} from "./imageCapture";
+import { isFileWithinSizeLimit } from "./fileSizeLimit";
+import { inspectImageResourceSafety } from "./imageResourceSafety";
+import { isSupportedPhotoMimeType } from "./photoIntake";
+
 export type CameraErrorKind = "permission_denied" | "camera_unavailable" | "unknown";
 
 export type CameraStartResult =
@@ -252,6 +261,178 @@ export const capturePhotoFromVideoElement = (
       CAPTURED_PHOTO_JPEG_QUALITY,
     );
   });
+
+// ---- Capability-gated still capture (Slice C) ----
+//
+// Attempts an ImageCapture still candidate where the browser and active
+// stream support it, falling back silently to the existing canvas/video-frame
+// capture. The user never sees which path was taken.
+//
+// All failures — ImageCapture unavailable, constructor throws, takePhoto
+// rejects, empty blob, browser limitation — are caught internally and resolve
+// into the canvas fallback. The error path in the calling component remains
+// unchanged.
+//
+// Retained for calibration/comparative measurement and a possible future
+// evidence-backed re-enable. The controlled production pilot deliberately
+// captures the visible intrinsic video frame through
+// capturePhotoFromVideoElement instead.
+
+const imageCaptureExtensionByMimeType: Readonly<Record<string, string>> = {
+  "image/jpeg": ".jpg",
+  "image/jpg": ".jpg",
+  "image/png": ".png",
+  "image/webp": ".webp",
+};
+
+const getImageCaptureFileName = (fileName: string, mimeType: string): string => {
+  const extension = imageCaptureExtensionByMimeType[mimeType];
+  const baseName = fileName.replace(/\.[^./\\]+$/, "");
+  return `${baseName}${extension}`;
+};
+
+const isAcceptedImageCaptureBlob = (blob: Blob): boolean => {
+  const mimeType = blob.type.trim().toLowerCase();
+  return (
+    blob.size > 0 &&
+    isFileWithinSizeLimit(blob) &&
+    isSupportedPhotoMimeType(mimeType) &&
+    Boolean(imageCaptureExtensionByMimeType[mimeType])
+  );
+};
+
+export const STILL_FRAMING_ASPECT_RATIO_TOLERANCE = 0.05;
+
+type FramingDimensions = {
+  width: number;
+  height: number;
+};
+
+export type StillFramingCompatibilityInput = {
+  preview: FramingDimensions;
+  still: FramingDimensions;
+  trackSettings?: Pick<MediaTrackSettings, "width" | "height" | "aspectRatio">;
+};
+
+export type StillFramingCompatibility =
+  | { status: "compatible" }
+  | {
+      status: "incompatible";
+      reason: "unavailable_dimensions" | "aspect_ratio_mismatch" | "ambiguous_track_framing";
+    };
+
+const hasUsableFramingDimensions = (
+  dimensions: FramingDimensions,
+): boolean =>
+  Number.isFinite(dimensions.width) &&
+  Number.isFinite(dimensions.height) &&
+  dimensions.width > 0 &&
+  dimensions.height > 0;
+
+const areAspectRatiosCompatible = (first: number, second: number): boolean =>
+  Number.isFinite(first) &&
+  Number.isFinite(second) &&
+  first > 0 &&
+  second > 0 &&
+  Math.abs(first - second) / first <= STILL_FRAMING_ASPECT_RATIO_TOLERANCE;
+
+// The object-contain preview exposes the full intrinsic video frame, so its
+// direct width/height ratio is the framing contract. We deliberately do not
+// compare reciprocal ratios: without trustworthy orientation metadata, doing
+// so would guess that a landscape still is a rotated portrait preview and can
+// accept the materially wider Android result this guard exists to reject.
+export const assessStillFramingCompatibility = ({
+  preview,
+  still,
+  trackSettings,
+}: StillFramingCompatibilityInput): StillFramingCompatibility => {
+  if (!hasUsableFramingDimensions(preview) || !hasUsableFramingDimensions(still)) {
+    return { status: "incompatible", reason: "unavailable_dimensions" };
+  }
+
+  const previewAspectRatio = preview.width / preview.height;
+  const stillAspectRatio = still.width / still.height;
+
+  if (!areAspectRatiosCompatible(previewAspectRatio, stillAspectRatio)) {
+    return { status: "incompatible", reason: "aspect_ratio_mismatch" };
+  }
+
+  const trackAspectRatios: number[] = [];
+  if (
+    trackSettings &&
+    typeof trackSettings.width === "number" &&
+    typeof trackSettings.height === "number" &&
+    hasUsableFramingDimensions({ width: trackSettings.width, height: trackSettings.height })
+  ) {
+    trackAspectRatios.push(trackSettings.width / trackSettings.height);
+  }
+  if (
+    trackSettings &&
+    typeof trackSettings.aspectRatio === "number" &&
+    Number.isFinite(trackSettings.aspectRatio) &&
+    trackSettings.aspectRatio > 0
+  ) {
+    trackAspectRatios.push(trackSettings.aspectRatio);
+  }
+
+  if (trackAspectRatios.some((aspectRatio) => !areAspectRatiosCompatible(previewAspectRatio, aspectRatio))) {
+    return { status: "incompatible", reason: "ambiguous_track_framing" };
+  }
+
+  return { status: "compatible" };
+};
+
+const getTrackFramingSettings = (
+  track: MediaStreamTrack,
+): Pick<MediaTrackSettings, "width" | "height" | "aspectRatio"> | undefined => {
+  try {
+    return track.getSettings?.();
+  } catch {
+    return undefined;
+  }
+};
+
+export const captureStillFrame = async (
+  track: MediaStreamTrack | undefined,
+  video: HTMLVideoElement,
+  fileName: string = CAPTURED_PHOTO_FILE_NAME,
+  imageCaptureConstructor: ImageCaptureConstructorLike | undefined =
+    getBrowserImageCaptureConstructor(),
+  isCaptureActive: () => boolean = () => true,
+  inspectStillDimensions: typeof inspectImageResourceSafety = inspectImageResourceSafety,
+): Promise<File> => {
+  if (track && typeof imageCaptureConstructor === "function") {
+    try {
+      const blob = await takePhotoBlobFromTrack(track, imageCaptureConstructor);
+
+      if (isCaptureActive() && isAcceptedImageCaptureBlob(blob)) {
+        const mimeType = blob.type.trim().toLowerCase();
+        const candidate = new File([blob], getImageCaptureFileName(fileName, mimeType), { type: mimeType });
+        const stillDimensions = await inspectStillDimensions(candidate);
+
+        if (
+          isCaptureActive() &&
+          assessStillFramingCompatibility({
+            preview: { width: video.videoWidth, height: video.videoHeight },
+            still: stillDimensions,
+            trackSettings: getTrackFramingSettings(track),
+          }).status === "compatible"
+        ) {
+          return candidate;
+        }
+      }
+    } catch {
+      // Fall through to the canvas/video-frame capture — all errors are
+      // silent to normal users per the spec.
+    }
+  }
+
+  if (!isCaptureActive()) {
+    throw new Error("Camera capture is no longer active.");
+  }
+
+  return capturePhotoFromVideoElement(video, fileName);
+};
 
 // ---- Panel state machine (pure, testable, no DOM/React involved) ----
 //

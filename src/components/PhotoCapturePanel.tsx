@@ -108,8 +108,11 @@ export function PhotoCapturePanel({
   const [scanPreviewUrl, setScanPreviewUrl] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
   const [scanWarnings, setScanWarnings] = useState<string[]>([]);
+  const [captureInFlight, setCaptureInFlight] = useState(false);
   const initialPhotoSeededRef = useRef(false);
   const scanRequestIdRef = useRef(0);
+  const captureAttemptIdRef = useRef(0);
+  const captureInFlightRef = useRef(false);
   const streamRef = useRef<MediaStream | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const sourceFileRef = useRef<File | undefined>(undefined);
@@ -150,6 +153,8 @@ export function PhotoCapturePanel({
 
   const handleCancel = () => {
     onCancel?.();
+    captureAttemptIdRef.current += 1;
+    captureInFlightRef.current = false;
     scanRequestIdRef.current += 1;
     stopActiveStream();
     resetPhotoReviewState();
@@ -224,6 +229,8 @@ export function PhotoCapturePanel({
 
   useEffect(() => {
     return () => {
+      captureAttemptIdRef.current += 1;
+      captureInFlightRef.current = false;
       scanRequestIdRef.current += 1;
       stopMediaStreamTracks(streamRef.current);
       streamRef.current = null;
@@ -262,11 +269,19 @@ export function PhotoCapturePanel({
       // the same central check as defence in depth.
       await inspectImageResourceSafety(file);
     } catch (error) {
+      if (scanRequestIdRef.current !== requestId) {
+        return;
+      }
+
       setErrorMessage(
         error instanceof ImageResourceSafetyError
           ? error.message
           : IMAGE_DIMENSIONS_UNREADABLE_MESSAGE,
       );
+      return;
+    }
+
+    if (scanRequestIdRef.current !== requestId) {
       return;
     }
 
@@ -334,19 +349,39 @@ export function PhotoCapturePanel({
   const handleTakePhotoClick = async () => {
     const videoElement = videoRef.current;
 
-    if (!videoElement) {
+    if (!videoElement || captureInFlightRef.current) {
       return;
     }
+
+    const captureAttemptId = captureAttemptIdRef.current + 1;
+    captureAttemptIdRef.current = captureAttemptId;
+    captureInFlightRef.current = true;
+    setCaptureInFlight(true);
+    const isCaptureActive = () => captureAttemptIdRef.current === captureAttemptId;
 
     try {
       const file = await capturePhotoFromVideoElement(
         videoElement,
         getCapturedPhotoFileName(currentSection),
       );
+
+      if (!isCaptureActive()) {
+        return;
+      }
+
       await preparePhotoForReview(file, "camera");
     } catch {
+      if (!isCaptureActive()) {
+        return;
+      }
+
       stopActiveStream();
       setErrorMessage("Could not capture a photo. Try again or upload a photo instead.");
+    } finally {
+      if (isCaptureActive()) {
+        captureInFlightRef.current = false;
+        setCaptureInFlight(false);
+      }
     }
   };
 
@@ -499,6 +534,7 @@ export function PhotoCapturePanel({
               <button
                 type="button"
                 onClick={() => void handleTakePhotoClick()}
+                disabled={captureInFlight}
                 className="min-h-12 rounded-lg bg-emerald-400 px-4 py-3 text-sm font-bold text-slate-950 shadow-lg shadow-emerald-950/30 transition hover:bg-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-200"
               >
                 {PHOTO_TAKE_PHOTO_LABEL}

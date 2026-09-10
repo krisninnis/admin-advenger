@@ -8,6 +8,11 @@ import {
   computeAverageBrightness,
   computeBlurVariance,
 } from "./documentImageQuality";
+import {
+  getBrowserImageCaptureConstructor,
+  takePhotoBlobFromTrack,
+  type ImageCaptureConstructorLike,
+} from "./imageCapture";
 
 export const A4_PORTRAIT_ASPECT_RATIO = 1 / Math.SQRT2;
 export const CAMERA_LAB_ROUTE_PATH = "/dev/camera-lab";
@@ -159,12 +164,6 @@ export type CameraLabTelemetryExport = {
   generatedAt: string;
   entries: CameraLabTelemetryEntry[];
 };
-
-type ImageCaptureLike = {
-  takePhoto: () => Promise<Blob>;
-};
-
-type ImageCaptureConstructorLike = new (track: MediaStreamTrack) => ImageCaptureLike;
 
 export const getDefaultCameraLabSettings = (): CameraLabSettings => ({
   preferredWidth: 1920,
@@ -744,15 +743,14 @@ export const getImageBlobDimensions = (blob: Blob): Promise<CameraLabCaptureDime
 export const captureCameraLabImageCapturePhoto = async (
   track: MediaStreamTrack,
   imageCaptureConstructor: ImageCaptureConstructorLike | undefined =
-    (globalThis as { ImageCapture?: ImageCaptureConstructorLike }).ImageCapture,
+    getBrowserImageCaptureConstructor(),
 ): Promise<CameraLabCaptureResult> => {
   if (!imageCaptureConstructor) {
     throw new Error("ImageCapture.takePhoto() is not available in this browser.");
   }
 
   const settings = track.getSettings();
-  const imageCapture = new imageCaptureConstructor(track);
-  const blob = await imageCapture.takePhoto();
+  const blob = await takePhotoBlobFromTrack(track, imageCaptureConstructor);
   const outputDimensions = await getImageBlobDimensions(blob);
 
   return {

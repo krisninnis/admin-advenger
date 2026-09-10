@@ -2,12 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   createPhotoSourceDocument,
   createTextSourceDocument,
+  getPhotoOcrSourceReviewState,
   hydrateSourceDocuments,
   validateSourceProvenance,
   type SourceDocument,
   type SourceProvenance,
 } from "../sourceProvenance";
 import { isSupportedBySource } from "../sourceSupport";
+import { compareOcrCriticalFields } from "../ocrCriticalFieldComparison";
 
 const documents: SourceDocument[] = [
   {
@@ -66,6 +68,62 @@ const provenance = (
   extractionConfidence: 98,
   reviewState: "confirmed",
   ...overrides,
+});
+
+describe("getPhotoOcrSourceReviewState", () => {
+  it("keeps a 61% photo source review-required (the reported Riverdale read)", () => {
+    expect(
+      getPhotoOcrSourceReviewState("This OCR text is long enough but still uncertain.", 61),
+    ).toBe("review_required");
+  });
+
+  it("marks the approved 70% boundary as confirmed and 88% as confirmed", () => {
+    expect(
+      getPhotoOcrSourceReviewState("A clear ordinary OCR result from the document.", 70),
+    ).toBe("confirmed");
+    expect(
+      getPhotoOcrSourceReviewState("A clear ordinary OCR result from the document.", 88),
+    ).toBe("confirmed");
+  });
+
+  it("fails closed to review_required when confidence is missing", () => {
+    expect(
+      getPhotoOcrSourceReviewState(
+        "Plenty of readable text but the engine did not report any confidence.",
+        undefined,
+      ),
+    ).toBe("review_required");
+  });
+
+  it("keeps garbled or too-short OCR review-required even at high confidence", () => {
+    expect(getPhotoOcrSourceReviewState("]{-_~^%#@!*()[[}}}~~^^%%##]]", 88)).toBe("review_required");
+    expect(getPhotoOcrSourceReviewState("Hi", 88)).toBe("review_required");
+  });
+
+  it("keeps provenance review-required when critical OCR fields conflict", () => {
+    const comparison = compareOcrCriticalFields([
+      {
+        id: "original",
+        source: "original_photo",
+        text: "Account reference: NX-77120",
+        confidence: 96,
+      },
+      {
+        id: "prepared",
+        source: "prepared_scan",
+        text: "Account reference: NX-77128",
+        confidence: 96,
+      },
+    ]);
+
+    expect(
+      getPhotoOcrSourceReviewState(
+        "Account reference: NX-77120",
+        96,
+        comparison,
+      ),
+    ).toBe("review_required");
+  });
 });
 
 describe("validateSourceProvenance", () => {

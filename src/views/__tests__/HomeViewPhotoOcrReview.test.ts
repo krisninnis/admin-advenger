@@ -42,8 +42,8 @@ describe("HomeView photo OCR review", () => {
 
     const successBlock = sliceBetween(
       homeViewSource,
-      'selectedInput === "image" && ocrStatus === "success" && isOcrReviewUnreliable',
-      'selectedInput === "image" && ocrStatus === "success" && !isOcrReviewUnreliable',
+      'selectedInput === "image" && ocrStatus === "success" && requiresOcrReview',
+      'selectedInput === "image" && ocrStatus === "success" && !requiresOcrReview',
     );
 
     expect(successBlock).toContain("LowConfidenceOcrReviewPanel");
@@ -54,6 +54,39 @@ describe("HomeView photo OCR review", () => {
     expect(successBlock).toContain("onCheckCorrectedText={(text) => void handleCheckOcrText(text)}");
     expect(successBlock).not.toContain("OCR confidence");
     expect(successBlock).not.toContain("Use original photo anyway");
+  });
+
+  it("routes the review panel off the review-required contract, not the old 45% threshold", () => {
+    const routingBlock = sliceBetween(
+      homeViewSource,
+      "const requiresOcrReview =",
+      "const canShowOcrKeyDetails",
+    );
+
+    expect(routingBlock).toContain("isOcrReviewRequired(ocrOriginalText || ocrText, ocrConfidence)");
+    expect(routingBlock).toContain("ocrCriticalFieldComparison.reviewRequired");
+    expect(routingBlock).not.toContain("isOcrResultUnreliable");
+  });
+
+  it("keeps normal key details hidden while critical-field comparison requires review", () => {
+    const visibilityBlock = sliceBetween(
+      homeViewSource,
+      "const canShowOcrKeyDetails =",
+      "const shouldHideOcrKeyDetails",
+    );
+
+    expect(visibilityBlock).toContain("!ocrCriticalFieldComparison.reviewRequired");
+  });
+
+  it("derives photo source provenance through the pure review-state decision", () => {
+    const provenanceBlock = sliceBetween(
+      homeViewSource,
+      "const newPhotoSources = results.map(",
+      "setPhotoMetadata(results[0]?.metadata)",
+    );
+
+    expect(provenanceBlock).toContain("reviewState: getPhotoOcrSourceReviewState(result.text, result.confidence)");
+    expect(provenanceBlock).not.toContain("isOcrResultUnreliable");
   });
 
   it("clears stale OCR state before retake, upload replacement, or cancellation", () => {

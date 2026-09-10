@@ -102,17 +102,22 @@ const LOW_CONFIDENCE_THRESHOLD = 40;
 // user can still edit the text manually and continue.
 export const OCR_UNRELIABLE_CONFIDENCE_THRESHOLD = 45;
 
-// Key details are more sensitive than the editable OCR textarea. In live
-// mobile tests, OCR around ~52% could still produce plausible-looking but
-// wrong facts, so the normal "Key details found" card waits for a stronger
-// read unless the user has manually edited the extracted text.
-export const OCR_KEY_DETAILS_CONFIDENCE_THRESHOLD = 60;
+// Above this boundary, a moderate-confidence OCR result still requires
+// explicit human review before critical details may be treated as normal
+// extracted facts. Live mobile testing of a real price-change notice at ~61%
+// confidence produced plausible-looking but wrong critical fields (18 Aug
+// 2026 -> 28 Aug 2026, RE-60419 -> RE-60414, 25 Aug 2026 -> 25 Aug 2076), so
+// the old ~60% key-detail boundary and the old 45% provenance boundary now
+// fail closed through this single contract (see isOcrReviewRequired below).
+export const OCR_REVIEW_REQUIRED_CONFIDENCE_THRESHOLD = 70;
 
 // Between LOW_CONFIDENCE_THRESHOLD and this value, OCR ran and found text,
 // but real-world testing on mobile (full-page letters coming back around
 // ~54% confidence with several wrong words) showed this band still needs its
 // own, gentler warning - severe enough to flag, not severe enough for the
-// "hard to read clearly" wording below.
+// "hard to read clearly" wording below. This matches the review-required
+// boundary: anything in this moderate band must be reviewed before it is
+// trusted as normal key-detail output.
 const MODERATE_CONFIDENCE_THRESHOLD = 70;
 
 // A single, calm, low-confidence warning - never a percentage or model-speak,
@@ -196,23 +201,49 @@ export const isOcrResultUnreliable = (text: string, confidence?: number): boolea
   return isLikelyGarbledText(trimmed);
 };
 
-export const isOcrKeyDetailsReliable = (text: string, confidence?: number): boolean => {
-  if (isOcrResultUnreliable(text, confidence)) {
-    return false;
+// The single review-required contract introduced by the OCR-hardening slice.
+// True means a photo's OCR must not be presented as normal, trusted facts
+// yet, and its source provenance must stay "review_required". It fails
+// closed deliberately:
+// - too little text, or text that looks garbled, always needs review even at
+//   high confidence (a blurry photo can still produce a confident-looking
+//   mess);
+// - a missing confidence signal must not be silently treated as high
+//   confidence - if the engine cannot say how sure it is, critical details
+//   still need explicit human review;
+// - otherwise, confidence below OCR_REVIEW_REQUIRED_CONFIDENCE_THRESHOLD
+//   needs review. The exact boundary is kept as one explicit constant so it
+//   can be regression-tested and only changed with evidence.
+export const isOcrReviewRequired = (text: string, confidence?: number): boolean => {
+  const trimmed = text.trim();
+
+  if (trimmed.length < MIN_USEFUL_TEXT_LENGTH) {
+    return true;
   }
 
-  if (typeof confidence === "number" && confidence < OCR_KEY_DETAILS_CONFIDENCE_THRESHOLD) {
-    return false;
+  if (isLikelyGarbledText(trimmed)) {
+    return true;
   }
 
-  return true;
+  if (typeof confidence !== "number") {
+    return true;
+  }
+
+  return confidence < OCR_REVIEW_REQUIRED_CONFIDENCE_THRESHOLD;
 };
 
+// Normal "Key details found" presentation now rides on the same review
+// contract: key details are more sensitive than the editable OCR textarea, so
+// they are only surfaced as ordinary facts once the read clears the approved
+// review boundary (or the user has edited the text - see getVisibleOcrKeyDetails).
+export const isOcrKeyDetailsReliable = (text: string, confidence?: number): boolean =>
+  !isOcrReviewRequired(text, confidence);
+
 // Pure - decides when the OCR review should actively suggest a close-up or
-// retake. Only when the read was moderate/poor (below the key-details
-// threshold) or the text itself looks unreliable. A decent single-photo read
-// (e.g. ~78% on a full-page letter in live testing) returns false, so the
-// user is never pushed into a second photo they don't need.
+// retake. Only when the read is below the review-required boundary or the
+// text itself looks unreliable. A decent single-photo read (e.g. ~78% on a
+// full-page letter in live testing) returns false, so the user is never
+// pushed into a second photo they don't need.
 export const shouldSuggestCloseUpPhoto = (text: string, confidence?: number): boolean =>
   !isOcrKeyDetailsReliable(text, confidence);
 

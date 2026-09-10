@@ -1,4 +1,6 @@
 import { countSupportedSourceOccurrences } from "./sourceSupport";
+import { isOcrReviewRequired } from "./photoOcr";
+import type { OcrCriticalFieldComparisonResult } from "./ocrCriticalFieldComparison";
 
 export type SourceReviewState = "confirmed" | "review_required" | "unavailable";
 
@@ -175,6 +177,25 @@ const reviewStates = new Set<SourceReviewState>([
   "review_required",
   "unavailable",
 ]);
+
+/**
+ * Pure source-review-state decision for a photo's OCR result (the approved
+ * review-required contract). A photo source is only "confirmed" when the OCR
+ * run clears the approved review boundary with usable text and a trustworthy
+ * confidence signal. Everything else - low confidence, garbled or too-short
+ * text, a missing confidence value, or a later unresolved critical-field
+ * conflict - must stay "review_required" until the person explicitly reviews
+ * or corrects the text through the existing human-review action.
+ */
+export const getPhotoOcrSourceReviewState = (
+  text: string,
+  confidence?: number,
+  criticalFieldComparison?: Pick<OcrCriticalFieldComparisonResult, "reviewRequired">,
+): SourceReviewState =>
+  isOcrReviewRequired(text, confidence) || criticalFieldComparison?.reviewRequired
+    ? "review_required"
+    : "confirmed";
+
 const segmentKinds = new Set<SourceSegment["kind"]>(["page", "photo", "document"]);
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
